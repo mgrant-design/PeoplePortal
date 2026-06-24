@@ -1,4 +1,7 @@
 {
+  "platform": {
+    "apiRuntime": "node:18"
+  },
   "mimeTypes": {
     ".jsx": "text/javascript",
     ".js": "text/javascript",
