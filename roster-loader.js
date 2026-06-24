@@ -82,4 +82,30 @@
   } catch (e) {
     fail('Couldn’t load the roster', (e && e.message) || String(e));
   }
+
+  // Merge admin / elevated permissions from a SEPARATE access list, kept OUT of the roster
+  // so it can be edited independently (and later managed in-app once the API/Cosmos is live).
+  // Each entry is keyed by work email, e.g. { email, admin, canPrint, canSuspend, canTerminate, canDelete }.
+  if (!window.__PD_ROSTER_ERROR && window.HRDATA && Array.isArray(window.HRDATA.employees)) {
+    var acc = window.PD_ACCESS_SOURCE;
+    if (acc && acc.url) {
+      try {
+        var ax = new XMLHttpRequest();
+        ax.open('GET', acc.url, false);
+        ax.send();
+        if (ax.status >= 200 && ax.status < 300) {
+          var adata = JSON.parse(ax.responseText);
+          var overrides = (adata && adata.overrides) || [];
+          window.HRDATA.users = window.HRDATA.users || [];
+          overrides.forEach(function (o) {
+            if (!o || !o.email) return;
+            var key = String(o.email).toLowerCase();
+            var i = window.HRDATA.users.findIndex(function (u) { return (u.email || '').toLowerCase() === key; });
+            if (i >= 0) window.HRDATA.users[i] = Object.assign({}, window.HRDATA.users[i], o);
+            else window.HRDATA.users.push(o);
+          });
+        }
+      } catch (e) { /* access list is optional — ignore if missing/unreadable */ }
+    }
+  }
 })();
