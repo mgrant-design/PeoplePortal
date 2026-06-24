@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pure Dental — New Hire Onboarding</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <template id="__bundler_thumbnail" data-bg-color="#0e7c88">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(420,220) scale(18)" fill="#ffffff">
+        <path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/>
+      </g>
+    </svg>
+  </template>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="i18n.jsx"></script>
+  <script type="text/babel" src="shell.jsx"></script>
+  <script type="text/babel" src="secure.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+
+  <!-- Roster loads at RUNTIME (NOT hardcoded into this HTML). For development this points at
+       the synthetic sample roster so the app is fully usable with safe, fake data.
+       For production, change url to your Google Sheets / Cosmos endpoint — no other change. -->
+  <script>window.PD_DATA_SOURCE = { type: 'json', url: 'hrdata.synthetic.json' };</script>
+  <!-- Google sign-in. Paste the OAuth Client ID from Google Cloud Console (Internal consent
+       screen → domain-locked to puredental.com) and add this site to Authorized JS origins.
+       Blank = sign-in shows a "not configured" notice. -->
+  <script>window.PD_AUTH = { googleClientId: '' };</script>
+  <script src="roster-loader.js"></script>
+  <script type="text/babel" src="rbac.jsx"></script>
+  <script type="text/babel" src="hrseed.jsx"></script>
+  <script type="text/babel" src="login.jsx"></script>
+
+  <script type="text/babel" src="hub.jsx"></script>
+  <script type="text/babel" src="paperwork.jsx"></script>
+  <script type="text/babel" src="credentials.jsx"></script>
+  <script type="text/babel" src="intake.jsx"></script>
+  <script type="text/babel" src="steps.jsx"></script>
+  <script type="text/babel" src="provisioning.jsx"></script>
+  <script type="text/babel" src="employee.jsx"></script>
+  <script type="text/babel" src="scheduler.jsx"></script>
+  <script type="text/babel" src="directory.jsx"></script>
+  <script type="text/babel" src="profile.jsx"></script>
+  <script type="text/babel" src="offboarding.jsx"></script>
+  <script type="text/babel" src="automation.jsx"></script>
+  <script type="text/babel" src="agent.jsx"></script>
+  <script type="text/babel" src="askhr-data.jsx"></script>
+  <script type="text/babel" src="askhr.jsx"></script>
+  <script type="text/babel" src="offices.jsx"></script>
+  <script type="text/babel" src="reviews.jsx"></script>
+  <script type="text/babel" src="timeclock.jsx"></script>
+  <script type="text/babel" src="dashboard.jsx"></script>
+  <script type="text/babel" src="celebrate.jsx"></script>
+  <script type="text/babel" src="hradmin.jsx"></script>
+  <script type="text/babel" src="reportbuilder.jsx"></script>
+  <script type="text/babel" src="reportschedule.jsx"></script>
+  <script type="text/babel" src="scrubs-data.jsx"></script>
+  <script type="text/babel" src="scrubs.jsx"></script>
+  <script type="text/babel" src="dev.jsx"></script>
+  <script type="text/babel" src="help.jsx"></script>
+  <script type="text/babel" src="notifications.jsx"></script>
+  <script type="text/babel" src="walkthrough.jsx"></script>
+  <script type="text/babel" src="myschedule.jsx"></script>
+  <script type="text/babel" src="onboardingstatus.jsx"></script>
+  <script type="text/babel" src="applicants.jsx"></script>
+  <script type="text/babel" src="librarydata.jsx"></script>
+  <script type="text/babel" src="library.jsx"></script>
+  <script type="text/babel" src="editrecord.jsx"></script>
+  <script type="text/babel" src="feedback.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
