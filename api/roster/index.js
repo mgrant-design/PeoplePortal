@@ -7,11 +7,11 @@ function getAuthHeader(verb, resourceType, resourceId, date, key) {
   return encodeURIComponent(`type=master&ver=1.0&sig=${sig}`);
 }
 
-function cosmosRequest(endpoint, key, path, resourceType, resourceId) {
+function cosmosGet(endpoint, key, resourceId) {
   return new Promise((resolve, reject) => {
     const date = new Date().toUTCString();
-    const auth = getAuthHeader('get', resourceType, resourceId, date, key);
-    const url = new URL(path, endpoint);
+    const auth = getAuthHeader('get', 'docs', resourceId, date, key);
+    const url = new URL('/' + resourceId + '/docs', endpoint);
     const options = {
       hostname: url.hostname,
       path: url.pathname,
@@ -26,7 +26,7 @@ function cosmosRequest(endpoint, key, path, resourceType, resourceId) {
     };
     const req = https.request(options, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', c => data += c);
       res.on('end', () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
         catch (e) { reject(new Error('JSON parse error: ' + data)); }
@@ -43,44 +43,51 @@ module.exports = async function (context, req) {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
   };
-
-  if (req.method === 'OPTIONS') {
-    context.res = { status: 204, headers };
-    return;
-  }
+  if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
 
   const endpoint = (process.env.COSMOS_ENDPOINT || '').replace(/\/$/, '');
   const key = process.env.COSMOS_KEY || '';
   const db = process.env.COSMOS_DB || 'portal';
-  const container = process.env.COSMOS_CONTAINER || 'roster';
 
   if (!endpoint || !key) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing COSMOS_ENDPOINT or COSMOS_KEY' }) };
     return;
   }
 
-  try {
-    const resourceId = `dbs/${db}/colls/${container}`;
-    const path = `/${resourceId}/docs`;
-    const result = await cosmosRequest(endpoint, key, path, 'docs', resourceId);
+  const strip = ({ _rid, _self, _etag, _attachments, _ts, ...rest }) => rest;
 
-    if (result.status !== 200) {
-      context.res = { status: 500, headers, body: JSON.stringify({ error: 'Cosmos error', status: result.status, detail: result.body }) };
+  try {
+    // 1) people from the roster container
+    const rosterRes = await cosmosGet(endpoint, key, `dbs/${db}/colls/roster`);
+    if (rosterRes.status !== 200) {
+      context.res = { status: 500, headers, body: JSON.stringify({ error: 'roster read failed', status: rosterRes.status, detail: rosterRes.body }) };
       return;
     }
+    const employees = (rosterRes.body.Documents || []).map(strip);
 
-    const docs = result.body.Documents || [];
-    const clean = docs.map(({ _rid, _self, _etag, _attachments, _ts, ...emp }) => emp);
-    const employees = clean.filter(r => !r.docType || r.docType === 'employee');
-    const offices = clean.filter(r => r.docType === 'office').map(({ docType, ...o }) => o);
-    const managers = clean.filter(r => r.docType === 'manager').map(({ docType, ...m }) => m);
-    const users = clean.filter(r => r.docType === 'user').map(({ docType, ...u }) => u);
-    const offboarding = clean.filter(r => r.docType === 'offboarding').map(({ docType, ...o }) => o);
+    // 2) reference data from appState (id: roster-support). Optional — empty arrays if absent.
+    let ref = { offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
+    try {
+      const appRes = await cosmosGet(endpoint, key, `dbs/${db}/colls/appState`);
+      if (appRes.status === 200) {
+        const supportDoc = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
+        if (supportDoc) {
+          ref = {
+            offices: supportDoc.offices || [],
+            departments: supportDoc.departments || [],
+            titles: supportDoc.titles || [],
+            managers: supportDoc.managers || [],
+            users: supportDoc.users || [],
+            offboarding: supportDoc.offboarding || [],
+          };
+        }
+      }
+    } catch (e) { /* reference data optional — roster still serves */ }
 
     context.res = {
       status: 200,
       headers,
-      body: JSON.stringify({ employees, offices, departments: [], titles: [], managers, users, offboarding }),
+      body: JSON.stringify({ employees, ...ref }),
     };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
