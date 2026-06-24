@@ -62,7 +62,7 @@ module.exports = async function (context, req) {
   try {
     const resourceId = `dbs/${db}/colls/${container}`;
     const path = `/${resourceId}/docs`;
-    const result = await cosmosRequest(endpoint, key, path, resourceType, resourceId);
+    const result = await cosmosRequest(endpoint, key, path, 'docs', resourceId);
 
     if (result.status !== 200) {
       context.res = { status: 500, headers, body: JSON.stringify({ error: 'Cosmos error', status: result.status, detail: result.body }) };
