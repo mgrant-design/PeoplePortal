@@ -1,0 +1,785 @@
+/* applicants.jsx — Applicant Tracking (ATS). Manager+ only.
+   A hiring pipeline board (Applied → Screening → Interview → Offer → Hired),
+   applicant detail, manual add + resume import (parsing behind an integration
+   flag), and a one-click "Hire → start onboarding" that hands off to the
+   onboarding agent. Applicant PII is encrypted at rest via PD_SEC (AES-256-GCM).
+*/
+
+const ATS_STAGES = [
+  { id: 'applied',   label: 'Applied',   badge: 'badge-todo' },
+  { id: 'screening', label: 'Screening', badge: 'badge-prog' },
+  { id: 'interview', label: 'Interview', badge: 'badge-prog' },
+  { id: 'working',   label: 'Working interview', badge: 'badge-prog' },
+  { id: 'offer',     label: 'Offer',     badge: 'badge-warn' },
+  { id: 'hired',     label: 'Hired',     badge: 'badge-ok' },
+];
+const ATS_IDX = {}; ATS_STAGES.forEach((s, i) => ATS_IDX[s.id] = i);
+const ATS_SOURCES = ['Indeed', 'LinkedIn', 'Referral', 'Careers page', 'ZipRecruiter', 'Walk-in', 'Other'];
+const ATS_DEPTS = ['Front Desk', 'Clinical Team', 'Insurance', 'Operations', 'Management'];
+
+function atsRoleKey({ provider, role, dept }) {
+  if (/hygien|\bRDH\b/i.test(role || '')) return 'hygienist';
+  if (provider) return /\b(dds|dmd|dentist|doctor|associate dentist|provider)\b/i.test(role || '') ? 'dentist' : 'hygienist';
+  if (/insur|billing/i.test((dept || '') + (role || ''))) return 'insurance';
+  return 'frontdesk';
+}
+function titleFromFile(fn) {
+  return (fn || '').replace(/\.[a-z]+$/i, '').replace(/resume|cv|_|-/gi, ' ').replace(/\s+/g, ' ').trim()
+    .split(' ').slice(0, 3).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ').trim();
+}
+function atsFmt(d) {
+  const p = (typeof pdParseDate === 'function') ? pdParseDate(d) : null;
+  if (!p) return d || '—';
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][p.mo - 1] + ' ' + p.d;
+}
+/* average of interviewer ratings, falling back to the single rating field */
+function avgRating(a) {
+  const f = (a.feedback || []).filter(x => x.rating);
+  if (f.length) return Math.round(f.reduce((s, x) => s + x.rating, 0) / f.length);
+  return a.rating || 0;
+}
+
+/* role-based job-description templates attached to the offer */
+const JD_TEMPLATES = {
+  hygienist: 'Registered Dental Hygienist — deliver prophylaxis, periodontal therapy, and patient education; take and interpret radiographs; chart findings in Open Dental / Denticon; uphold infection-control and OSHA standards; partner with the dentist on treatment plans.',
+  dentist: 'Associate Dentist — provide comprehensive diagnostic, restorative, and surgical care; develop and present treatment plans; supervise and mentor clinical staff; maintain accurate records and EPCS e-prescribing; uphold quality, safety, and patient-experience standards.',
+  frontdesk: 'Front Desk Coordinator — greet and check in patients, manage the provider schedule, verify insurance and eligibility, handle phones and recalls in NexHealth, collect payments, and keep the front office running smoothly.',
+  insurance: 'Insurance & Billing Specialist — submit and follow up on claims, post payments, manage AR and appeals, verify eligibility and benefits, and resolve patient billing questions in Denticon.',
+};
+const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
+
+/* Documents available to attach from Google Drive / Shared Drives (simulated until
+   the Drive integration is connected). */
+const DRIVE_FILES = [
+  { name: 'Dental Hygienist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+  { name: 'Associate Dentist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+  { name: 'Front Desk Coordinator — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+  { name: 'Insurance & Billing Specialist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+  { name: 'Dental Assistant — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+  { name: 'Pure Dental — Benefits Summary 2026.pdf', drive: 'shared', loc: 'HR ▸ Benefits' },
+  { name: 'Offer Letter Template — Hourly.docx', drive: 'shared', loc: 'HR ▸ Templates' },
+  { name: 'Offer Letter Template — Salary.docx', drive: 'shared', loc: 'HR ▸ Templates' },
+  { name: 'Employee Handbook 2026.pdf', drive: 'shared', loc: 'HR ▸ Policies' },
+  { name: 'At-Will Employment Agreement.pdf', drive: 'shared', loc: 'HR ▸ Legal' },
+  { name: 'Working Interview Pay Policy.pdf', drive: 'shared', loc: 'HR ▸ Policies' },
+  { name: 'Direct Deposit Authorization.pdf', drive: 'shared', loc: 'Payroll ▸ Forms' },
+  { name: 'New Hire Checklist.pdf', drive: 'mydrive', loc: 'My Drive' },
+  { name: 'Recruiting — Candidate Scorecard.pdf', drive: 'mydrive', loc: 'My Drive' },
+];
+
+function AttachPicker({ driveOn, onPick, onClose }) {
+  const [tab, setTab] = useState('device');
+  const [q, setQ] = useState('');
+  const TABS = [['device', 'This device', 'upload'], ['mydrive', 'My Drive', 'doc'], ['shared', 'Shared Drives', 'users']];
+  const onFile = (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; onPick({ name: f.name, kind: 'file', source: 'Upload' }); };
+  const pool = DRIVE_FILES.filter(d => tab === 'mydrive' ? d.drive === 'mydrive' : d.drive === 'shared');
+  const results = pool.filter(d => !q || (d.name + ' ' + d.loc).toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <ModalShell onClose={onClose} width={520}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--pad)', borderBottom: '1px solid var(--line-soft)' }}>
+        <h2 style={{ fontSize: 18 }}>Attach a document</h2>
+        <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
+      </div>
+      <div style={{ display: 'flex', gap: 4, padding: '10px var(--pad) 0', borderBottom: '1px solid var(--line)' }}>
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} onClick={() => setTab(id)} style={{ border: 'none', background: 'none', padding: '8px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7,
+            color: tab === id ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === id ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>
+            <Icon name={icon} style={{ width: 15, height: 15 }} /> {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: 'var(--pad)' }}>
+        {tab === 'device' ? (
+          <label style={{ display: 'block', cursor: 'pointer' }}>
+            <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={onFile} style={{ display: 'none' }} />
+            <div style={{ border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '26px 18px', textAlign: 'center', background: 'var(--surface-2)' }}>
+              <Icon name="upload" style={{ width: 24, height: 24, color: 'var(--accent)', margin: '0 auto 8px', display: 'block' }} />
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Drop a file or choose from this device</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3 }}>PDF, Word, or image</div>
+            </div>
+          </label>
+        ) : !driveOn ? (
+          <div style={{ textAlign: 'center', padding: '24px 16px' }}>
+            <div style={{ width: 46, height: 46, borderRadius: 'var(--r-md)', margin: '0 auto 12px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center' }}><Icon name="link" style={{ width: 22, height: 22 }} /></div>
+            <h3 style={{ fontSize: 15.5 }}>Google Drive isn’t connected yet</h3>
+            <p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 6, lineHeight: 1.5, maxWidth: 360, marginInline: 'auto' }}>Once an admin connects Google Drive in <b>Admin → Feature rollout</b>, you can search {tab === 'shared' ? 'Shared Drives' : 'My Drive'} for job descriptions, offer templates and forms. For now, upload from this device.</p>
+            <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={() => setTab('device')}><Icon name="upload" /> Upload from device</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <Icon name="search" style={{ width: 15, height: 15, color: 'var(--ink-3)', position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+              <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder={`Search ${tab === 'shared' ? 'Shared Drives' : 'My Drive'}…`} style={{ ...atsFld, paddingLeft: 34 }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '46vh', overflowY: 'auto' }}>
+              {results.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, padding: '20px 0' }}>No documents match “{q}”.</div>
+                : results.map((d, i) => (
+                  <button key={i} onClick={() => onPick({ name: d.name, kind: 'file', source: tab === 'shared' ? 'Shared Drive' : 'Drive', loc: d.loc })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-md)', padding: '10px 12px', cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--line)'}>
+                    <Icon name="doc" style={{ width: 17, height: 17, color: 'var(--accent-strong)', flex: 'none' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{d.loc}</div>
+                    </div>
+                    <Icon name="plus" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
+                  </button>
+                ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 12, display: 'flex', gap: 6, alignItems: 'center' }}><Icon name="shield" style={{ width: 13, height: 13 }} /> Connected as Pure Dental Workspace · {tab === 'shared' ? 'Shared Drives' : 'My Drive'}</div>
+          </>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+function draftOffer(a) {
+  const start = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  return { status: 'draft', role: a.role, startDate: start, payType: atsRoleKey(a) === 'dentist' ? 'Salary' : 'Hourly', pay: '', jobDescription: JD_TEMPLATES[atsRoleKey(a)] || '', extra: '', attachments: [{ name: a.role + ' — Job Description.pdf', kind: 'jd' }], createdAt: Date.now() };
+}
+
+const ATS_SEED = [
+  { id: 'ap1', name: 'Brianna Coyle', role: 'Dental Hygienist', provider: true, dept: 'Clinical Team', office: 'Hauppauge', source: 'Indeed', email: 'bri.coyle@gmail.com', phone: '(631) 555-0142', applied: '2026-06-08', stage: 'working', rating: 4, years: 5, resume: 'RDH · NY license active. 5 yrs hygiene in a 4-op GP practice; perio maintenance, Invisalign scanning, Dentrix + Open Dental.', feedback: [{ byId: 'seed-ddibella', by: 'D. DiBella', role: 'Clinical Manager', rating: 4, comment: 'Warm chairside manner, books efficiently. Recommending a working interview at Hauppauge.', at: 'Jun 16' }], workingInterview: { status: 'scheduled', date: '2026-06-26', hours: '', rate: '', autoSend: true }, notes: [{ by: 'D. DiBella', at: 'Jun 16', text: 'Great phone screen. Setting up a working interview.' }] },
+  { id: 'ap2', name: 'Marcus Reyna', role: 'Front Desk Coordinator', provider: false, dept: 'Front Desk', office: 'Manorville', source: 'Referral', email: 'm.reyna@gmail.com', phone: '(631) 555-0188', applied: '2026-06-12', stage: 'screening', rating: 3, years: 3, resume: '3 yrs front desk at a multi-provider dental office. Insurance verification, NexHealth, bilingual (English/Spanish).', feedback: [], notes: [{ by: 'Referral', at: 'Jun 12', text: 'Referred by Sofia (Manorville front desk).' }] },
+  { id: 'ap3', name: 'Priya Anand', role: 'Insurance & Billing Specialist', provider: false, dept: 'Insurance', office: 'Islandia', source: 'LinkedIn', email: 'priya.anand@gmail.com', phone: '(516) 555-0119', applied: '2026-06-05', stage: 'offer', rating: 5, years: 7, resume: '7 yrs dental billing & claims. AR cleanup, eligibility, appeals; Denticon power user. CDA coursework.', feedback: [{ byId: 'seed-avibert', by: 'A. Vibert', role: 'HR & Payroll', rating: 5, comment: 'Top candidate — deep claims & AR background, sharp on eligibility. Recommend offer.', at: 'Jun 18' }], offer: { status: 'sent', role: 'Insurance & Billing Specialist', startDate: '2026-07-07', payType: 'Hourly', pay: '$32.00 / hr', jobDescription: 'Insurance & Billing Specialist — submit and follow up on claims, post payments, manage AR and appeals, verify eligibility and benefits, and resolve patient billing questions in Denticon.', extra: 'Full-time, Islandia. Benefits eligible after 30 days. Reports to the Insurance Lead.', attachments: [{ name: 'Insurance & Billing Specialist — Job Description.pdf', kind: 'jd' }, { name: 'Pure Dental — Benefits Summary 2026.pdf', kind: 'file' }], sentAt: Date.now() - 2 * 864e5, sentBy: OFFER_EXECUTOR }, notes: [{ by: 'A. Vibert', at: 'Jun 18', text: 'Offer sent — $32/hr, Islandia. Awaiting signature.' }] },
+  { id: 'ap4', name: 'Trevor Nash', role: 'Dental Assistant', provider: false, dept: 'Clinical Team', office: 'Garden City', source: 'ZipRecruiter', email: 'trevnash@gmail.com', phone: '(516) 555-0173', applied: '2026-06-19', stage: 'applied', rating: 0, years: 2, resume: 'Certified DA, X-ray certified. 2 yrs chairside, sterilization, 4-handed dentistry.', feedback: [], notes: [] },
+  { id: 'ap5', name: 'Dr. Olivia Pham', role: 'Associate Dentist', provider: true, dept: 'Clinical Team', office: 'Hauppauge', source: 'LinkedIn', email: 'o.pham.dds@gmail.com', phone: '(631) 555-0150', applied: '2026-06-02', stage: 'working', rating: 5, years: 6, resume: 'DDS, NY license + DEA active. 6 yrs GP; molar endo, clear aligners, implant restorations. NPI on file.', feedback: [{ byId: 'seed-kvibert', by: 'K. Vibert', role: 'CEO', rating: 5, comment: 'Excellent clinical range and a strong communicator. Worth a working day + comp conversation.', at: 'Jun 15' }, { byId: 'seed-ddibella', by: 'D. DiBella', role: 'Clinical Manager', rating: 5, comment: 'Great hands — patients will love her. Let’s schedule the working interview.', at: 'Jun 16' }], workingInterview: { status: 'scheduled', date: '2026-06-27', hours: '', rate: '', autoSend: true }, notes: [{ by: 'K. Vibert', at: 'Jun 15', text: 'Scheduling a working day + comp conversation.' }] },
+  { id: 'ap6', name: 'Hannah Brooks', role: 'Front Desk Coordinator', provider: false, dept: 'Front Desk', office: 'Wading River', source: 'Careers page', email: 'hannah.brooks@gmail.com', phone: '(631) 555-0166', applied: '2026-06-20', stage: 'applied', rating: 0, years: 1, resume: 'Customer service background moving into dental. Fast learner, scheduling, phones.', feedback: [], notes: [] },
+  { id: 'ap7', name: 'Diego Salas', role: 'Dental Hygienist', provider: true, dept: 'Clinical Team', office: 'Manorville', source: 'Indeed', email: 'diego.salas@gmail.com', phone: '(631) 555-0134', applied: '2026-06-10', stage: 'interview', rating: 4, years: 4, resume: 'RDH · NY license active. 4 yrs hygiene; local anesthesia certified, bilingual.', feedback: [{ byId: 'seed-ddibella', by: 'D. DiBella', role: 'Clinical Manager', rating: 4, comment: 'Solid background, anesthesia cert is a plus. Bringing in for an interview.', at: 'Jun 17' }], notes: [] },
+];
+
+/* ------- small UI bits ------- */
+function Stars({ value = 0, onChange }) {
+  if (!onChange) {
+    return (
+      <span style={{ display: 'inline-flex', gap: 2 }}>
+        {[1, 2, 3, 4, 5].map(n => (
+          <span key={n} style={{ lineHeight: 0, color: n <= value ? 'var(--warn)' : 'var(--line)' }}>
+            <Icon name="star" style={{ width: 16, height: 16 }} />
+          </span>
+        ))}
+      </span>
+    );
+  }
+  return (
+    <div style={{ display: 'inline-flex', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} onClick={() => onChange(n === value ? 0 : n)}
+          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', lineHeight: 0, color: n <= value ? 'var(--warn)' : 'var(--line)' }} title={`${n} / 5`}>
+          <Icon name="star" style={{ width: 16, height: 16 }} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const atsFld = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, fontFamily: 'var(--font-body)', border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
+function AF({ label, req, children, hint }) {
+  return <label style={{ display: 'block' }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 6 }}>{label}{req && <span style={{ color: 'var(--accent)' }}> *</span>}</div>{children}{hint && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 5 }}>{hint}</div>}</label>;
+}
+
+function ModalShell({ onClose, width = 560, children }) {
+  return (
+    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'oklch(0.2 0.03 250 / 0.45)', display: 'grid', placeItems: 'center', padding: '4vh 16px' }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ width: `min(${width}px, 96vw)`, maxHeight: '92vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ------- Add / Import applicant ------- */
+function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
+  const [f, setF] = useState({ name: '', role: '', dept: 'Front Desk', office: offices[0] || 'Manorville', source: 'Indeed', email: '', phone: '', years: '', provider: false, resume: '' });
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const ready = f.name.trim() && f.role.trim() && f.email.trim();
+
+  const onFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    if (!parseOn) { set('resume', 'Resume on file: ' + file.name + ' (manual entry — parsing integration is off).'); return; }
+    setParsing(true); setParsed(false);
+    setTimeout(() => {
+      const nm = titleFromFile(file.name) || f.name;
+      const guessEmail = nm ? nm.toLowerCase().replace(/\s+/g, '.') + '@gmail.com' : f.email;
+      setF(s => ({ ...s, name: nm || s.name, email: s.email || guessEmail, resume: 'Extracted from ' + file.name + ' — review the details below before saving.' }));
+      setParsing(false); setParsed(true);
+      if (flash) flash('Resume parsed — review extracted fields');
+    }, 1300);
+  };
+
+  return (
+    <ModalShell onClose={onClose} width={640}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--pad)', borderBottom: '1px solid var(--line-soft)' }}>
+        <h2 style={{ fontSize: 19 }}>Add an applicant</h2>
+        <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
+      </div>
+      <div style={{ padding: 'var(--pad)' }}>
+        {/* import zone */}
+        <label style={{ display: 'block', cursor: 'pointer', marginBottom: 18 }}>
+          <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={onFile} style={{ display: 'none' }} />
+          <div style={{ border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '18px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--surface-2)' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
+              {parsing ? <span className="spin" style={{ width: 18, height: 18, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', display: 'block' }} /> : <Icon name="upload" style={{ width: 20, height: 20 }} />}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{parsing ? 'Parsing résumé…' : fileName ? fileName : 'Import a résumé'}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>
+                {parseOn ? 'PDF / Word — we extract the name, contact details & summary.' : 'Parsing is off — attach the file and enter details manually.'}
+              </div>
+            </div>
+            {parsed && <span className="badge badge-ok" style={{ marginLeft: 'auto', flex: 'none' }}><Icon name="sparkle" /> Parsed</span>}
+            {!parseOn && <span className="badge badge-todo" style={{ marginLeft: 'auto', flex: 'none' }}>Manual</span>}
+          </div>
+        </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <AF label="Full name" req><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Jordan Avery" style={atsFld} /></AF>
+          <AF label="Role applied for" req><input value={f.role} onChange={e => set('role', e.target.value)} placeholder="e.g. Dental Hygienist" style={atsFld} /></AF>
+          <AF label="Department"><select value={f.dept} onChange={e => set('dept', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{ATS_DEPTS.map(d => <option key={d}>{d}</option>)}</select></AF>
+          <AF label="Office"><select value={f.office} onChange={e => set('office', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{offices.map(o => <option key={o}>{o}</option>)}</select></AF>
+          <AF label="Email" req hint="Stored encrypted"><input value={f.email} onChange={e => set('email', e.target.value)} placeholder="name@email.com" style={atsFld} /></AF>
+          <AF label="Phone" hint="Stored encrypted"><input value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="(631) 555-0123" style={atsFld} /></AF>
+          <AF label="Source"><select value={f.source} onChange={e => set('source', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{ATS_SOURCES.map(s => <option key={s}>{s}</option>)}</select></AF>
+          <AF label="Years of experience"><input value={f.years} onChange={e => set('years', e.target.value)} placeholder="e.g. 4" style={atsFld} /></AF>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={f.provider} onChange={e => set('provider', e.target.checked)} style={{ width: 17, height: 17, accentColor: 'var(--accent)' }} /> Clinical provider (needs NPI / license)
+        </label>
+        <div style={{ marginTop: 14 }}>
+          <AF label="Résumé summary / notes"><textarea value={f.resume} onChange={e => set('resume', e.target.value)} rows={3} placeholder="Key experience, licenses, highlights…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF>
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 'var(--pad)', borderTop: '1px solid var(--line-soft)' }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!ready} onClick={() => { onSave({ ...f, years: f.years ? parseInt(f.years, 10) || undefined : undefined }); }}><Icon name="plus" /> Add to pipeline</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ------- Working interview panel ------- */
+function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI, flash }) {
+  const wi = a.workingInterview;
+  const sent = wi && wi.status === 'sent';
+  const completed = wi && wi.status === 'completed';
+  const payText = paychexOn ? 'Accounting will post it to Paychex for the next pay run.' : 'Accounting will process the day’s pay manually.';
+
+  const markComplete = () => {
+    if (!wi.hours) { if (flash) flash('Enter hours worked first'); return; }
+    if (wi.autoSend) { onWI(a.id, { status: 'sent', completedAt: Date.now(), sentAt: Date.now() }); if (flash) flash(`${wi.hours}h sent to Accounting for ${a.name.split(' ')[0]}`); }
+    else onWI(a.id, { status: 'completed', completedAt: Date.now() });
+  };
+  const sendNow = () => { onWI(a.id, { status: 'sent', sentAt: Date.now() }); if (flash) flash(`${wi.hours}h sent to Accounting for ${a.name.split(' ')[0]}`); };
+
+  return (
+    <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: wi ? 12 : 8 }}>
+        <Icon name="clock" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700 }}>Working interview</span>
+        {sent && <span className="badge badge-ok" style={{ fontSize: 9.5 }}><Icon name="check" /> Hours sent</span>}
+        {completed && <span className="badge badge-warn" style={{ fontSize: 9.5 }}>Day complete</span>}
+        {wi && wi.status === 'scheduled' && <span className="badge badge-prog" style={{ fontSize: 9.5 }}>Scheduled</span>}
+      </div>
+
+      {!wi ? (
+        <div>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>Common for clinical roles — the candidate works a paid trial day. Schedule it here, then send the hours to Accounting for payment.</p>
+          <button className="btn btn-ghost" onClick={() => onScheduleWI(a.id)}><Icon name="plus" /> Schedule working interview</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: canPay ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
+            <AF label="Day"><input type="date" disabled={sent} value={wi.date || ''} onChange={e => onWI(a.id, { date: e.target.value })} style={atsFld} /></AF>
+            <AF label="Hours worked"><input disabled={sent} value={wi.hours || ''} onChange={e => onWI(a.id, { hours: e.target.value.replace(/[^0-9.]/g, '') })} placeholder="e.g. 6" inputMode="decimal" style={atsFld} /></AF>
+            {canPay && <AF label="Rate / hr" hint="Payroll only"><input disabled={sent} value={wi.rate || ''} onChange={e => onWI(a.id, { rate: e.target.value })} placeholder="$38.00" style={atsFld} /></AF>}
+          </div>
+
+          {!sent && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={wi.autoSend !== false} onChange={e => onWI(a.id, { autoSend: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
+              <span><b>Auto-send</b> hours to Accounting when the day is marked complete</span>
+            </label>
+          )}
+
+          {sent ? (
+            <div className="fade-in" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 14px', borderRadius: 'var(--r-md)', background: 'var(--ok-soft)' }}>
+              <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 1 }} />
+              <div style={{ fontSize: 13, color: 'oklch(0.4 0.12 155)', lineHeight: 1.5 }}>
+                <b>{wi.hours}h on {atsFmt(wi.date)}{canPay && wi.rate ? ` · ${wi.rate}/hr` : ''}</b> sent to Accounting for payment. {payText}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+              {completed
+                ? <button className="btn btn-primary" onClick={sendNow}><Icon name="mail" /> Send {wi.hours || '—'}h to Accounting</button>
+                : <button className="btn btn-primary" onClick={markComplete}><Icon name="check" /> Mark day complete{wi.autoSend !== false ? ' & send hours' : ''}</button>}
+              <button className="btn btn-quiet" style={{ fontSize: 12.5, color: 'var(--ink-3)' }} onClick={() => onRemoveWI(a.id)}>Remove</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------- Offer letter ------- */
+function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, onSend, onSign, flash }) {
+  const o = a.offer;
+  const [sig, setSig] = useState('');
+  const [picker, setPicker] = useState(false);
+  const fmtStart = (d) => atsFmt(d);
+
+  if (!o) {
+    return (
+      <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} /><span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>Draft an offer with the role, job description, and pay for {OFFER_EXECUTOR} (HR &amp; Payroll) to review and send.</p>
+        <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer letter</button>
+      </div>
+    );
+  }
+
+  const setO = (patch) => onOffer(a.id, patch);
+  const addAttach = (att) => setO({ attachments: [...(o.attachments || []), att] });
+  const rmAttach = (i) => setO({ attachments: (o.attachments || []).filter((_, j) => j !== i) });
+  const editable = o.status === 'draft';
+
+  return (
+    <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
+        {o.status === 'draft' && <span className="badge badge-todo" style={{ fontSize: 9.5 }}>Draft</span>}
+        {o.status === 'sent' && <span className="badge badge-prog" style={{ fontSize: 9.5 }}>Sent · awaiting signature</span>}
+        {o.status === 'signed' && <span className="badge badge-ok" style={{ fontSize: 9.5 }}><Icon name="check" /> Accepted &amp; signed</span>}
+      </div>
+
+      {editable ? (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <AF label="Role / title"><input value={o.role || ''} onChange={e => setO({ role: e.target.value })} style={atsFld} /></AF>
+            <AF label="Start date"><input type="date" value={o.startDate || ''} onChange={e => setO({ startDate: e.target.value })} style={atsFld} /></AF>
+          </div>
+          {/* pay — protected */}
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--surface)', border: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: canPay ? 10 : 0 }}>
+              <Icon name="lock" style={{ width: 13, height: 13, color: 'var(--accent)' }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700 }}>Pay</span>
+              <span className="badge badge-todo" style={{ fontSize: 9.5 }}>HR &amp; Leadership only</span>
+            </div>
+            {canPay ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12 }}>
+                <AF label="Type"><select value={o.payType || 'Hourly'} onChange={e => setO({ payType: e.target.value })} style={{ ...atsFld, appearance: 'auto' }}><option>Hourly</option><option>Salary</option></select></AF>
+                <AF label={o.payType === 'Salary' ? 'Annual salary' : 'Hourly rate'}><input value={o.pay || ''} onChange={e => setO({ pay: e.target.value })} placeholder={o.payType === 'Salary' ? '$95,000' : '$32.00 / hr'} style={atsFld} /></AF>
+              </div>
+            ) : <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>Compensation is entered and visible only to HR &amp; Leadership.</div>}
+          </div>
+          <div style={{ marginTop: 12 }}><AF label="Job description (attached to the offer)"><textarea value={o.jobDescription || ''} onChange={e => setO({ jobDescription: e.target.value })} rows={3} style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
+          <div style={{ marginTop: 12 }}><AF label="Additional details" hint="Anything else to include in the letter"><textarea value={o.extra || ''} onChange={e => setO({ extra: e.target.value })} rows={2} placeholder="e.g. sign-on bonus, schedule, reports-to, contingencies…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
+          {/* attachments */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 6 }}>Attachments</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(o.attachments || []).map((at, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 11px' }}>
+                  <Icon name="doc" style={{ width: 14, height: 14, color: 'var(--ink-3)', flex: 'none' }} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{at.name}</span>
+                  {at.source && at.source !== 'Upload' && <span className="badge badge-todo" style={{ fontSize: 9.5, flex: 'none' }}><Icon name="link" style={{ width: 10, height: 10 }} /> {at.source}</span>}
+                  <button className="btn btn-quiet" style={{ padding: 5, flex: 'none' }} onClick={() => rmAttach(i)} title="Remove"><Icon name="x" style={{ width: 13, height: 13 }} /></button>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-ghost" style={{ marginTop: 8, padding: '7px 12px', fontSize: 13 }} onClick={() => setPicker(true)}><Icon name="plus" style={{ width: 14, height: 14 }} /> Add attachment</button>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>Search this device, My Drive or Shared Drives.</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+            {canExecute
+              ? <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSend(a.id)}><Icon name="mail" /> Send offer to {a.name.split(' ')[0]}</button>
+              : <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Draft ready — {OFFER_EXECUTOR} (HR) will review &amp; send.</span>}
+            {canExecute && canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
+          </div>
+          {picker && <AttachPicker driveOn={driveOn} onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
+        </>
+      ) : (
+        <>
+          {/* read-only letter summary */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '5px 14px' }}>
+              <span style={{ color: 'var(--ink-3)' }}>Role</span><b>{o.role}</b>
+              <span style={{ color: 'var(--ink-3)' }}>Start date</span><span>{fmtStart(o.startDate)}</span>
+              {canPay && o.pay && <><span style={{ color: 'var(--ink-3)' }}>Pay</span><span>{o.pay} <span className="badge badge-todo" style={{ fontSize: 9 }}>protected</span></span></>}
+            </div>
+            {o.jobDescription && <p style={{ marginTop: 10, color: 'var(--ink-2)' }}>{o.jobDescription}</p>}
+            {o.extra && <p style={{ marginTop: 8, color: 'var(--ink-2)' }}>{o.extra}</p>}
+            {(o.attachments || []).length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>{o.attachments.map((at, i) => <span key={i} className="badge badge-todo" style={{ fontSize: 10.5 }}><Icon name="doc" style={{ width: 11, height: 11 }} /> {at.name}</span>)}</div>}
+          </div>
+
+          {o.status === 'signed' ? (
+            <div className="fade-in" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--ok-soft)' }}>
+              <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 1 }} />
+              <div style={{ fontSize: 13, color: 'oklch(0.4 0.12 155)', lineHeight: 1.5 }}>Accepted &amp; e-signed by <b>{o.signature}</b> on {atsFmt(new Date(o.signedAt).toISOString().slice(0, 10))}. The onboarding team was notified and onboarding has started.</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Sent by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate’s signature.</div>
+              {/* candidate acceptance (simulated) */}
+              <div style={{ marginTop: 12, border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '13px 15px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 8 }}>Candidate acceptance (preview)</div>
+                <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 10 }}>This is what {a.name.split(' ')[0]} sees in their secure link. Typing their name and signing accepts the offer and notifies the onboarding team.</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Type full legal name to e-sign" style={{ ...atsFld, flex: 1, minWidth: 180, fontFamily: 'var(--font-display)' }} />
+                  <button className="btn btn-primary" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Accept &amp; sign</button>
+                </div>
+                {canExecute && <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 8, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------- Applicant detail ------- */
+function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSendOffer, onSignOffer, onHire, onReject, flash }) {
+  const myFb = (a.feedback || []).find(f => f.byId === me.id);
+  const [note, setNote] = useState('');
+  const [myRating, setMyRating] = useState(myFb ? myFb.rating : 0);
+  const [myComment, setMyComment] = useState(myFb ? myFb.comment : '');
+  const idx = ATS_IDX[a.stage] != null ? ATS_IDX[a.stage] : 0;
+  const rejected = a.stage === 'rejected';
+  const stageDef = ATS_STAGES[idx] || ATS_STAGES[0];
+  const canHire = access.caps.hire;
+  const canPay = access.caps.payroll || access.flags.isExec;
+  const canExecute = access.flags.isHR || access.flags.isAdmin || access.flags.isExec || access.caps.payroll;
+  const avg = avgRating(a);
+  const fb = a.feedback || [];
+  const showWI = !rejected && (a.workingInterview || a.provider || idx >= ATS_IDX.interview);
+  const showOffer = !rejected && (a.offer || idx >= ATS_IDX.offer);
+
+  const addNote = () => { if (!note.trim()) return; onNote(a.id, note.trim()); setNote(''); };
+  const postFb = () => { if (!myRating && !myComment.trim()) return; onFeedback(a.id, myRating, myComment.trim()); if (flash) flash('Your feedback was posted'); };
+
+  return (
+    <ModalShell onClose={onClose} width={600}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 'var(--pad)', borderBottom: '1px solid var(--line-soft)' }}>
+        <PhotoAvatar emp={{ id: a.id, name: a.name }} size={48} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: 19 }}>{a.name}</h2>
+            {a.provider && <Icon name="star" style={{ width: 14, height: 14, color: 'var(--accent)' }} />}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{a.role} · {a.office}</div>
+        </div>
+        <span className={`badge ${rejected ? 'badge-todo' : stageDef.badge}`} style={{ flex: 'none' }}>{rejected ? 'Archived' : stageDef.label}</span>
+        <button className="btn btn-quiet" style={{ padding: 8, flex: 'none' }} onClick={onClose}><Icon name="x" /></button>
+      </div>
+
+      <div style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* pipeline tracker — click a stage to move there */}
+        {!rejected && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
+            {ATS_STAGES.map((s, i) => (
+              <React.Fragment key={s.id}>
+                <button onClick={() => onStage(a.id, s.id)} title={`Move to ${s.label}`}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flex: 'none', border: 'none', background: 'none', cursor: 'pointer', padding: 0, width: 64 }}>
+                  <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
+                    background: i < idx ? 'var(--ok)' : i === idx ? 'var(--accent)' : 'var(--surface-2)', color: i <= idx ? '#fff' : 'var(--ink-3)', border: i > idx ? '1px solid var(--line)' : 'none' }}>
+                    {i < idx ? <Icon name="check" style={{ width: 14, height: 14 }} /> : i + 1}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: i === idx ? 'var(--accent-strong)' : 'var(--ink-3)', textAlign: 'center', lineHeight: 1.2 }}>{s.label}</span>
+                </button>
+                {i < ATS_STAGES.length - 1 && <div style={{ flex: 1, height: 2, background: i < idx ? 'var(--ok)' : 'var(--line)', marginTop: 12 }} />}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+
+        {/* contact — encrypted */}
+        <div style={{ borderRadius: 'var(--r-md)', background: 'var(--surface-2)', border: '1px solid var(--line)', padding: '14px var(--pad)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+            <Icon name="shield" style={{ width: 14, height: 14, color: 'var(--ok)' }} />
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Contact</span>
+            <span className="badge badge-ok" style={{ fontSize: 9.5, padding: '1px 7px' }}>Encrypted</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 16px', fontSize: 13 }}>
+            <span style={{ color: 'var(--ink-3)' }}>Email</span><a href={'mailto:' + a.email} style={{ color: 'var(--accent-strong)', fontWeight: 600 }}>{a.email}</a>
+            <span style={{ color: 'var(--ink-3)' }}>Phone</span><span style={{ fontWeight: 600 }}>{a.phone || '—'}</span>
+            <span style={{ color: 'var(--ink-3)' }}>Source</span><span>{a.source}{a.years ? ` · ${a.years} yr${a.years === 1 ? '' : 's'} exp.` : ''}</span>
+            <span style={{ color: 'var(--ink-3)' }}>Applied</span><span>{atsFmt(a.applied)}</span>
+          </div>
+        </div>
+
+        {/* working interview */}
+        {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
+
+        {/* offer letter */}
+        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} driveOn={driveOn} onOffer={onOffer} onDraftOffer={onDraftOffer} onSend={onSendOffer} onSign={onSignOffer} flash={flash} />}
+
+        {/* resume summary */}
+        {a.resume && (
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="doc" style={{ width: 13, height: 13 }} /> Résumé summary</div>
+            <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>{a.resume}</p>
+          </div>
+        )}
+
+        {/* interviewer feedback */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Interview feedback</span>
+            {fb.length > 0 && <><Stars value={avg} /><span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{avg}.0 avg · {fb.length} interviewer{fb.length === 1 ? '' : 's'}</span></>}
+          </div>
+          {fb.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {fb.map((f, i) => (
+                <div key={i} style={{ background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: '11px 13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: f.comment ? 6 : 0 }}>
+                    <Avatar name={f.by} size={26} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 12.5 }}>{f.by}{f.byId === me.id ? ' · you' : ''}</div>
+                      {f.role && <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{f.role}</div>}
+                    </div>
+                    {f.rating ? <Stars value={f.rating} /> : null}
+                    <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', flex: 'none' }}>{f.at}</span>
+                  </div>
+                  {f.comment && <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, margin: 0 }}>{f.comment}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* your feedback */}
+          <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '12px 13px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFb ? 'Update your feedback' : 'Add your feedback'}</span>
+              <Stars value={myRating} onChange={setMyRating} />
+            </div>
+            <textarea value={myComment} onChange={e => setMyComment(e.target.value)} rows={2} placeholder="Your comments on this candidate…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 9 }}>
+              <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={postFb}>{myFb ? 'Update' : 'Post'} feedback</button>
+            </div>
+          </div>
+        </div>
+
+        {/* notes */}
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 8 }}>Notes</div>
+          {(a.notes || []).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+              {a.notes.map((n, i) => (
+                <div key={i} style={{ fontSize: 13, lineHeight: 1.5, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: '9px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><b style={{ fontSize: 12 }}>{n.by}</b><span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{n.at}</span></div>
+                  <span style={{ color: 'var(--ink-2)' }}>{n.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="Add a note…" style={{ ...atsFld, flex: 1 }} />
+            <button className="btn btn-ghost" onClick={addNote} disabled={!note.trim()}>Add</button>
+          </div>
+        </div>
+      </div>
+
+      {/* actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'var(--pad)', borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+        {rejected ? (
+          <button className="btn btn-ghost" onClick={() => onStage(a.id, 'applied')}><Icon name="refresh" /> Reopen</button>
+        ) : (
+          <>
+            <button className="btn btn-quiet" disabled={idx <= 0} onClick={() => onStage(a.id, ATS_STAGES[Math.max(0, idx - 1)].id)} title="Move back"><Icon name="arrowLeft" /></button>
+            <button className="btn btn-ghost" onClick={() => onReject(a.id)} style={{ color: 'var(--ink-2)' }}>Reject</button>
+            <div style={{ flex: 1 }} />
+            {a.stage === 'hired' ? (
+              <span className="badge badge-ok"><Icon name="check" /> Hired · in onboarding</span>
+            ) : a.stage === 'offer' ? (
+              canHire ? <button className="btn btn-ghost" onClick={() => onHire(a)} title="Skip the offer letter and start onboarding now"><Icon name="sparkle" /> Hire directly</button> : null
+            ) : (
+              <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].id)}>Advance to {ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].label} <Icon name="arrowRight" /></button>
+            )}
+          </>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ------- Applicant card ------- */
+function ApplicantCard({ a, onOpen }) {
+  return (
+    <button onClick={() => onOpen(a.id)} className="card" style={{ textAlign: 'left', padding: '12px 13px', display: 'flex', flexDirection: 'column', gap: 9, cursor: 'pointer', border: '1px solid var(--line)' }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.boxShadow = ''; }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <PhotoAvatar emp={{ id: a.id, name: a.name }} size={34} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+            {a.provider && <Icon name="star" style={{ width: 11, height: 11, color: 'var(--accent)', flex: 'none' }} />}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.role}</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="pin" style={{ width: 11, height: 11 }} /> {a.office}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {a.offer && a.offer.status === 'sent' && <Icon name="mail" style={{ width: 12, height: 12, color: 'var(--accent)' }} title="Offer sent" />}
+          {a.offer && a.offer.status === 'signed' && <Icon name="check" style={{ width: 12, height: 12, color: 'var(--ok)' }} title="Offer signed" />}
+          {a.workingInterview && <Icon name="clock" style={{ width: 12, height: 12, color: a.workingInterview.status === 'sent' ? 'var(--ok)' : 'var(--accent)' }} title="Working interview" />}
+          {avgRating(a) ? <Stars value={avgRating(a)} /> : <span className="mono" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{atsFmt(a.applied)}</span>}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+/* ------- Main board ------- */
+function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) {
+  const offices = useMemo(() => Array.from(new Set([...(window.HR.offices || []).map(o => o.name), me.loc].filter(Boolean))), [me]);
+  const [list, setList] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const stored = await PD_SEC.getItem('pd_applicants_v3', null);
+      if (alive) setList(Array.isArray(stored) && stored.length ? stored : ATS_SEED.slice());
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const persist = (next) => { setList(next); PD_SEC.setItem('pd_applicants_v3', next); };
+  const update = (id, patch) => persist(list.map(a => a.id === id ? { ...a, ...patch } : a));
+  const setStage = (id, stage) => persist(list.map(a => {
+    if (a.id !== id) return a;
+    const next = { ...a, stage };
+    if (stage === 'offer' && !a.offer) next.offer = draftOffer(a);
+    return next;
+  }));
+  const addNote = (id, text) => persist(list.map(a => a.id === id ? { ...a, notes: [...(a.notes || []), { by: me.first + ' ' + (me.last || '')[0] + '.', at: atsFmt(new Date().toISOString().slice(0, 10)), text }] } : a));
+  const postFeedback = (id, rating, comment) => persist(list.map(a => {
+    if (a.id !== id) return a;
+    const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
+    const entry = { byId: me.id, by: who, role: me.jobTitle, rating, comment, at: atsFmt(new Date().toISOString().slice(0, 10)) };
+    const arr = (a.feedback || []).slice();
+    const i = arr.findIndex(x => x.byId === me.id);
+    if (i >= 0) arr[i] = entry; else arr.push(entry);
+    return { ...a, feedback: arr };
+  }));
+  const setWI = (id, patch) => persist(list.map(a => a.id === id ? { ...a, workingInterview: { ...(a.workingInterview || {}), ...patch } } : a));
+  const scheduleWI = (id) => setWI(id, { status: 'scheduled', date: '', hours: '', rate: '', autoSend: true });
+  const removeWI = (id) => persist(list.map(a => a.id === id ? { ...a, workingInterview: undefined } : a));
+  const setOffer = (id, patch) => persist(list.map(a => a.id === id ? { ...a, offer: { ...(a.offer || {}), ...patch } } : a));
+  const initOffer = (id) => persist(list.map(a => a.id === id ? { ...a, offer: draftOffer(a) } : a));
+  const sendOffer = (id) => { setOffer(id, { status: 'sent', sentAt: Date.now(), sentBy: OFFER_EXECUTOR }); if (flash) flash('Offer sent to candidate for signature'); };
+  const signOffer = (id, signature) => {
+    const app = list.find(a => a.id === id);
+    persist(list.map(a => a.id === id ? { ...a, offer: { ...(a.offer || {}), status: 'signed', signedAt: Date.now(), signature }, stage: 'hired', hiredAt: Date.now() } : a));
+    if (app && onHire) onHire(app);
+    setSel(null);
+    if (flash) flash('Offer signed — onboarding team notified, onboarding started');
+  };
+  const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
+  const addApplicant = (f) => {
+    const id = 'ap' + Date.now();
+    const rec = { id, ...f, stage: 'applied', rating: 0, applied: new Date().toISOString().slice(0, 10), feedback: [], notes: [] };
+    persist([rec, ...list]);
+    setAdding(false);
+    if (flash) flash(f.name + ' added to the pipeline');
+  };
+  const hire = (a) => {
+    update(a.id, { stage: 'hired', hiredAt: Date.now() });
+    onHire && onHire(a);
+    setSel(null);
+  };
+
+  if (list === null) return <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh', color: 'var(--ink-3)' }}><span className="spin" style={{ width: 22, height: 22, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /></div>;
+
+  const scoped = access.caps.viewAll ? list : list.filter(a => normLoc(a.office) === me.loc);
+  const active = scoped.filter(a => a.stage !== 'rejected');
+  const archived = scoped.filter(a => a.stage === 'rejected');
+  const byStage = {}; ATS_STAGES.forEach(s => byStage[s.id] = active.filter(a => a.stage === s.id));
+  const count = (id) => byStage[id].length;
+  const selApp = sel ? list.find(a => a.id === sel) : null;
+
+  const stat = (icon, label, value, tone) => (
+    <div className="card" style={{ padding: '14px var(--pad)', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: tone === 'ok' ? 'var(--ok-soft)' : tone === 'warn' ? 'var(--warn-soft)' : 'var(--accent-soft)', color: tone === 'ok' ? 'oklch(0.45 0.12 155)' : tone === 'warn' ? 'oklch(0.5 0.13 60)' : 'var(--accent-strong)' }}><Icon name={icon} style={{ width: 19, height: 19 }} /></div>
+      <div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 24, lineHeight: 1 }}>{value}</div><div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 }}>{label}</div></div>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Hiring</div>
+          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Applicants</h1>
+          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {access.caps.viewAll ? 'All open roles' : `Candidates for ${me.loc}`} · {active.length} in pipeline
+            <span className="badge badge-ok" style={{ fontSize: 10 }}><Icon name="shield" style={{ width: 11, height: 11 }} /> Encrypted at rest</span>
+          </p>
+        </div>
+        <button className="btn btn-primary btn-lg" onClick={() => setAdding(true)}><Icon name="plus" /> Add applicant</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
+        {stat('users', 'In pipeline', active.length)}
+        {stat('phone', 'Interviewing', count('interview'))}
+        {stat('clock', 'Working interview', count('working'))}
+        {stat('mail', 'Offers out', count('offer'), 'warn')}
+        {stat('check', 'Hired', count('hired'), 'ok')}
+      </div>
+
+      {/* board */}
+      <div style={{ overflowX: 'auto', paddingBottom: 6, margin: '0 -4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ATS_STAGES.length}, minmax(208px, 1fr))`, gap: 12, padding: '0 4px', minWidth: 'min-content' }}>
+          {ATS_STAGES.map(s => (
+            <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{s.label}</span>
+                <span className={`badge ${s.badge}`} style={{ fontSize: 10.5 }}>{count(s.id)}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: 9, minHeight: 90, flex: 1 }}>
+                {byStage[s.id].length === 0
+                  ? <div style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', padding: '18px 6px' }}>—</div>
+                  : byStage[s.id].sort((a, b) => avgRating(b) - avgRating(a)).map(a => <ApplicantCard key={a.id} a={a} onOpen={setSel} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {archived.length > 0 && (
+        <div style={{ marginTop: 'var(--gap)' }}>
+          <button className="btn btn-quiet" style={{ fontSize: 13 }} onClick={() => setShowArchived(v => !v)}><Icon name="chevron" style={{ width: 14, height: 14, transform: showArchived ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} /> Archived ({archived.length})</button>
+          {showArchived && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10, marginTop: 10 }}>
+              {archived.map(a => <ApplicantCard key={a.id} a={a} onOpen={setSel} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}>
+        <Icon name="bolt" style={{ width: 14, height: 14 }} /> Hiring an applicant from the Offer stage hands them straight to the onboarding agent — no re-entry of their details.
+      </p>
+
+      {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSendOffer={sendOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
+    </div>
+  );
+}
+
+Object.assign(window, { Applicants, ATS_STAGES, atsRoleKey });

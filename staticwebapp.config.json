@@ -1,0 +1,12 @@
+{
+  "mimeTypes": {
+    ".jsx": "text/javascript",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".woff2": "font/woff2"
+  },
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/*.{jsx,js,css,json,png,jpg,jpeg,svg,gif,woff,woff2,ico}"]
+  }
+}
