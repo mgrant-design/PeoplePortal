@@ -31,7 +31,7 @@
   <!-- Roster loads at RUNTIME (NOT hardcoded into this HTML). For development this points at
        the synthetic sample roster so the app is fully usable with safe, fake data.
        For production, change url to your Google Sheets / Cosmos endpoint — no other change. -->
-  <script>window.PD_DATA_SOURCE = { type: 'json', url: 'hrdata.synthetic.json' };</script>
+  <script>window.PD_DATA_SOURCE = { type: 'json', url: '/api/roster' };</script>
   <!-- Admins / elevated permissions — kept SEPARATE from the roster so it's edited on its own.
        Merged into the roster at load. (Moves into Cosmos + becomes in-app editable later.) -->
   <script>window.PD_ACCESS_SOURCE = { url: 'access-control.json' };</script>
