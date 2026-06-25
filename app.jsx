@@ -416,12 +416,7 @@ function App() {
     return <Login onSignedIn={onSignedIn} loading={loadingRoster} error={rosterError} />;
   }
   const access = deriveAccess(me);
-  return (
-    <>
-      <Portal key={me.id} me={me} access={access} onLogout={logout} t={t} setTweak={setTweak} />
-      <DevBar current={me} onPreview={previewAs} />
-    </>
-  );
+  return <Portal key={me.id} me={me} access={access} onLogout={logout} t={t} setTweak={setTweak} />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
