@@ -127,8 +127,27 @@ button { font-family: inherit; cursor: pointer; }
 .brand .mark svg { width: 19px; height: 19px; }
 .brand small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 11px; color: var(--ink-3); letter-spacing: 0; margin-top: -2px; }
 
-.topnav { display: flex; gap: 4px; margin-left: 8px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.topnav { display: flex; gap: 4px; max-width: 100%; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
 .topnav::-webkit-scrollbar { display: none; }
+
+/* Horizontal category-bar scroller (navscroll.jsx) */
+.nav-scroller { position: relative; flex: 0 1 auto; min-width: 0; display: flex; align-items: center; margin-left: 8px; }
+.nav-fade { position: absolute; top: 0; bottom: 0; width: 44px; pointer-events: none; z-index: 2; opacity: 0; transition: opacity .18s; }
+.nav-fade.show { opacity: 1; }
+.nav-fade.left { left: 0; background: linear-gradient(90deg, var(--surface) 25%, transparent); }
+.nav-fade.right { right: 0; background: linear-gradient(270deg, var(--surface) 25%, transparent); }
+[data-style="warm"] .nav-fade.left { background: linear-gradient(90deg, oklch(0.995 0.008 75) 25%, transparent); }
+[data-style="warm"] .nav-fade.right { background: linear-gradient(270deg, oklch(0.995 0.008 75) 25%, transparent); }
+.nav-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
+  width: 28px; height: 28px; border-radius: 50%; display: none; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+  cursor: pointer; box-shadow: var(--shadow-sm); transition: background .14s, color .14s;
+}
+.nav-arrow.show { display: inline-flex; }
+.nav-arrow:hover { background: var(--surface-2); color: var(--ink); }
+.nav-arrow.left { left: -2px; }
+.nav-arrow.right { right: -2px; }
 .topnav button { flex: none; }
 .topnav button {
   border: none; background: none; color: var(--ink-2);
@@ -199,6 +218,10 @@ button { font-family: inherit; cursor: pointer; }
 @keyframes hrDot { 0%,100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .hr-dot { animation: none; } }
 
+@media (min-width: 981px) and (max-width: 1760px) {
+  .topnav button { padding: 8px 11px; font-size: 13.5px; }
+  .nav-scroller { margin-left: 4px; }
+}
 @media (max-width: 760px) {
   .topnav button { padding: 8px 10px; font-size: 13px; }
   .userchip .meta { display: none; }

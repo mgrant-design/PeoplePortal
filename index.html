@@ -64,6 +64,7 @@
   <script type="text/babel" src="reportschedule.jsx"></script>
   <script type="text/babel" src="scrubs-data.jsx"></script>
   <script type="text/babel" src="scrubs.jsx"></script>
+  <script type="text/babel" src="navscroll.jsx"></script>
   <script type="text/babel" src="dev.jsx"></script>
   <script type="text/babel" src="help.jsx"></script>
   <script type="text/babel" src="notifications.jsx"></script>
@@ -75,6 +76,17 @@
   <script type="text/babel" src="library.jsx"></script>
   <script type="text/babel" src="editrecord.jsx"></script>
   <script type="text/babel" src="feedback.jsx"></script>
+  <!-- DEV-ONLY login bypass. dev-bypass.js is .gitignored so it never deploys; this guard
+       also avoids requesting it on the live host. Loads off-prod (or with ?dev=1). -->
+  <script>
+    (function () {
+      var h = location.hostname;
+      var isProd = /azurestaticapps\.net$/.test(h);   // add your custom prod domain here too
+      var force = false;
+      try { force = new URLSearchParams(location.search).has('dev'); } catch (e) {}
+      if (!isProd || force) document.write('<script src="dev-bypass.js"><\/script>');
+    })();
+  </script>
   <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>

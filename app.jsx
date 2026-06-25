@@ -271,10 +271,10 @@ function Portal({ me, access, onLogout, t, setTweak }) {
           <span className="mark"><Logo /></span>
           <span>Pure Dental<small>People Portal</small></span>
         </div>
-        <nav className="topnav desktop-nav">
+        <NavScroller className="topnav" wrapClassName="desktop-nav">
           {orderedNav.map(n => navBtn(n))}
           {canReorder && navOrder && <button className="btn btn-quiet" style={{ padding: '6px 9px', fontSize: 12 }} title="Reset menu order" onClick={resetNavOrder}><Icon name="refresh" style={{ width: 14, height: 14 }} /></button>}
-        </nav>
+        </NavScroller>
         <div className="spacer" />
         <button className="btn btn-quiet mobile-menu-btn" style={{ padding: 9, display: 'none' }} onClick={() => setMenuOpen(m => !m)} title="Menu"><Icon name="list" /></button>
         <button className="btn btn-quiet" style={{ padding: 9 }} onClick={openHelp} title="Help & navigation"><Icon name="help" /></button>
@@ -357,7 +357,7 @@ function App() {
     setLoadingRoster(true);
     try {
       const token = window.PD_GOOGLE_TOKEN || '';
-      const res = await fetch('/api/roster', { headers: { 'X-Google-Token': token } });
+      const res = await fetch('/api/roster', { headers: { 'Authorization': 'Bearer ' + token } });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || ('Roster request failed (' + res.status + ')'));
@@ -386,6 +386,29 @@ function App() {
 
   const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; };
   const previewAs = (emp) => { saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
+
+  // DEV bridge — inert in production. A dev-only module (dev-bypass.js), when present,
+  // registers itself here so it can enter the app WITHOUT Google sign-in (sandbox screen
+  // work, since /api/roster + authorized Google origins don't exist outside prod).
+  // No-op unless that module is loaded — production ships with no dev script and this
+  // useEffect does nothing.
+  useEffect(() => {
+    if (typeof window.__PD_DEV_REGISTER !== 'function') return;
+    const enter = async (opts = {}) => {
+      try {
+        const have = window.HRDATA && Array.isArray(window.HRDATA.employees) && window.HRDATA.employees.length;
+        if (!have) {
+          const res = await fetch('hrdata.synthetic.json');
+          window.HRDATA = await res.json();
+          if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
+        }
+        const demo = opts.emp || (window.DEMO_ACCOUNTS && window.DEMO_ACCOUNTS[0]) || (window.EMPLOYEES || []).find(e => e.status === 'Active');
+        if (demo) { saveSession(demo); setMe(demo); return true; }
+      } catch (e) { /* fall back to the login screen */ }
+      return false;
+    };
+    window.__PD_DEV_REGISTER({ enter });
+  }, []);
 
   if (!me) {
     return <Login onSignedIn={onSignedIn} loading={loadingRoster} error={rosterError} />;
