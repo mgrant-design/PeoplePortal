@@ -7,7 +7,8 @@
     "start": "func start"
   },
   "dependencies": {
-    "@azure/cosmos": "^4.0.0"
+    "@azure/cosmos": "^4.0.0",
+    "google-auth-library": "^9.14.1"
   },
   "engines": {
     "node": ">=18.0.0"
