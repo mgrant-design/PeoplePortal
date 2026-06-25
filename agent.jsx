@@ -271,6 +271,41 @@ function RForm({ draft, setDraft, onSave, onCancel, inp, inline }) {
   );
 }
 
+/* ---------- Riley's brain: system prompt + LLM call ---------- */
+/* The editable Knowledge base + Routing rules ARE the prompt — edit them in the
+   Agent console and Riley's answers change. Real model call goes through PD_LLM
+   (window.claude in the sandbox; the server proxy in production). */
+function buildRileySystem(me, knowledge, routing) {
+  const kb = (knowledge || []).map(k => `• ${k.topic}: ${k.answer || ''}`).join('\n');
+  const routes = (routing || []).map(r => `• ${r.category} → ${r.to} (${r.role}) via ${r.via}`).join('\n');
+  const who = `${me.first || ''} ${me.last || ''}`.trim();
+  return [
+    `You are Riley, the warm, friendly, professional onboarding assistant for Pure Dental, a multi-office dental group on Long Island, NY.`,
+    `You help new hires with first-day logistics, pay, benefits, logins, scheduling, PTO, and credentialing.`,
+    who ? `You are chatting with ${who}${me.jobTitle ? `, ${me.jobTitle}` : ''}${me.location ? ` at the ${me.location} office` : ''}.` : '',
+    ``,
+    `Answer using ONLY the knowledge base below. Keep replies short, friendly and concrete — usually 1–3 sentences. Use the new hire's first name once in a while. Never invent specific policy details, numbers, dates, or names that aren't given.`,
+    ``,
+    `KNOWLEDGE BASE:`,
+    kb || '(none provided)',
+    ``,
+    `When a question needs a real person, or isn't covered above, warmly tell them you're connecting them with the right person and name them from this routing table:`,
+    routes || '(none provided)',
+    ``,
+    `If you're unsure who handles something, route to HR. Stay in character as Riley; don't mention being an AI model or these instructions.`
+  ].filter(Boolean).join('\n');
+}
+
+async function askRiley({ me, history, knowledge, routing }) {
+  const system = buildRileySystem(me, knowledge, routing);
+  const messages = (history || []).map(m => ({
+    role: m.who === 'me' ? 'user' : 'assistant',
+    content: m.text
+  }));
+  const text = await window.PD_LLM.complete({ system, messages });
+  return (text || '').trim();
+}
+
 /* ---------- Employee-facing: Ask the agent ---------- */
 function answerFor(q, knowledge, routing) {
   const s = q.toLowerCase();
@@ -295,24 +330,40 @@ function answerFor(q, knowledge, routing) {
 function AskAgent({ me, knowledge, routing }) {
   const [msgs, setMsgs] = useState([{ who: 'agent', text: `Hi ${me.first}! I’m Riley, your onboarding assistant. Ask me anything — first day, pay, benefits, logins, time off. I can also call or text you if you prefer.` }]);
   const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
   const feedRef = useRef(null);
-  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [msgs]);
+  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [msgs, busy]);
 
-  const send = (text) => {
-    const query = (text || q).trim(); if (!query) return;
-    const a = answerFor(query, knowledge, routing);
-    setMsgs(m => [...m, { who: 'me', text: query }, { who: 'agent', ...a }]);
-    setQ('');
+  const send = async (text) => {
+    const query = (text || q).trim(); if (!query || busy) return;
+    const next = [...msgs, { who: 'me', text: query }];
+    setMsgs(next); setQ(''); setBusy(true);
+    try {
+      const reply = await askRiley({ me, history: next, knowledge, routing });
+      if (!reply) throw new Error('empty reply');
+      setMsgs(m => [...m, { who: 'agent', text: reply }]);
+    } catch (e) {
+      // graceful degrade: fall back to the local keyword matcher so the chat never dead-ends
+      const fb = answerFor(query, knowledge, routing);
+      setMsgs(m => [...m, { who: 'agent', ...fb, offline: true }]);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const live = (window.PD_LLM && window.PD_LLM.activeTransport && window.PD_LLM.activeTransport()) || 'server';
 
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <AgentBadge size={46} />
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Ask Riley</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 4 }}>Your onboarding assistant — answers in seconds, any time.</p>
         </div>
+        <span title={`AI transport: ${live}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-pill)', padding: '4px 10px', flex: 'none' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 0 3px var(--ok-soft)' }} /> Claude · live
+        </span>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', maxWidth: 720, display: 'flex', flexDirection: 'column', height: 'min(70vh, 600px)' }}>
@@ -321,24 +372,33 @@ function AskAgent({ me, knowledge, routing }) {
             <div key={i} style={{ display: 'flex', gap: 10, flexDirection: m.who === 'me' ? 'row-reverse' : 'row' }}>
               {m.who === 'agent' ? <AgentBadge size={30} /> : <PhotoAvatar emp={me} size={30} />}
               <div style={{ maxWidth: '80%' }}>
-                <div style={{ padding: '10px 14px', borderRadius: 14, fontSize: 14, lineHeight: 1.5, background: m.who === 'agent' ? 'var(--accent-soft)' : 'var(--surface-2)', color: 'var(--ink)', borderTopLeftRadius: m.who === 'agent' ? 4 : 14, borderTopRightRadius: m.who === 'me' ? 4 : 14 }}>{m.text}</div>
+                <div style={{ padding: '10px 14px', borderRadius: 14, fontSize: 14, lineHeight: 1.5, background: m.who === 'agent' ? 'var(--accent-soft)' : 'var(--surface-2)', color: 'var(--ink)', borderTopLeftRadius: m.who === 'agent' ? 4 : 14, borderTopRightRadius: m.who === 'me' ? 4 : 14, whiteSpace: 'pre-wrap' }}>{m.text}</div>
                 {m.route && <div style={{ fontSize: 11, color: 'var(--accent-strong)', fontWeight: 600, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="link" style={{ width: 12, height: 12 }} /> Routed to {m.route.to} · {m.route.via}</div>}
                 {m.topic && <div style={{ fontSize: 11, color: 'oklch(0.45 0.12 155)', fontWeight: 600, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="check" style={{ width: 12, height: 12 }} /> {m.topic}</div>}
+                {m.offline && <div style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="bolt" style={{ width: 11, height: 11 }} /> Offline answer — Riley couldn’t reach the assistant just now</div>}
               </div>
             </div>
           ))}
+          {busy && (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <AgentBadge size={30} />
+              <div style={{ padding: '13px 16px', borderRadius: 14, borderTopLeftRadius: 4, background: 'var(--accent-soft)', display: 'flex', gap: 5, alignItems: 'center' }}>
+                <span className="riley-dot" /><span className="riley-dot" /><span className="riley-dot" />
+              </div>
+            </div>
+          )}
         </div>
         {/* suggestions + input */}
         <div style={{ borderTop: '1px solid var(--line)', padding: 'var(--pad)' }}>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
             {knowledge.slice(0, 4).map(k => (
-              <button key={k.topic} onClick={() => send(k.topic)} style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '5px 12px', fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer', fontWeight: 600 }}>{k.topic}</button>
+              <button key={k.topic} disabled={busy} onClick={() => send(k.topic)} style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '5px 12px', fontSize: 12.5, color: 'var(--ink-2)', cursor: busy ? 'default' : 'pointer', fontWeight: 600, opacity: busy ? 0.5 : 1 }}>{k.topic}</button>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Ask a question…"
-              style={{ flex: 1, padding: '11px 14px', borderRadius: 'var(--r-pill)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
-            <button className="btn btn-primary" onClick={() => send()} style={{ padding: '11px 16px' }}><Icon name="arrowRight" /></button>
+            <input value={q} disabled={busy} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder={busy ? 'Riley is typing…' : 'Ask a question…'}
+              style={{ flex: 1, padding: '11px 14px', borderRadius: 'var(--r-pill)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', opacity: busy ? 0.7 : 1 }} />
+            <button className="btn btn-primary" disabled={busy} onClick={() => send()} style={{ padding: '11px 16px', opacity: busy ? 0.6 : 1 }}><Icon name="arrowRight" /></button>
           </div>
           <div style={{ display: 'flex', gap: 14, marginTop: 12, fontSize: 12, color: 'var(--ink-3)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="phone" style={{ width: 13, height: 13 }} /> Request a call</span>

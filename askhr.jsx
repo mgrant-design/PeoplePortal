@@ -125,16 +125,16 @@ function HRAdvisorChat({ me }) {
 
   const ask = async (text) => {
     const query = (text || q).trim(); if (!query || busy) return;
-    const history = msgs.filter(m => m.who !== 'sys');
-    setMsgs(m => [...m, { who: 'me', text: query }]);
-    setQ(''); setBusy(true);
+    const next = [...msgs, { who: 'me', text: query }];
+    setMsgs(next); setQ(''); setBusy(true);
     let answer = null;
     try {
-      if (window.claude && typeof window.claude.complete === 'function') {
-        const convo = history.slice(-6).map(m => `${m.who === 'me' ? 'Manager' : 'Harper'}: ${m.text}`).join('\n');
-        const prompt = `${HR_SYSTEM_PROMPT}\n\n--- Conversation so far ---\n${convo}\n\nManager: ${query}\n\nHarper:`;
-        answer = await window.claude.complete(prompt);
-      }
+      // Through the shared transport wrapper (PD_LLM): sandbox → window.claude,
+      // production → the server AI proxy. Same call for Riley and Harper.
+      const messages = next.filter(m => m.who !== 'sys').map(m => ({
+        role: m.who === 'me' ? 'user' : 'assistant', content: m.text
+      }));
+      answer = await window.PD_LLM.complete({ system: HR_SYSTEM_PROMPT, messages });
     } catch (e) { answer = null; }
     if (!answer || !answer.trim()) answer = hrFallbackAnswer(query);
     setMsgs(m => [...m, { who: 'hr', text: answer.trim() }]);

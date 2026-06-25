@@ -218,6 +218,11 @@ button { font-family: inherit; cursor: pointer; }
 @keyframes hrDot { 0%,100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .hr-dot { animation: none; } }
 
+.riley-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-strong); display: inline-block; animation: hrDot 1s ease-in-out infinite; }
+.riley-dot:nth-child(2) { animation-delay: .15s; }
+.riley-dot:nth-child(3) { animation-delay: .3s; }
+@media (prefers-reduced-motion: reduce) { .riley-dot { animation: none; } }
+
 @media (min-width: 981px) and (max-width: 1760px) {
   .topnav button { padding: 8px 11px; font-size: 13.5px; }
   .nav-scroller { margin-left: 4px; }
