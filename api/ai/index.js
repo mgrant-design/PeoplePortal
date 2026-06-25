@@ -14,9 +14,17 @@ const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 
 function anthropicMessages({ apiKey, model, system, messages, maxTokens }) {
   return new Promise((resolve, reject) => {
+    // Prompt caching: send the (large, stable) system prompt — Riley's KB / Harper's
+    // handbook — as a cached content block. Anthropic caches the prefix up to this block,
+    // so every later turn in the ~5-min window reads it back at ~10% of input cost and
+    // lower latency instead of re-billing the whole knowledge base each message. No-op if
+    // the prompt is under the model's cache minimum; harmless either way.
+    const sys = system
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : undefined;
     const payload = JSON.stringify(Object.assign(
       { model, max_tokens: maxTokens, messages },
-      system ? { system } : {}
+      sys ? { system: sys } : {}
     ));
     const options = {
       hostname: 'api.anthropic.com',
