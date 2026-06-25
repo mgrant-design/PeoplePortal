@@ -357,7 +357,9 @@ function App() {
     setLoadingRoster(true);
     try {
       const token = window.PD_GOOGLE_TOKEN || '';
-      const res = await fetch('/api/roster', { headers: { 'Authorization': 'Bearer ' + token } });
+      // Send the token in a CUSTOM header. Azure Static Web Apps overwrites the standard
+      // "Authorization" header with its own Easy Auth token, so the server reads X-Google-Token.
+      const res = await fetch('/api/roster', { headers: { 'X-Google-Token': token } });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || ('Roster request failed (' + res.status + ')'));
@@ -398,7 +400,7 @@ function App() {
       try {
         const have = window.HRDATA && Array.isArray(window.HRDATA.employees) && window.HRDATA.employees.length;
         if (!have) {
-          const res = await fetch('hrdata.synthetic.json');
+          const res = await fetch('hrdata.json');
           window.HRDATA = await res.json();
           if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
         }

@@ -76,6 +76,11 @@
   <script type="text/babel" src="library.jsx"></script>
   <script type="text/babel" src="editrecord.jsx"></script>
   <script type="text/babel" src="feedback.jsx"></script>
+  <!-- AI transport for Riley/Harper — loaded AFTER all modules; PD_LLM is used only at
+       render time (when you open Riley/Harper), so it sits OUTSIDE the login-critical
+       boot sequence above. -->
+  <script>window.PD_AI = { transport: 'auto', endpoint: '/api/ai', model: null };</script>
+  <script src="llm.js"></script>
   <!-- DEV-ONLY login bypass. dev-bypass.js is .gitignored so it never deploys; this guard
        also avoids requesting it on the live host. Loads off-prod (or with ?dev=1). -->
   <script>
