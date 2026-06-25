@@ -11,6 +11,7 @@ function Login({ onLogin }) {
 
   const onGoogle = (resp) => {
     try {
+      window.PD_GOOGLE_TOKEN = resp.credential;   // keep Google's token so the server can verify who's signed in
       const part = resp.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(decodeURIComponent(escape(window.atob(part))));
       const email = (payload.email || '').toLowerCase();
