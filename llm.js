@@ -68,9 +68,13 @@ window.PD_LLM = (function () {
   }
 
   async function viaServer(opts) {
+    var hdrs = Object.assign({ 'Content-Type': 'application/json' }, cfg.headers);
+    // Send the Google token so /api/ai can authenticate the caller (protects the budget).
+    // Custom header, because Azure overwrites Authorization (same reason as /api/roster).
+    if (window.PD_GOOGLE_TOKEN) hdrs['X-Google-Token'] = window.PD_GOOGLE_TOKEN;
     var res = await fetch(cfg.endpoint, {
       method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, cfg.headers),
+      headers: hdrs,
       body: JSON.stringify({
         system: opts.system || '',
         messages: normalize(opts.messages),
