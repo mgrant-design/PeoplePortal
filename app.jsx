@@ -336,7 +336,9 @@ function Portal({ me, access, onLogout, t, setTweak }) {
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [me, setMe] = useState(() => (typeof loadSession === 'function' ? loadSession() : null));
+  const [me, setMe] = useState(null);          // set only AFTER the scoped roster is loaded
+  const [loadingRoster, setLoadingRoster] = useState(false);
+  const [rosterError, setRosterError] = useState('');
 
   useEffect(() => {
     const r = document.documentElement;
@@ -348,10 +350,46 @@ function App() {
   useEffect(() => { if (typeof setLang === 'function') setLang(t.lang || 'en'); }, [t.lang]);
   useEffect(() => { window.__rileyVoice = t.rileyVoice !== false; window.__lang = t.lang || 'en'; }, [t.rileyVoice, t.lang]);
 
-  const logout = () => { saveSession(null); setMe(null); };
+  // After Google sign-in: fetch the SCOPED roster from the server using the token,
+  // populate window.HRDATA, rebuild rbac's derived data, then enter the app.
+  const enterWithToken = async () => {
+    setRosterError('');
+    setLoadingRoster(true);
+    try {
+      const token = window.PD_GOOGLE_TOKEN || '';
+      const res = await fetch('/api/roster', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('Roster request failed (' + res.status + ')'));
+      }
+      const data = await res.json();
+      window.HRDATA = data;
+      if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
+      // identify the signed-in employee from the (now loaded) roster
+      const email = (window.__PD_SIGNIN_EMAIL || '').toLowerCase();
+      const meEmp = (typeof findByEmail === 'function') ? findByEmail(email) : null;
+      if (!meEmp) throw new Error('No roster account found for ' + email);
+      saveSession(meEmp);
+      setMe(meEmp);
+    } catch (e) {
+      setRosterError(e.message || 'Could not load your roster.');
+    } finally {
+      setLoadingRoster(false);
+    }
+  };
+
+  // Called by Login on a successful Google sign-in (email already domain-checked there).
+  const onSignedIn = (email) => {
+    window.__PD_SIGNIN_EMAIL = (email || '').toLowerCase();
+    enterWithToken();
+  };
+
+  const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; };
   const previewAs = (emp) => { saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
 
-  if (!me) return <Login onLogin={setMe} />;
+  if (!me) {
+    return <Login onSignedIn={onSignedIn} loading={loadingRoster} error={rosterError} />;
+  }
   const access = deriveAccess(me);
   return (
     <>
@@ -361,6 +399,4 @@ function App() {
   );
 }
 
-if (!window.__PD_ROSTER_ERROR) {
-  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);

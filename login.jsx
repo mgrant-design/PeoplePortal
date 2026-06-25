@@ -1,28 +1,22 @@
 /* login.jsx — sign-in. Google Workspace accounts only (company domains).
-   "Continue with Google" opens Google's real account chooser; the returned account is
-   domain-checked and matched to the roster. No email/password, no demo bypass in the product.
-   Configure window.PD_AUTH.googleClientId (in the page) to enable it. */
+   On success: keeps Google's token (for the server) and reports the verified email up
+   to App, which then loads the SERVER-SCOPED roster before entering. No roster lookup
+   happens here anymore — the server decides who you are and what you can see. */
 
-function Login({ onLogin }) {
+function Login({ onSignedIn, loading, error }) {
   const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
   const gbtnRef = useRef(null);
   const GOOGLE_CLIENT_ID = (window.PD_AUTH && window.PD_AUTH.googleClientId) || '';
 
   const onGoogle = (resp) => {
     try {
-      window.PD_GOOGLE_TOKEN = resp.credential;   // keep Google's token so the server can verify who's signed in
+      window.PD_GOOGLE_TOKEN = resp.credential;   // server verifies this token
       const part = resp.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(decodeURIComponent(escape(window.atob(part))));
       const email = (payload.email || '').toLowerCase();
       setErr('');
       if (!isCompanyEmail(email)) { setErr('Use your company Google account (' + COMPANY_DOMAINS.map(d => '@' + d).join(' / ') + ').'); return; }
-      const emp = findByEmail(email);
-      if (!emp) { setErr('No account found for ' + email + '. Contact HR.'); return; }
-      if (emp.status === 'Terminated') { setErr('This account is inactive. Contact HR.'); return; }
-      setBusy(true);
-      saveSession(emp);
-      setTimeout(() => onLogin(emp), 150);
+      onSignedIn(email);   // App loads the scoped roster, then enters
     } catch (e) { setErr('Google sign-in failed. Please try again.'); }
   };
 
@@ -46,6 +40,8 @@ function Login({ onLogin }) {
     return () => { cancelled = true; };
   }, []);
 
+  const shownErr = error || err;
+
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20,
       background: 'radial-gradient(120% 90% at 50% -10%, var(--accent-softer), var(--bg) 60%)' }}>
@@ -61,8 +57,8 @@ function Login({ onLogin }) {
         <div className="card" style={{ padding: 'clamp(20px,5vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
           {GOOGLE_CLIENT_ID ? (
             <>
-              <div ref={gbtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
-              {busy && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}><span className="spin" style={{ width: 18, height: 18, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /></div>}
+              <div ref={gbtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44, opacity: loading ? 0.5 : 1, pointerEvents: loading ? 'none' : 'auto' }} />
+              {loading && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, fontSize: 13, color: 'var(--ink-3)' }}><span className="spin" style={{ width: 16, height: 16, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /> Loading your portal…</div>}
             </>
           ) : (
             <div style={{ textAlign: 'center', padding: '6px 4px' }}>
@@ -71,7 +67,7 @@ function Login({ onLogin }) {
             </div>
           )}
 
-          {err && <div style={{ fontSize: 12.5, color: 'oklch(0.55 0.18 25)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Icon name="bell" style={{ width: 14, height: 14 }} /> {err}</div>}
+          {shownErr && <div style={{ fontSize: 12.5, color: 'oklch(0.55 0.18 25)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Icon name="bell" style={{ width: 14, height: 14 }} /> {shownErr}</div>}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18, padding: '10px 12px', borderRadius: 'var(--r-md)', background: 'var(--surface-2)', fontSize: 12, color: 'var(--ink-3)' }}>
             <Icon name="lock" style={{ width: 15, height: 15, color: 'var(--accent)', flex: 'none' }} />
