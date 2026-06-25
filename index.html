@@ -28,10 +28,6 @@
   <script type="text/babel" src="secure.jsx"></script>
   <script type="text/babel" src="data.jsx"></script>
 
-  <!-- Roster loads at RUNTIME (NOT hardcoded into this HTML). For development this points at
-       the synthetic sample roster so the app is fully usable with safe, fake data.
-       For production, change url to your Google Sheets / Cosmos endpoint — no other change. -->
-  <script>window.PD_DATA_SOURCE = { type: 'json', url: '/api/roster' };</script>
   <!-- Admins / elevated permissions — kept SEPARATE from the roster so it's edited on its own.
        Merged into the roster at load. (Moves into Cosmos + becomes in-app editable later.) -->
   <script>window.PD_ACCESS_SOURCE = { url: 'access-control.json' };</script>
@@ -39,7 +35,6 @@
        screen → domain-locked to puredental.com) and add this site to Authorized JS origins.
        Blank = sign-in shows a "not configured" notice. -->
   <script>window.PD_AUTH = { googleClientId: '754040134895-71g5l7sv85t5ihl8hp75a2fb8jvpdqqu.apps.googleusercontent.com' };</script>
-  <script src="roster-loader.js"></script>
   <script type="text/babel" src="rbac.jsx"></script>
   <script type="text/babel" src="hrseed.jsx"></script>
   <script type="text/babel" src="login.jsx"></script>
