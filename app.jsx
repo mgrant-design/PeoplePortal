@@ -357,7 +357,7 @@ function App() {
     setLoadingRoster(true);
     try {
       const token = window.PD_GOOGLE_TOKEN || '';
-      const res = await fetch('/api/roster', { headers: { 'Authorization': 'Bearer ' + token } });
+      const res = await fetch('/api/roster', { headers: { 'X-Google-Token': token } });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || ('Roster request failed (' + res.status + ')'));

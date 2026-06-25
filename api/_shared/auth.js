@@ -29,11 +29,13 @@ async function verifyGoogleToken(token) {
   };
 }
 
-// Pull the bearer token out of an incoming request's Authorization header.
+// Pull the token from a CUSTOM header. Azure Static Web Apps overwrites the standard
+// "Authorization" header with its own Easy Auth token, so we use X-Google-Token instead.
 function tokenFromReq(req) {
-  const h = (req.headers && (req.headers['authorization'] || req.headers['Authorization'])) || '';
+  const h = (req.headers && (req.headers['x-google-token'] || req.headers['X-Google-Token'])) || '';
+  // tolerate an optional "Bearer " prefix, though the client sends the raw token
   const m = h.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1] : '';
+  return m ? m[1] : h;
 }
 
 module.exports = { verifyGoogleToken, tokenFromReq };
