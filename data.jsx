@@ -62,33 +62,14 @@ const ROLE_ACCOUNT_RULES = {
 /* ---- Skills taxonomy — used to smart-fill shifts ---- */
 const SKILLS = ['Hygiene', 'Perio', 'Pediatric', 'Sedation', 'Surgery assist', 'Imaging/X-ray', 'Invisalign', 'Front desk', 'Insurance/Billing', 'Spanish', 'Endo', 'Implants'];
 
-/* ---- Onboarding agent: channels, knowledge base, and routing directory ---- */
+/* ---- Onboarding agent: channels ----
+   Riley's knowledge base, routing, and persona now live in riley-data.jsx (one
+   amendable source feeding both the AI and the offline fallback). */
 const AGENT_CHANNELS = [
   { id: 'email', name: 'Email', icon: 'mail', detail: 'Welcome notes, links & document delivery', on: true },
   { id: 'sms', name: 'SMS / Text', icon: 'phone', detail: 'Reminders & quick confirmations', on: true },
   { id: 'voice', name: 'Voice calls', icon: 'phone', detail: 'Friendly agent answers questions & books interviews', on: true },
   { id: 'gchat', name: 'Google Chat', icon: 'users', detail: 'Shares updates with the onboarding team', on: true },
-];
-
-const AGENT_KNOWLEDGE = [
-  { topic: 'First day & what to bring', icon: 'sparkle', keywords: 'first day bring start arrive when time breakfast', answer: 'On day one, arrive 15 minutes early and bring a photo ID plus your direct-deposit info. Everything else is already in your portal. Breakfast is on us!' },
-  { topic: 'Parking & directions', icon: 'pin', keywords: 'parking park directions where address lot drive', answer: 'Park in the staff lot behind your home office — use the rear entrance. I can text you the exact map pin if that helps.' },
-  { topic: 'Dress code & scrubs', icon: 'tooth', keywords: 'dress code scrubs wear clothes uniform attire', answer: 'Clinical team wears solid-color scrubs (we order your Pure Dental set). Front office is business casual. Closed-toe shoes for everyone in clinical areas.' },
-  { topic: 'Pay schedule & direct deposit', icon: 'bolt', keywords: 'pay paycheck payroll salary deposit money when paid', answer: 'Pure runs payroll biweekly. Your first deposit lands two Fridays after your start date. Set up direct deposit in your paperwork and it routes automatically.' },
-  { topic: 'Benefits & enrollment windows', icon: 'heart', keywords: 'benefits insurance medical dental 401k enrollment enroll health', answer: 'You have 30 days from your start date to enroll in medical, dental, vision, and 401(k). Pure matches 100% up to 6% on the 401(k), and dental care at any Pure location is free.' },
-  { topic: 'PTO & time-off requests', icon: 'calendar', keywords: 'pto time off vacation sick leave request days holiday', answer: 'PTO accrues from day one. Submit time-off requests in the portal and your manager is notified for approval. New hires start at 12 days/year plus paid holidays.' },
-  { topic: 'Logins, email & systems', icon: 'key', keywords: 'login password email account access system denticon google reset', answer: 'Your accounts (Google Workspace, Denticon, and more) are auto-created and the logins are delivered to your work email. You set a new password on first sign-in. Stuck? I can route you to IT.' },
-  { topic: 'Credentialing & licensing', icon: 'star', keywords: 'credential license npi dea provider malpractice scope certification', answer: 'For providers, we verify your NPI, state license, and DEA automatically and set renewal reminders. Questions on coverage or clinical scope go to your Clinical Manager.' },
-];
-
-/* who inquiries route to — real people from the org */
-const AGENT_ROUTING = [
-  { category: 'Payroll & pay questions', to: 'Tobin Whitaker', role: 'Director of HR & Payroll', via: 'Email + Google Chat' },
-  { category: 'Benefits & enrollment', to: 'Tobin Whitaker', role: 'HR & Payroll', via: 'Email' },
-  { category: 'Clinical / malpractice / scope', to: 'Zane Marsh', role: 'Clinical Manager', via: 'Google Chat' },
-  { category: 'Credentialing & licensing', to: 'Xenia Jennings', role: 'People Ops · Admin', via: 'Google Chat' },
-  { category: 'IT, logins & access', to: 'IT Help Desk', role: 'help@puredental.com · ext. 100', via: 'Email' },
-  { category: 'Scheduling & first week', to: 'Office Manager', role: 'Home location', via: 'SMS + Email' },
 ];
 
 /* Task hub config. status: done | progress | todo | locked | action */
@@ -282,6 +263,6 @@ const SEED_SHIFTS = {
 };
 
 Object.assign(window, {
-  NEW_HIRE, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, AGENT_KNOWLEDGE, AGENT_ROUTING, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, ACCOUNTS, TRAINING, TEAM, FIRST_WEEK, BENEFITS,
+  NEW_HIRE, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, ACCOUNTS, TRAINING, TEAM, FIRST_WEEK, BENEFITS,
   SCHED_LOCATIONS, SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SCHED_TEAMS, SHIFT_TEMPLATES, WEEK_DAYS, SEED_SHIFTS,
 });
