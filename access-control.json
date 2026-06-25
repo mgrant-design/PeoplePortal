@@ -1,6 +1,6 @@
 {
   "_README": "Admins & elevated permissions — kept SEPARATE from the employee roster so this can be edited without touching HR data. Add one object per person, keyed by their work email. 'admin: true' grants full access. The app merges this into the roster at load. Edit this file and push it to add/remove an admin. (Once the API + Cosmos back-end is live, this same list moves into the database and becomes editable from the in-app Admin → Permissions screen.)",
   "overrides": [
-    { "email": "mgrant@puredental.com", "admin": false, "manager": true, "canPrint": true, "canSuspend": false, "canTerminate": false, "canDelete": false }
+    { "email": "mgrant@puredental.com", "admin": true, "canPrint": true, "canSuspend": true, "canTerminate": true, "canDelete": true }
   ]
 }
