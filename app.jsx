@@ -89,14 +89,14 @@ const NAV_GROUPS = [
   { id: 'g_mywork', label: 'My Work', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
     { id: 'myschedule', label: 'My schedule', show: a => !a.caps.schedule, flag: 'scheduler' },
+    { id: 'scheduler', label: 'Schedule', show: a => a.caps.schedule, flag: 'scheduler' },
     { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
     { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
     { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
+    { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
     { id: 'feedback', label: 'Roadmap', show: () => true },
   ] },
-  { id: 'scrubs', label: 'Scrubs', view: 'scrubs', show: () => true, flag: 'scrubs' },
   { id: 'g_manage', label: 'Manage', children: [
-    { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
     { id: 'automations', label: 'Automations', show: a => a.caps.hire, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
