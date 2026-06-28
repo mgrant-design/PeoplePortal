@@ -85,6 +85,36 @@
 [data-theme="dark"] .mobile-nav button:not(.active) { color: oklch(0.8 0.07 var(--accent-hue)); }
 
 [data-corners="sharp"] { --r-sm: 1px; --r-md: 2px; --r-lg: 4px; --r-xl: 6px; --r-pill: 6px; }
+[data-corners="cut"] { --r-sm: 0; --r-md: 0; --r-lg: 0; --r-xl: 0; --r-pill: 5px; }
+[data-corners="cut"] .card { border-radius: 0; clip-path: polygon(11px 0, calc(100% - 11px) 0, 100% 11px, 100% calc(100% - 11px), calc(100% - 11px) 100%, 11px 100%, 0 calc(100% - 11px), 0 11px); }
+/* Cut corners can't carry a drop-shadow (clip-path clips it), so cut cards render clean. */
+
+/* Contrast (accessibility) — boost ink + borders for legibility, but keep the
+   themed surfaces & accent so customization still shows through. */
+[data-contrast="high"] {
+  --ink: oklch(0.1 calc(0.02 + var(--ink-tint)) var(--neutral-hue));
+  --ink-2: oklch(0.26 calc(0.02 + var(--ink-tint)) var(--neutral-hue));
+  --ink-3: oklch(0.4 calc(0.015) var(--neutral-hue));
+  --line: oklch(0.5 calc(0.02 * var(--tint-mult)) var(--neutral-hue));
+  --line-soft: oklch(0.66 calc(0.015 * var(--tint-mult)) var(--neutral-hue));
+}
+[data-contrast="high"] .card { border: 2px solid var(--line); }
+[data-theme="dark"][data-contrast="high"] {
+  --ink: oklch(1 0 0);
+  --ink-2: oklch(0.9 0.01 var(--neutral-hue));
+  --ink-3: oklch(0.78 0.01 var(--neutral-hue));
+  --line: oklch(0.76 0.01 var(--neutral-hue));
+  --line-soft: oklch(0.56 0.01 var(--neutral-hue));
+}
+
+/* Text size — content zoom (inline px sizes ignore font-size, so zoom is needed) */
+[data-textsize="s"] .main { zoom: 0.9; }
+[data-textsize="l"] .main { zoom: 1.12; }
+
+/* Motion */
+[data-motion="calm"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.06s !important; }
+[data-motion="bouncy"] button, [data-motion="bouncy"] .card { transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); }
+[data-motion="bouncy"] button:active { transform: scale(0.94); }
 
 [data-theme="dark"] {
   --bg:        oklch(calc(0.185 - var(--paper-l)) calc(0.006 * var(--tint-mult)) var(--neutral-hue));
@@ -127,6 +157,7 @@
 * { box-sizing: border-box; }
 /* Form controls don't inherit font-family by default — make them follow the theme. */
 button, input, select, textarea { font-family: inherit; }
+.cust-menu::-webkit-scrollbar { display: none; }
 html, body { margin: 0; height: 100%; }
 body {
   font-family: var(--font-body);
