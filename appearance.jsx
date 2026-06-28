@@ -26,6 +26,25 @@ function loadAppearance(empId) {
 }
 function saveAppearance(empId, p) { try { localStorage.setItem('pd_appearance_' + empId, JSON.stringify(p)); } catch (e) {} }
 
+/* Cosmos sync (api/settings → userSettings). localStorage stays as an instant cache. */
+async function fetchSettings() {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/settings', { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('settings read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.settings || null;
+}
+function pushSettings(prefs) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  return fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token }, body: JSON.stringify(prefs) });
+}
+// Apply the cached prefs instantly, then hydrate from Cosmos and re-apply if present.
+function hydrateAppearance(empId) {
+  applyAppearance(loadAppearance(empId));
+  if (typeof fetch !== 'function') return;
+  fetchSettings().then(s => { if (s) { const merged = { ...APPEARANCE_DEFAULTS, ...s }; saveAppearance(empId, merged); applyAppearance(merged); } }).catch(() => {});
+}
+
 function applyAppearance(p) {
   const r = document.documentElement;
   const a = { ...APPEARANCE_DEFAULTS, ...(p || {}) };
@@ -72,9 +91,9 @@ function AppSeg({ label, value, options, onChange }) {
 function AppearanceMenu({ me, onClose }) {
   const [p, setP] = useState(() => loadAppearance(me.id));
   const [colorChanges, setColorChanges] = useState(() => { try { return (+localStorage.getItem('pd_color_changes')) || 0; } catch (e) { return 0; } });
-  const set = (k, v) => { const next = { ...p, [k]: v }; setP(next); applyAppearance(next); saveAppearance(me.id, next); /* TODO: also POST to /api/settings */ };
+  const set = (k, v) => { const next = { ...p, [k]: v }; setP(next); applyAppearance(next); saveAppearance(me.id, next); if (typeof pushSettings === 'function') pushSettings(next).catch(() => {}); };
   const bumpColors = () => { setColorChanges(n => { const v = n + 1; try { localStorage.setItem('pd_color_changes', v); } catch (e) {} return v; }); };
-  const setMany = (obj) => { const next = { ...p, ...obj }; setP(next); applyAppearance(next); saveAppearance(me.id, next); };
+  const setMany = (obj) => { const next = { ...p, ...obj }; setP(next); applyAppearance(next); saveAppearance(me.id, next); if (typeof pushSettings === 'function') pushSettings(next).catch(() => {}); };
   const drag = React.useRef(null);
   const swatchDown = (hue, e) => {
     const startSat = p.accentHue === hue ? (p.accentSat || 1) : 1;
@@ -136,4 +155,4 @@ function AppearanceMenu({ me, onClose }) {
   );
 }
 
-Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, applyAppearance, AppearanceMenu });
+Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, applyAppearance, AppearanceMenu, fetchSettings, pushSettings, hydrateAppearance });

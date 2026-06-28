@@ -149,7 +149,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   const [notifReqs, setNotifReqs] = useState([]);
   const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
   useEffect(() => { refreshNotifs(); }, [me.id]);
-  useEffect(() => { if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
+  useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
   const notifN = (typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
