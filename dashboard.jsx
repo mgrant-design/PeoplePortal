@@ -112,9 +112,9 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
         <StatCard icon="users" label="Active team members" value={active.length} sub={`${team.length - active.length} inactive`} />
-        <StatCard icon="star" label="Providers" value={providers.length} sub="NPI / DEA on file" tone="ok" />
+        <StatCard icon="star" label="Providers" value={providers.length} sub="NPI / DEA on file" />
         <StatCard icon="bolt" label="Onboarding in progress" value={onboarding.length} sub="accounts pending" tone="accent" />
-        <StatCard icon="bell" label="Offboarding requests" value={offReqs.length} sub="this view" tone="warn" />
+        <StatCard icon="bell" label="Offboarding requests" value={offReqs.length} sub="this view" />
       </div>
 
       {(startingToday.length > 0 || birthdaysToday.length > 0 || anniversariesToday.length > 0) && (

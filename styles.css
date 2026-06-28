@@ -10,6 +10,13 @@
   --accent-hue: 220;          /* tweakable */
   --accent-chroma: 0.11;
 
+  /* Monochrome tint: neutrals lean toward --neutral-hue at a chroma scaled by
+     --tint-mult (1 = today's look). When tint is on, --neutral-hue follows the
+     accent so the whole "paper" leans that color. Text keeps fixed low chroma. */
+  --neutral-hue: 240;
+  --tint-mult: 1;
+  --ink-tint: 0;
+
   /* Brand: dental blue/teal built from --accent-hue */
   --accent:        oklch(0.56 var(--accent-chroma) var(--accent-hue));
   --accent-strong: oklch(0.47 var(--accent-chroma) var(--accent-hue));
@@ -19,15 +26,16 @@
   --teal:          oklch(0.7 0.1 195);
   --teal-soft:     oklch(0.96 0.03 195);
 
-  /* Neutrals — cool, subtly toned */
-  --bg:        oklch(0.985 0.006 230);
-  --surface:   oklch(1 0 0);
-  --surface-2: oklch(0.975 0.007 230);
-  --line:      oklch(0.9 0.012 230);
-  --line-soft: oklch(0.94 0.008 230);
-  --ink:       oklch(0.28 0.025 250);
-  --ink-2:     oklch(0.46 0.022 250);
-  --ink-3:     oklch(0.62 0.018 250);
+  /* Neutrals — hue + chroma driven by the tint controls; ink keeps low fixed
+     chroma so text stays legible at any tint. */
+  --bg:        oklch(0.985 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface:   oklch(1 calc(0.003 * var(--tint-mult)) var(--neutral-hue));
+  --surface-2: oklch(0.975 calc(0.007 * var(--tint-mult)) var(--neutral-hue));
+  --line:      oklch(0.9 calc(0.012 * var(--tint-mult)) var(--neutral-hue));
+  --line-soft: oklch(0.94 calc(0.008 * var(--tint-mult)) var(--neutral-hue));
+  --ink:       oklch(0.28 calc(0.025 + var(--ink-tint)) var(--neutral-hue));
+  --ink-2:     oklch(0.46 calc(0.022 + var(--ink-tint)) var(--neutral-hue));
+  --ink-3:     oklch(0.62 calc(0.018 + var(--ink-tint)) var(--neutral-hue));
 
   /* Status */
   --ok:    oklch(0.62 0.13 155);
@@ -58,19 +66,46 @@
   --maxw: 1120px;
 }
 
-/* ---- Visual style variants (tweak: data-style) ---- */
-[data-style="warm"] {
-  --bg:        oklch(0.985 0.012 75);
-  --surface:   oklch(0.995 0.006 75);
-  --surface-2: oklch(0.975 0.012 70);
-  --line:      oklch(0.9 0.016 70);
-  --line-soft: oklch(0.94 0.01 70);
-  --ink:       oklch(0.3 0.025 60);
-  --ink-2:     oklch(0.46 0.022 55);
-  --ink-3:     oklch(0.62 0.018 55);
-  --accent-soft:   oklch(0.95 0.035 var(--accent-hue));
-  --r-sm: 12px; --r-md: 16px; --r-lg: 22px; --r-xl: 30px;
+/* ---- Appearance: tint strength, corners, dark mode (set by the appearance menu) ---- */
+/* Subtle/Tinted punch up the accent-soft family (the "accented elements");
+   the neutral wash strength itself is set in applyAppearance. */
+[data-tint="subtle"], [data-tint="tinted"], [data-tint="unprofessional"] {
+  --accent-soft:   oklch(0.92 0.075 var(--accent-hue));
+  --accent-softer: oklch(0.96 0.04 var(--accent-hue));
 }
+
+/* Unprofessional: homogenize the nav into the theme — accent-colored labels and a
+   faintly accent-tinted bar (surface-2 is already washed at this level). */
+[data-tint] .topbar { background: var(--surface-2); }
+[data-tint] .navgroup > button:not(.active),
+[data-tint] .mobile-nav button:not(.active) { color: var(--accent); }
+[data-theme="dark"] .navgroup > button:not(.active),
+[data-theme="dark"] .mobile-nav button:not(.active) { color: oklch(0.8 0.07 var(--accent-hue)); }
+
+[data-corners="sharp"] { --r-sm: 1px; --r-md: 2px; --r-lg: 4px; --r-xl: 6px; --r-pill: 6px; }
+
+[data-theme="dark"] {
+  --bg:        oklch(0.185 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface:   oklch(0.235 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface-2: oklch(0.275 calc(0.008 * var(--tint-mult)) var(--neutral-hue));
+  --line:      oklch(0.34 calc(0.012 * var(--tint-mult)) var(--neutral-hue));
+  --line-soft: oklch(0.30 calc(0.010 * var(--tint-mult)) var(--neutral-hue));
+  --ink:       oklch(0.95 calc(0.012 + var(--ink-tint)) var(--neutral-hue));
+  --ink-2:     oklch(0.78 calc(0.014 + var(--ink-tint)) var(--neutral-hue));
+  --ink-3:     oklch(0.60 calc(0.014 + var(--ink-tint)) var(--neutral-hue));
+  --accent-soft:   oklch(0.36 0.07 var(--accent-hue));
+  --accent-softer: oklch(0.29 0.05 var(--accent-hue));
+  --ok-soft:   oklch(0.33 0.06 155);
+  --warn-soft: oklch(0.35 0.07 75);
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.35);
+  --shadow-md: 0 2px 8px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 40px oklch(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+/* ---- Visual style variants (tweak: data-style) ----
+   Warm/cool is driven by --neutral-hue (set in applyAppearance) so it works in
+   light AND dark without overriding neutrals or corners. */
 [data-style="modern"] {
   --accent-chroma: 0.14;
   --bg:        oklch(0.97 0.012 250);
@@ -116,8 +151,7 @@ button { font-family: inherit; cursor: pointer; }
   backdrop-filter: saturate(1.4) blur(14px);
   border-bottom: 1px solid var(--line);
 }
-[data-style="warm"] .topbar { background: oklch(0.995 0.008 75 / 0.82); }
-.brand { display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.03em; }
+.brand { display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.03em; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .brand > span:not(.mark) { display: flex; flex-direction: column; line-height: 1.12; white-space: nowrap; }
 .brand .mark {
   width: 34px; height: 34px; border-radius: 10px; flex: none;
