@@ -9,12 +9,9 @@ function saveTimeoff(t) { try { localStorage.setItem('pd_timeoff', JSON.stringif
 function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
 const TO_STATUS = { hr_review: ['badge-prog', 'With HR · balance check'], mgr_review: ['badge-warn', 'With manager'], approved: ['badge-ok', 'Approved'], denied: ['badge-todo', 'Denied'], insufficient: ['badge-todo', 'Not enough balance'] };
 
-const OPEN_SHIFTS = {
-  Manorville: [{ day: 'Wed Jun 24', role: 'RDH', time: '8:00–4:00' }, { day: 'Fri Jun 26', role: 'Front Desk', time: '7:00–3:00' }],
-  Hauppauge: [{ day: 'Thu Jun 25', role: 'Dental Assistant', time: '9:00–5:00' }],
-  'Wading River': [{ day: 'Mon Jun 22', role: 'RDH', time: '8:00–4:00' }],
-  'Garden City': [{ day: 'Tue Jun 23', role: 'Front Desk', time: '8:00–2:00' }],
-};
+/* Open shifts come from PUBLISHED schedules (the builder's open-shifts lane),
+   loaded per office in NotificationsPanel — no hardcoded demo data. */
+const OPEN_SHIFTS = {};
 
 function scopeLocs(me, access) {
   if (access.caps.viewAll) return Object.keys(OPEN_SHIFTS);
@@ -57,7 +54,7 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
         <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!f.start.trim()} onClick={() => onSubmit({ id: 'to' + Date.now(), empId: me.id, name: me.name, loc: me.loc, type: f.type, paid, hours: f.hours, avail: paid ? 40 : 0, start: f.start, end: '', reason: f.reason, status: paid ? 'hr_review' : 'mgr_review' })}><Icon name="check" /> Submit</button>
+        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!f.start.trim()} onClick={() => onSubmit({ id: 'to' + Date.now(), empId: me.id, name: me.name, loc: me.loc, office: me.loc, type: f.type, paid, hours: f.hours, avail: null, start: f.start, end: '', reason: f.reason, status: paid ? 'hr_review' : 'mgr_review' })}><Icon name="check" /> Submit</button>
       </div>
     </div>
   );
@@ -65,20 +62,61 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
 
 function NotificationsPanel({ me, access, onClose, flash }) {
   const [reqs, setReqs] = useState(loadTimeoff);
+  const [openByOffice, setOpenByOffice] = useState({});
   const [adding, setAdding] = useState(false);
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
   const isHR = access.flags.isHR || access.caps.viewAll;
-  const locs = scopeLocs(me, access);
+  const locs = Object.keys(openByOffice);
   const myScope = scopedRequests(reqs, me, access);
   const actionable = myScope.filter(r => (isHR && r.status === 'hr_review') || (isMgr && r.status === 'mgr_review'));
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
-  const setStatus = (id, status, extra) => { const next = reqs.map(r => r.id === id ? { ...r, status, ...(extra || {}) } : r); setReqs(next); saveTimeoff(next); };
-  const hrConfirm = (r) => { setStatus(r.id, 'mgr_review', { hrConfirmed: true }); flash && flash(`Balance confirmed — sent to ${r.name.split(' ')[0]}’s manager.`); };
-  const hrInsufficient = (r) => { setStatus(r.id, 'insufficient'); flash && flash('Marked insufficient — employee notified.'); };
-  const mgrApprove = (r) => { setStatus(r.id, 'approved'); flash && flash('Time off approved — added to the schedule.'); };
-  const deny = (r) => { setStatus(r.id, 'denied'); flash && flash('Request denied.'); };
-  const submit = (r) => { const next = [r, ...reqs]; setReqs(next); saveTimeoff(next); setAdding(false); flash && flash(r.paid ? 'Submitted — sent to HR for a balance check.' : 'Submitted — sent to your manager.'); };
+
+  // Load requests from Cosmos; fall back to localStorage outside production (sandbox).
+  const reload = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setReqs).catch(() => {}); };
+  useEffect(() => { reload(); }, []);
+
+  // Open shifts come from published schedules (the builder's open-shifts lane).
+  useEffect(() => {
+    if (!isMgr || typeof fetchSchedules !== 'function') return;
+    let cancelled = false;
+    fetchSchedules({}).then(list => {
+      if (cancelled) return;
+      const tpl = Object.fromEntries((typeof SHIFT_TEMPLATES !== 'undefined' ? SHIFT_TEMPLATES : []).map(t => [t.id, t]));
+      const days = (typeof WEEK_DAYS !== 'undefined' ? WEEK_DAYS : []);
+      const byOffice = {};
+      list.forEach(s => {
+        if (!access.caps.viewAll && s.office !== me.loc) return;
+        Object.entries(s.open || {}).forEach(([d, arr]) => (arr || []).forEach(o => {
+          const t = tpl[o.tpl];
+          (byOffice[s.office] = byOffice[s.office] || []).push({ day: days[d] || ('Day ' + d), time: t ? `${t.start}–${t.end}` : '', label: t ? t.label : 'Open' });
+        }));
+      });
+      setOpenByOffice(byOffice);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isMgr]);
+
+  // Each action hits the API then reloads; on failure (sandbox) it falls back to localStorage.
+  const localStatus = (id, status, extra) => { const next = reqs.map(r => r.id === id ? { ...r, status, ...(extra || {}) } : r); setReqs(next); saveTimeoff(next); };
+  const act = (r, action, okMsg, localName, localExtra) => {
+    if (typeof timeoffAction !== 'function') { localStatus(r.id, localName, localExtra); flash && flash(okMsg); return; }
+    timeoffAction({ action, id: r.id, office: r.office || r.loc })
+      .then(() => { reload(); flash && flash(okMsg); })
+      .catch(() => { localStatus(r.id, localName, localExtra); flash && flash(okMsg); });
+  };
+  const hrConfirm = (r) => act(r, 'hr_confirm', `Balance confirmed — moved to ${r.name.split(' ')[0]}’s manager.`, 'mgr_review', { hrConfirmed: true });
+  const hrInsufficient = (r) => act(r, 'hr_insufficient', 'Marked as not enough balance.', 'insufficient');
+  const mgrApprove = (r) => act(r, 'approve', 'Time off approved.', 'approved');
+  const deny = (r) => act(r, 'deny', 'Request denied.', 'denied');
+  const submit = (r) => {
+    setAdding(false);
+    const msg = r.paid ? 'Request submitted — pending HR balance check.' : 'Request submitted — pending manager approval.';
+    if (typeof timeoffAction !== 'function') { const next = [r, ...reqs]; setReqs(next); saveTimeoff(next); flash && flash(msg); return; }
+    timeoffAction({ action: 'submit', type: r.type, hours: r.hours, start: r.start, end: r.end, reason: r.reason })
+      .then(() => { reload(); flash && flash(msg); })
+      .catch(() => { const next = [r, ...reqs]; setReqs(next); saveTimeoff(next); flash && flash(msg); });
+  };
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 85, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -99,11 +137,10 @@ function NotificationsPanel({ me, access, onClose, flash }) {
               </div>
               {locs.length === 0 ? <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No open shifts.</p> : locs.map(loc => (
                 <div key={loc} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="pin" style={{ width: 12, height: 12 }} /> {loc} · {OPEN_SHIFTS[loc].length}</div>
-                  {OPEN_SHIFTS[loc].map((s, i) => (
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="pin" style={{ width: 12, height: 12 }} /> {loc} · {openByOffice[loc].length}</div>
+                  {openByOffice[loc].map((s, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--warn-soft)', marginBottom: 6 }}>
-                      <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.role}</div><div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-2)' }}>{s.day} · {s.time}</div></div>
-                      <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => flash && flash('Open shift posted to team')}>Notify team</button>
+                      <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.label} shift</div><div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-2)' }}>{s.day}{s.time ? ' · ' + s.time : ''}</div></div>
                     </div>
                   ))}
                 </div>
@@ -124,7 +161,7 @@ function NotificationsPanel({ me, access, onClose, flash }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {myScope.map(r => {
                 const st = TO_STATUS[r.status] || ['badge-todo', r.status];
-                const lowBal = r.paid && (r.avail || 0) < r.hours;
+                const lowBal = r.paid && r.avail != null && r.avail < r.hours;
                 return (
                 <div key={r.id} className="card" style={{ padding: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -142,7 +179,7 @@ function NotificationsPanel({ me, access, onClose, flash }) {
                     <div style={{ marginTop: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '7px 10px', borderRadius: 'var(--r-sm)', background: lowBal ? 'var(--warn-soft)' : 'var(--surface-2)', marginBottom: 8 }}>
                         <Icon name="clock" style={{ width: 13, height: 13, color: lowBal ? 'oklch(0.5 0.13 60)' : 'var(--accent)' }} />
-                        <span><b>{r.avail || 0} hrs</b> available · requesting <b>{r.hours} hrs</b>{lowBal ? ' — not enough' : ''}</span>
+                        <span>{r.avail != null ? <><b>{r.avail} hrs</b> available</> : 'Balance not available yet (no payroll link)'} · requesting <b>{r.hours} hrs</b>{lowBal ? ' — not enough' : ''}</span>
                       </div>
                       <div style={{ display: 'flex', gap: 7 }}>
                         <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12.5, flex: 1, justifyContent: 'center' }} disabled={lowBal} onClick={() => hrConfirm(r)}><Icon name="check" /> Confirm balance → manager</button>

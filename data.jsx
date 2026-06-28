@@ -236,7 +236,26 @@ async function publishSchedule(body) {
   return res.json();
 }
 
+/* ---- time-off persistence API (talks to the /api/timeoff Function) ---- */
+async function fetchTimeoff() {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/timeoff', { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('timeoff read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.requests || [];
+}
+async function timeoffAction(body) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/timeoff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('action failed (' + res.status + ')')); }
+  return res.json();
+}
+
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
-  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule,
+  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
 });

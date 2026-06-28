@@ -241,6 +241,19 @@ function Scheduler({ onBack }) {
         </div>
       ); })()}
 
+      {totalShifts === 0 && (
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent-strong)' }}>Build a week</span>
+          {[['1', 'Pick a shift'], ['2', 'Tap a day to place it'], ['3', 'Publish']].map(([n, t], i, arr) => (
+            <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 21, height: 21, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center', flex: 'none' }}>{n}</span>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{t}</span>
+              {i < arr.length - 1 && <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', marginLeft: 2 }} />}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* palette */}
       <div className="card" style={{ padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{picked ? 'Tap a slot to place' : 'Tap or drag a shift →'}</span>
@@ -358,7 +371,7 @@ function Scheduler({ onBack }) {
                       {cell ? (
                         <div style={{ width: '100%' }}><ShiftChip tpl={tplById[cell.tpl]} draftFlag={cell.status === 'draft'} draggable onDragStart={e => setData(e, { k: 'mv', from: key })} onRemove={() => removeCell(key)} /></div>
                       ) : (
-                        <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: isOver || picked ? 0.7 : 0 }}><Icon name="plus" style={{ width: 15, height: 15 }} /></div>
+                        <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', border: '1.5px dashed var(--line)', borderRadius: 'var(--r-sm)', opacity: isOver || picked ? 0.9 : 0.4 }}><Icon name="plus" style={{ width: 14, height: 14 }} /></div>
                       )}
                     </div>
                   );
