@@ -4,11 +4,12 @@
    [data-style] and --accent-hue on :root.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:ital,wght@0,300..800;1,400..600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:ital,wght@0,300..800;1,400..600&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital,wght@0,400..700;1,400..600&family=DM+Serif+Display:ital@0;1&family=Sacramento&family=Varela+Round&family=Space+Mono:wght@400;700&family=Archivo+Black&family=Archivo:ital,wght@0,400..800;1,400..700&family=Patrick+Hand&family=Nunito:ital,wght@0,400..800;1,400..600&display=swap');
 
 :root {
   --accent-hue: 220;          /* tweakable */
   --accent-chroma: 0.11;
+  --accent-l: 0.56;           /* accent lightness — drag a swatch up/down */
 
   /* Monochrome tint: neutrals lean toward --neutral-hue at a chroma scaled by
      --tint-mult (1 = today's look). When tint is on, --neutral-hue follows the
@@ -16,10 +17,11 @@
   --neutral-hue: 240;
   --tint-mult: 1;
   --ink-tint: 0;
+  --paper-l: 0;
 
   /* Brand: dental blue/teal built from --accent-hue */
-  --accent:        oklch(0.56 var(--accent-chroma) var(--accent-hue));
-  --accent-strong: oklch(0.47 var(--accent-chroma) var(--accent-hue));
+  --accent:        oklch(var(--accent-l) var(--accent-chroma) var(--accent-hue));
+  --accent-strong: oklch(calc(var(--accent-l) - 0.09) var(--accent-chroma) var(--accent-hue));
   --accent-soft:   oklch(0.95 0.03 var(--accent-hue));
   --accent-softer: oklch(0.975 0.018 var(--accent-hue));
   --accent-ring:   oklch(0.56 var(--accent-chroma) var(--accent-hue) / 0.25);
@@ -28,9 +30,9 @@
 
   /* Neutrals — hue + chroma driven by the tint controls; ink keeps low fixed
      chroma so text stays legible at any tint. */
-  --bg:        oklch(0.985 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
-  --surface:   oklch(1 calc(0.003 * var(--tint-mult)) var(--neutral-hue));
-  --surface-2: oklch(0.975 calc(0.007 * var(--tint-mult)) var(--neutral-hue));
+  --bg:        oklch(calc(0.985 - var(--paper-l)) calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface:   oklch(calc(1 - var(--paper-l)) calc(0.003 * var(--tint-mult)) var(--neutral-hue));
+  --surface-2: oklch(calc(0.975 - var(--paper-l)) calc(0.007 * var(--tint-mult)) var(--neutral-hue));
   --line:      oklch(0.9 calc(0.012 * var(--tint-mult)) var(--neutral-hue));
   --line-soft: oklch(0.94 calc(0.008 * var(--tint-mult)) var(--neutral-hue));
   --ink:       oklch(0.28 calc(0.025 + var(--ink-tint)) var(--neutral-hue));
@@ -85,9 +87,9 @@
 [data-corners="sharp"] { --r-sm: 1px; --r-md: 2px; --r-lg: 4px; --r-xl: 6px; --r-pill: 6px; }
 
 [data-theme="dark"] {
-  --bg:        oklch(0.185 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
-  --surface:   oklch(0.235 calc(0.006 * var(--tint-mult)) var(--neutral-hue));
-  --surface-2: oklch(0.275 calc(0.008 * var(--tint-mult)) var(--neutral-hue));
+  --bg:        oklch(calc(0.185 - var(--paper-l)) calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface:   oklch(calc(0.235 - var(--paper-l)) calc(0.006 * var(--tint-mult)) var(--neutral-hue));
+  --surface-2: oklch(calc(0.275 - var(--paper-l)) calc(0.008 * var(--tint-mult)) var(--neutral-hue));
   --line:      oklch(0.34 calc(0.012 * var(--tint-mult)) var(--neutral-hue));
   --line-soft: oklch(0.30 calc(0.010 * var(--tint-mult)) var(--neutral-hue));
   --ink:       oklch(0.95 calc(0.012 + var(--ink-tint)) var(--neutral-hue));
@@ -123,6 +125,8 @@
 [data-density="comfy"]   { --pad: 28px; --gap: 24px; }
 
 * { box-sizing: border-box; }
+/* Form controls don't inherit font-family by default — make them follow the theme. */
+button, input, select, textarea { font-family: inherit; }
 html, body { margin: 0; height: 100%; }
 body {
   font-family: var(--font-body);
@@ -152,6 +156,13 @@ button { font-family: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.03em; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+/* Sweet's script has a small x-height — scale it up (font-size-adjust keeps the size
+   hierarchy) and keep heading weight bold so headers still read as headers. */
+[data-font="sweet"] :is(h1, h2, h3, .brand) { font-size-adjust: 0.5; }
+[data-font="sweet"] .brand small { margin-top: 9px; }
+/* Bold: no lowercase anywhere — force uppercase on every element (buttons/inputs
+   don't reliably inherit text-transform, which left them lowercase). */
+[data-font="bold"] .app, [data-font="bold"] .app * { text-transform: uppercase; }
 .brand > span:not(.mark) { display: flex; flex-direction: column; line-height: 1.12; white-space: nowrap; }
 .brand .mark {
   width: 34px; height: 34px; border-radius: 10px; flex: none;
@@ -160,7 +171,7 @@ button { font-family: inherit; cursor: pointer; }
   color: #fff; box-shadow: var(--shadow-sm);
 }
 .brand .mark svg { width: 19px; height: 19px; }
-.brand small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 11px; color: var(--ink-3); letter-spacing: 0; margin-top: -2px; }
+.brand small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 11px; color: var(--ink-3); letter-spacing: 0; margin-top: 3px; }
 
 /* grouped top nav (app.jsx NAV_GROUPS) */
 .navgroups { display: flex; align-items: center; gap: 2px; }

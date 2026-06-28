@@ -145,9 +145,11 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     } catch (e) {}
   }, [me]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [notifReqs, setNotifReqs] = useState([]);
   const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
   useEffect(() => { refreshNotifs(); }, [me.id]);
+  useEffect(() => { if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
   const notifN = (typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
@@ -289,7 +291,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="mark"><Logo /></span>
+          <span className="mark" onDoubleClick={() => setAppearanceOpen(true)}><Logo /></span>
           <span>Pure Dental<small>People Portal</small></span>
         </div>
         <nav className="navgroups">
@@ -362,6 +364,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
       {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{renderView()}</main>
