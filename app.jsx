@@ -145,7 +145,10 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     } catch (e) {}
   }, [me]);
   const [notifOpen, setNotifOpen] = useState(false);
-  const notifN = (typeof notifCount === 'function') ? notifCount(me, access) : 0;
+  const [notifReqs, setNotifReqs] = useState([]);
+  const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
+  useEffect(() => { refreshNotifs(); }, [me.id]);
+  const notifN = (typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
@@ -358,7 +361,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} onClose={() => setNotifOpen(false)} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{renderView()}</main>

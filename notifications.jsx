@@ -9,28 +9,18 @@ function saveTimeoff(t) { try { localStorage.setItem('pd_timeoff', JSON.stringif
 function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
 const TO_STATUS = { hr_review: ['badge-prog', 'With HR · balance check'], mgr_review: ['badge-warn', 'With manager'], approved: ['badge-ok', 'Approved'], denied: ['badge-todo', 'Denied'], insufficient: ['badge-todo', 'Not enough balance'] };
 
-/* Open shifts come from PUBLISHED schedules (the builder's open-shifts lane),
-   loaded per office in NotificationsPanel — no hardcoded demo data. */
-const OPEN_SHIFTS = {};
-
-function scopeLocs(me, access) {
-  if (access.caps.viewAll) return Object.keys(OPEN_SHIFTS);
-  return [me.loc].filter(l => OPEN_SHIFTS[l]);
-}
 function scopedRequests(all, me, access) {
   if (access.caps.viewAll) return all;
   if (access.caps.viewTeam) return all.filter(r => r.loc === me.loc);
   return all.filter(r => r.empId === me.id);
 }
-function notifCount(me, access) {
-  const all = loadTimeoff();
-  const scoped = scopedRequests(all, me, access);
+function notifCount(requests, me, access) {
+  const scoped = scopedRequests(requests || [], me, access);
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
   let actionable = 0;
   if (access.flags.isHR || access.caps.viewAll) actionable += scoped.filter(r => r.status === 'hr_review').length;
   if (isMgr) actionable += scoped.filter(r => r.status === 'mgr_review').length;
-  const shifts = isMgr ? scopeLocs(me, access).reduce((a, l) => a + OPEN_SHIFTS[l].length, 0) : 0;
-  return actionable + shifts;
+  return actionable;
 }
 
 function TimeOffForm({ me, onSubmit, onCancel }) {
