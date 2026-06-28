@@ -132,12 +132,6 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   const [flags, setFlags] = useState(() => { try { return { ...FLAG_DEFAULTS, ...(JSON.parse(localStorage.getItem('pd_flags')) || {}) }; } catch (e) { return { ...FLAG_DEFAULTS }; } });
   const setFlag = (id, val) => { const n = { ...flags, [id]: val }; setFlags(n); try { localStorage.setItem('pd_flags', JSON.stringify(n)); } catch (e) {} };
   const flagOn = (id) => flags[id] !== false;
-  // admin-customizable nav order (drag-and-drop). Stores the full ordered id list.
-  const [navOrder, setNavOrder] = useState(() => { try { const v = JSON.parse(localStorage.getItem('pd_nav_order')); return Array.isArray(v) && v.length ? v : null; } catch (e) { return null; } });
-  const saveNavOrder = (ids) => { setNavOrder(ids); try { localStorage.setItem('pd_nav_order', JSON.stringify(ids)); } catch (e) {} };
-  const resetNavOrder = () => { setNavOrder(null); try { localStorage.removeItem('pd_nav_order'); } catch (e) {} };
-  const [dragNav, setDragNav] = useState(null);
-  const [dropNav, setDropNav] = useState(null);
   const [tourOpen, setTourOpen] = useState(() => { try { return !localStorage.getItem('pd_tour_done'); } catch (e) { return false; } });
   const endTour = () => { setTourOpen(false); try { localStorage.setItem('pd_tour_done', '1'); } catch (e) {} };
   const startTour = () => { setHelpOpen(false); setTourOpen(true); };
@@ -219,18 +213,6 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   };
 
   const stepProps = { me, onBack: () => go('onboarding'), onComplete: () => completeTask(view) };
-  const navList = NAV.filter(n => n.show(access) && (!n.flag || flagOn(n.flag)));
-  const navAllOrder = (navOrder && navOrder.length) ? navOrder : NAV.map(n => n.id);
-  const orderedNav = (() => { const rank = {}; navAllOrder.forEach((id, i) => { rank[id] = i; }); return navList.slice().sort((a, b) => (rank[a.id] != null ? rank[a.id] : 999) - (rank[b.id] != null ? rank[b.id] : 999)); })();
-  const canReorder = access.caps.manageUsers;
-  const onNavDrop = (targetId) => {
-    if (!dragNav || dragNav === targetId) { setDragNav(null); setDropNav(null); return; }
-    const ids = navAllOrder.slice();
-    const from = ids.indexOf(dragNav), to = ids.indexOf(targetId);
-    if (from < 0 || to < 0) return;
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
-    saveNavOrder(ids); setDragNav(null); setDropNav(null);
-  };
   const [navMenu, setNavMenu] = useState(null);
   const [asstOpen, setAsstOpen] = useState(false);
   // Close an open nav dropdown on any click outside a .navgroup (no overlay element,
@@ -241,20 +223,6 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     document.addEventListener('click', onDoc);
     return () => document.removeEventListener('click', onDoc);
   }, [navMenu]);
-  const navBtn = (n) => (
-    <button key={n.id} className={navActive(n.id) ? 'active' : ''}
-      draggable={canReorder}
-      onClick={() => go(n.id === 'onboarding' ? 'onboarding' : n.id)}
-      onDragStart={canReorder ? (e) => { setDragNav(n.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
-      onDragOver={canReorder ? (e) => { e.preventDefault(); if (dropNav !== n.id) setDropNav(n.id); } : undefined}
-      onDragLeave={canReorder ? () => setDropNav(d => d === n.id ? null : d) : undefined}
-      onDrop={canReorder ? (e) => { e.preventDefault(); onNavDrop(n.id); } : undefined}
-      onDragEnd={canReorder ? () => { setDragNav(null); setDropNav(null); } : undefined}
-      title={canReorder ? 'Drag to reorder' : undefined}
-      style={{ ...(canReorder ? { cursor: dragNav ? 'grabbing' : 'grab' } : null), ...(dragNav === n.id ? { opacity: 0.4 } : null), ...(dropNav === n.id && dragNav && dragNav !== n.id ? { boxShadow: 'inset 2px 0 0 var(--accent)' } : null) }}>
-      {navLabel(n)}
-    </button>
-  );
   const tourSteps = (typeof TOUR_STEPS_ALL !== 'undefined' ? TOUR_STEPS_ALL : []).filter(s => { if (['dashboard', 'me'].includes(s.view)) return true; const n = NAV.find(x => x.id === s.view); return n && n.show(access) && (!n.flag || flagOn(n.flag)); });
 
   const renderView = () => {
@@ -357,10 +325,35 @@ function Portal({ me, access, onLogout, t, setTweak }) {
 
       {menuOpen && (
         <div className="mobile-nav fade-in">
-          {orderedNav.filter(n => n.id !== 'ask' && n.id !== 'askhr').map(n => navBtn(n))}
-          {canReorder && navOrder && <button onClick={resetNavOrder}>Reset menu order</button>}
-          <button onClick={onLogout}>Sign out</button>
-          <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help & navigation</button>
+          {NAV_GROUPS.map(g => {
+            if (!g.children) {
+              if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
+              return <button key={g.id} className={navActive(g.id) ? 'active' : ''} onClick={() => go(g.view || g.id)}>{g.label}</button>;
+            }
+            const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+            if (!kids.length) return null;
+            return (
+              <div key={g.id} className="mnav-group">
+                <div className="mnav-label">{g.label}</div>
+                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{navLabel(c)}</button>)}
+              </div>
+            );
+          })}
+          {(() => {
+            const kids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+            if (!kids.length) return null;
+            return (
+              <div className="mnav-group">
+                <div className="mnav-label">Assistants</div>
+                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{c.label}</button>)}
+              </div>
+            );
+          })()}
+          <div className="mnav-group">
+            <div className="mnav-label">Account</div>
+            <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help &amp; navigation</button>
+            <button onClick={onLogout}>Sign out</button>
+          </div>
         </div>
       )}
 
