@@ -63,15 +63,23 @@ function deriveAccess(me) {
   const dept = (me.department || '').toLowerCase();
   const title = (me.jobTitle || '').toLowerCase();
 
-  const isExec = /\b(ceo|chief|coo|cfo|president|owner|principal)\b/.test(title) || ['leadership', 'management team', 'management', 'pure management'].includes(dept);
-  const isHR = /human resources|payroll/.test(dept) || /\b(human resources|payroll|people ops)\b/.test(title);
-  const isAccounting = /accounting/.test(dept) || /\b(controller|accountant|bookkeeper)\b/.test(title);
+  let isExec = /\b(ceo|chief|coo|cfo|president|owner|principal)\b/.test(title) || ['leadership', 'management team', 'management', 'pure management'].includes(dept);
+  let isHR = /human resources|payroll/.test(dept) || /\b(human resources|payroll|people ops)\b/.test(title);
+  let isAccounting = /accounting/.test(dept) || /\b(controller|accountant|bookkeeper)\b/.test(title);
   const isDirector = /\bdirector\b/.test(title);
   const hasReports = EMPLOYEES.some(e => e.managerEmail && e.managerEmail.toLowerCase() === me.emailLower);
-  const isSupervisor = (!!perms.supervisor || /\b(supervisor|team lead|lead)\b/.test(title)) && !/\b(manager|director)\b/.test(title) && !hasReports;
-  const isManager = (!!perms.manager || me.isManager || managerEmails.has(me.emailLower) || hasReports
+  let isSupervisor = (!!perms.supervisor || /\b(supervisor|team lead|lead)\b/.test(title)) && !/\b(manager|director)\b/.test(title) && !hasReports;
+  let isManager = (!!perms.manager || me.isManager || managerEmails.has(me.emailLower) || hasReports
     || /\b(manager|director)\b/.test(title)) && !isSupervisor;
-  const isAdmin = !!perms.admin;
+  let isAdmin = !!perms.admin;
+
+  // DEV-ONLY: dev-bypass.js may set window.__PD_DEV_VIEW to preview the UI at a chosen
+  // access level. Inert in production — nothing sets that global there.
+  if (typeof window !== 'undefined' && window.__PD_DEV_VIEW) {
+    const v = window.__PD_DEV_VIEW;
+    isExec = v === 'leadership'; isHR = v === 'hr'; isAccounting = v === 'accounting';
+    isSupervisor = v === 'supervisor'; isManager = v === 'manager'; isAdmin = v === 'admin';
+  }
 
   const level = isAdmin ? 'admin' : isHR ? 'hr' : isExec ? 'leadership' : isAccounting ? 'accounting' : isManager ? 'manager' : isSupervisor ? 'supervisor' : 'employee';
   const LABELS = { admin: 'Administrator', hr: 'HR & Payroll', leadership: 'Leadership', accounting: 'Accounting', manager: 'Manager', supervisor: 'Supervisor', employee: 'Employee' };
