@@ -46,7 +46,7 @@ function Login({ onSignedIn, loading, error }) {
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20,
       background: 'radial-gradient(120% 90% at 50% -10%, var(--accent-softer), var(--bg) 60%)' }}>
       <div className="fade-in" style={{ width: '100%', maxWidth: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 22 }}>
+        <div style={{ textAlign: 'center', marginBottom: 22, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
           <div style={{ width: 52, height: 52, borderRadius: 15, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'linear-gradient(150deg, var(--accent), var(--accent-strong))', color: '#fff', boxShadow: 'var(--shadow-md)' }}>
             <svg viewBox="0 0 20 20" width="26" height="26" fill="currentColor"><path d={ICON.tooth} /></svg>
           </div>
