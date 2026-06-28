@@ -38,23 +38,6 @@ function reqsFor(loc, dayIdx) {
   return dayIdx >= 5 ? (WEEKEND_REQS[loc] || {}) : (COVERAGE_REQS[loc] || {});
 }
 
-/* generate a full canonical week (used by Copy) */
-function canonicalWeek(team) {
-  const cells = {};
-  team.forEach((u, i) => {
-    const days = u.role === 'Front Desk' ? [0,1,2,3,4] : [0,1,2,3,4];
-    days.forEach(d => {
-      let tpl = 's-mid';
-      if (u.role === 'Front Desk') tpl = 's-open';
-      else if (u.role === 'RDH') tpl = i % 2 ? 's-mid' : 's-open';
-      else if (u.role === 'Dentist') tpl = 's-mid';
-      cells[`${u.id}|${d}`] = { tpl, status: 'draft' };
-    });
-    if (i === 0) cells[`${u.id}|5`] = { tpl: 's-half', status: 'draft' };
-  });
-  return cells;
-}
-
 function ShiftChip({ tpl, draftFlag, open, draggable, onDragStart, onRemove, onAssign }) {
   const hue = tpl.hue;
   return (
@@ -143,7 +126,7 @@ function Scheduler({ onBack }) {
   };
 
   const publish = () => { setCells(c => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, { ...v, status: 'published' }]))); setDirty(false); setPicked(null); flash('Schedule published — staff notified by Google Chat & text.'); };
-  const applyCopy = (label) => { setCells(canonicalWeek(team)); setCopyOpen(false); setDirty(true); flash(`${label} copied in as a draft. Review, then publish.`); };
+  const applyCopy = () => { setCopyOpen(false); flash('Nothing to copy yet — saved schedules arrive with persistence.'); };
   const clearWeek = () => { setCells({}); setCopyOpen(false); setDirty(true); setOpen({}); flash('Week cleared.'); };
 
   const smartFill = () => {
@@ -201,8 +184,8 @@ function Scheduler({ onBack }) {
               <>
                 <div onClick={() => setCopyOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                 <div className="card fade-in" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 41, width: 230, padding: 6, boxShadow: 'var(--shadow-lg)' }}>
-                  {[['Copy last week', 'Jun 15–21'], ['Copy last pay period', '2 weeks · Jun 8–21']].map(([t, s]) => (
-                    <button key={t} onClick={() => applyCopy(t)} className="copy-item" style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '9px 11px', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}>
+                  {[['Copy last week', 'No saved week yet'], ['Copy last pay period', 'No saved period yet']].map(([t, s]) => (
+                    <button key={t} onClick={() => applyCopy()} className="copy-item" style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '9px 11px', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t}</div>
                       <div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>{s}</div>
                     </button>
@@ -231,7 +214,7 @@ function Scheduler({ onBack }) {
         {!isAll && <span className="badge badge-prog" style={{ marginLeft: 'auto', padding: '6px 13px' }}><Icon name="clock" /> {totalHours} hrs scheduled · {totalShifts} shifts</span>}
       </div>
 
-      {isAll ? <AllLocationsView tplById={tplById} /> : <>
+      {isAll ? <AllLocationsView /> : <>
       {(() => { const off = (typeof approvedTimeoff === 'function' ? approvedTimeoff() : []); if (!off.length) return null; return (
         <div className="card" style={{ padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--accent-softer)', borderColor: 'var(--accent)' }}>
           <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent-strong)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="calendar" style={{ width: 14, height: 14 }} /> Approved time off</span>
@@ -383,67 +366,24 @@ function Scheduler({ onBack }) {
   );
 }
 
-function AllLocationsView({ tplById }) {
-  const hrs = (tplId) => { const t = tplById[tplId]; if (!t) return 0; const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; }; let e = toMin(t.end), s = toMin(t.start); if (e <= s) e += 12 * 60; return (e - s) / 60; };
-  const locs = schedLocations().map(loc => {
-    const team = schedTeam(loc);
-    const wk = canonicalWeek(team);
-    const rows = team.map(u => {
-      const shifts = WEEK_DAYS.map((_, d) => wk[`${u.id}|${d}`] ? wk[`${u.id}|${d}`].tpl : null);
-      const h = shifts.reduce((a, t) => a + (t ? hrs(t) : 0), 0);
-      return { u, shifts, h };
-    });
-    const total = rows.reduce((a, r) => a + r.h, 0);
-    return { loc, team, rows, total };
-  });
-  const grand = locs.reduce((a, l) => a + l.total, 0);
-
+function AllLocationsView() {
+  const locs = schedLocations().map(loc => ({ loc, count: schedTeam(loc).length }));
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
-        <div className="card" style={{ padding: 'var(--pad)' }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', letterSpacing: '.04em' }}>All locations</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26 }}>{Math.round(grand)}h</div><div style={{ fontSize: 12, color: 'var(--ink-3)' }}>scheduled this week</div></div>
+      <div className="card" style={{ padding: 'clamp(30px,6vw,52px)', textAlign: 'center', color: 'var(--ink-2)' }}>
+        <Icon name="grid" style={{ width: 30, height: 30, color: 'var(--ink-3)', margin: '0 auto 12px', display: 'block' }} />
+        <h3 style={{ fontSize: 17, marginBottom: 8 }}>No published schedules yet</h3>
+        <p style={{ fontSize: 14, maxWidth: 460, margin: '0 auto', lineHeight: 1.55 }}>Pick a single office above, build its week, and publish it. Published weeks across every office roll up here.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 'var(--gap)', marginTop: 'var(--gap)' }}>
         {locs.map(l => (
-          <div key={l.loc} className="card" style={{ padding: 'var(--pad)' }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', letterSpacing: '.04em' }}>{l.loc}</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26 }}>{Math.round(l.total)}h</div><div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{l.team.length} staff</div></div>
+          <div key={l.loc} className="card" style={{ padding: 'var(--pad)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', letterSpacing: '.04em' }}>{l.loc}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26 }}>{l.count}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>staff · nothing published</div>
+          </div>
         ))}
       </div>
-
-      {locs.map(l => (
-        <div key={l.loc} style={{ marginBottom: 'var(--gap)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 2px 10px' }}>
-            <Icon name="pin" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-            <h3 style={{ fontSize: 16 }}>{l.loc}</h3>
-            <span className="badge badge-prog">{Math.round(l.total)} hrs</span>
-          </div>
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <div style={{ minWidth: 720 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: `170px repeat(${WEEK_DAYS.length}, 1fr) 60px`, background: 'var(--surface-2)', borderBottom: '1px solid var(--line)' }}>
-                  <div style={{ padding: '9px 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', letterSpacing: '.04em' }}>Staff</div>
-                  {WEEK_DAYS.map(d => <div key={d} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', borderLeft: '1px solid var(--line-soft)' }}>{d.split(' ')[0]}</div>)}
-                  <div style={{ padding: '9px 6px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', borderLeft: '1px solid var(--line-soft)' }}>Hrs</div>
-                </div>
-                {l.rows.map((r, ri) => (
-                  <div key={r.u.id} style={{ display: 'grid', gridTemplateColumns: `170px repeat(${WEEK_DAYS.length}, 1fr) 60px`, borderBottom: ri < l.rows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
-                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                      <Avatar name={r.u.name} size={28} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${r.u.color}), oklch(0.55 0.12 ${r.u.color}))` }} />
-                      <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.u.name}</div><div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{r.u.role}</div></div>
-                    </div>
-                    {r.shifts.map((t, di) => (
-                      <div key={di} style={{ padding: 4, borderLeft: '1px solid var(--line-soft)', minHeight: 40, display: 'grid', placeItems: 'center' }}>
-                        {t ? <div title={tplById[t].label} style={{ width: '100%', textAlign: 'center', fontSize: 9.5, fontWeight: 700, padding: '4px 2px', borderRadius: 6, background: `oklch(0.96 0.05 ${tplById[t].hue})`, color: `oklch(0.4 0.13 ${tplById[t].hue})` }}>{tplById[t].start}</div> : <span style={{ color: 'var(--ink-3)', opacity: 0.4, fontSize: 11 }}>·</span>}
-                      </div>
-                    ))}
-                    <div className="mono" style={{ padding: '0 8px', textAlign: 'right', fontWeight: 600, fontSize: 12.5, borderLeft: '1px solid var(--line-soft)' }}>{Math.round(r.h)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-      <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, display: 'flex', gap: 7, alignItems: 'center' }}>
-        <Icon name="bolt" style={{ width: 14, height: 14 }} /> A read-only roll-up of every location’s published week. Pick a single location above to edit its schedule.
-      </p>
     </div>
   );
 }
