@@ -251,7 +251,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'admin': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} />;
       case 'scheduler': return <Scheduler onBack={() => go('dashboard')} />;
-      case 'myschedule': return <MySchedule me={me} flash={flash} />;
+      case 'myschedule': return <MySchedule me={me} />;
       // ---- onboarding sub-flow ----
       case 'onboarding':
         if (access.caps.onboardStatus) return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;

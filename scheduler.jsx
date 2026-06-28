@@ -73,6 +73,17 @@ function Scheduler({ onBack }) {
   const isAll = location === 'All locations';
   const team = useMemo(() => isAll ? [] : schedTeam(location), [location, isAll]);
 
+  // Load this office's saved week from Cosmos. Empty in sandbox / before anything is published.
+  useEffect(() => {
+    if (isAll) return;
+    let cancelled = false;
+    setCells({}); setOpen({}); setDirty(false); setPicked(null);
+    fetchSchedules({ office: location, weekKey: WEEK_KEY })
+      .then(list => { if (cancelled) return; const doc = list[0]; if (doc) { setCells(doc.cells || {}); setOpen(doc.open || {}); } })
+      .catch(() => { /* no /api in sandbox — stay empty */ });
+    return () => { cancelled = true; };
+  }, [location, isAll]);
+
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
   const touch = () => setDirty(true);
   const setData = (e, p) => e.dataTransfer.setData('text/plain', JSON.stringify(p));
@@ -125,7 +136,13 @@ function Scheduler({ onBack }) {
     setPicked(null); touch();
   };
 
-  const publish = () => { setCells(c => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, { ...v, status: 'published' }]))); setDirty(false); setPicked(null); flash('Schedule published — staff notified by Google Chat & text.'); };
+  const publish = () => {
+    const published = Object.fromEntries(Object.entries(cells).map(([k, v]) => [k, { ...v, status: 'published' }]));
+    setCells(published); setDirty(false); setPicked(null);
+    publishSchedule({ office: location, weekKey: WEEK_KEY, cells: published, open })
+      .then(() => flash('Schedule published & saved.'))
+      .catch((e) => flash('Published on screen, but the server save failed: ' + e.message));
+  };
   const applyCopy = () => { setCopyOpen(false); flash('Nothing to copy yet — saved schedules arrive with persistence.'); };
   const clearWeek = () => { setCells({}); setCopyOpen(false); setDirty(true); setOpen({}); flash('Week cleared.'); };
 
@@ -353,7 +370,7 @@ function Scheduler({ onBack }) {
       </div>
 
       <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7, lineHeight: 1.5 }}>
-        <Icon name="bolt" style={{ width: 14, height: 14, flex: 'none' }} /> On a phone? <b>Tap</b> a shift then tap a slot to place it; tap a placed shift to pick it up and tap another slot to move or swap. On desktop, drag. Staff are notified by Google Chat &amp; text on publish.
+        <Icon name="bolt" style={{ width: 14, height: 14, flex: 'none' }} /> On a phone? <b>Tap</b> a shift then tap a slot to place it; tap a placed shift to pick it up and tap another slot to move or swap. On desktop, drag. Publishing saves the week — staff see it under My schedule.
       </p>
       </>}
 

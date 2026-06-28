@@ -202,7 +202,41 @@ const WEEK_DAYS = (() => {
   return out;
 })();
 
+/* This week's stable key — the Monday's date (YYYY-MM-DD). Shared by the scheduler
+   builder and My schedule so both read & write the same week. */
+const WEEK_KEY = (() => {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const z = n => String(n).padStart(2, '0');
+  return `${monday.getFullYear()}-${z(monday.getMonth() + 1)}-${z(monday.getDate())}`;
+})();
+
+/* ---- schedule persistence API (talks to the /api/schedule Function) ----
+   Sends the Google token the same way /api/roster does. Outside production (sandbox)
+   there is no /api, so these reject and callers fall back to an empty state. */
+async function fetchSchedules({ office, weekKey } = {}) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const qs = new URLSearchParams();
+  if (office) qs.set('office', office);
+  if (weekKey) qs.set('weekKey', weekKey);
+  const res = await fetch('/api/schedule' + (qs.toString() ? '?' + qs.toString() : ''), { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('schedule read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.schedules || [];
+}
+async function publishSchedule(body) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/schedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('publish failed (' + res.status + ')')); }
+  return res.json();
+}
+
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
-  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS,
+  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule,
 });
