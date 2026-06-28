@@ -3,19 +3,7 @@
 
 function loadTimeoff() {
   try { const s = localStorage.getItem('pd_timeoff'); if (s) return JSON.parse(s); } catch (e) {}
-  const seed = EMPLOYEES.filter(e => e.status === 'Active').slice(2, 7).map((e, i) => {
-    const type = ['Vacation', 'Sick', 'Unpaid', 'Vacation', 'Bereavement'][i % 5];
-    const hours = [8, 4, 8, 16, 8][i % 5];
-    const paid = type !== 'Unpaid';
-    return {
-      id: 'to-' + e.id, empId: e.id, name: e.name, loc: e.loc, type, paid, hours,
-      avail: [40, 12, 0, 40, 24][i % 5], // available balance (hrs) — from Paychex in production
-      start: 'Jul ' + (8 + i * 2), end: 'Jul ' + (9 + i * 2 + (i % 2)),
-      reason: ['Family trip', 'Medical appointment', 'Moving day', 'Vacation', 'Family matter'][i % 5],
-      status: paid ? 'hr_review' : 'mgr_review',
-    };
-  });
-  return seed;
+  return [];   // no demo time-off — fills with real requests once staff submit them
 }
 function saveTimeoff(t) { try { localStorage.setItem('pd_timeoff', JSON.stringify(t)); } catch (e) {} }
 function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
@@ -65,7 +53,7 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
       <textarea value={f.reason} onChange={e => setF({ ...f, reason: e.target.value })} rows={2} placeholder="Reason (optional)" style={{ ...inp, resize: 'vertical' }} />
       <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 9, display: 'flex', gap: 7, alignItems: 'flex-start' }}>
         <Icon name="link" style={{ width: 13, height: 13, color: 'var(--accent)', flex: 'none', marginTop: 1 }} />
-        {paid ? 'Goes to Tobin Whitaker to confirm your balance, then to your manager to approve.' : 'Unpaid time goes straight to your manager to approve.'}
+        {paid ? 'Goes to HR & Payroll to confirm your balance, then to your manager to approve.' : 'Unpaid time goes straight to your manager to approve.'}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
         <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>

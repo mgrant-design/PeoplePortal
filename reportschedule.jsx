@@ -67,10 +67,7 @@ function describeDef(def) {
   return s;
 }
 
-const RS_SEED = [
-  { id: 'rs1', name: 'Weekly headcount by office', def: { rows: 'loc', cols: 'department', filters: [{ field: 'status', value: 'Active' }], measure: 'count' }, freq: 'Weekly', dow: 1, time: '08:00', recipients: ['mgrant@puredental.com', 'avibert@puredental.com'], format: 'PDF', status: 'Active', createdBy: 'Michelle Grant', createdAt: Date.now() - 9e8, lastSent: Date.now() - 6 * 864e5 },
-  { id: 'rs2', name: 'Monthly providers roster', def: { rows: 'providerType', cols: null, filters: [{ field: 'provider', value: 'Provider' }, { field: 'status', value: 'Active' }], measure: 'count' }, freq: 'Monthly', dom: 1, time: '07:30', recipients: ['avibert@puredental.com'], format: 'Excel', status: 'Active', createdBy: 'Amanda Vibert', createdAt: Date.now() - 5e8, lastSent: Date.now() - 12 * 864e5 },
-];
+const RS_SEED = [];
 
 /* ---------------- Schedule modal ---------------- */
 function ScheduleModal({ def, me, onClose, onSave }) {

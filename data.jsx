@@ -1,14 +1,24 @@
-/* data.jsx — seed data for the onboarding portal */
+/* data.jsx — onboarding portal config + templates (NO placeholder people).
+   The onboarding screens read the REAL signed-in employee via newHireProfile(me). */
 
-const NEW_HIRE = {
-  name: 'Maya Robbins',
-  role: 'Registered Dental Hygienist',
-  location: 'Pure Dental — Riverside',
-  startDate: 'Monday, June 22, 2026',
-  manager: 'Dr. Elena Cho',
-  email: 'maya.robbins@puredental.com',
-  username: 'mrobbins',
-};
+/* Build the onboarding view-model from the real signed-in employee record.
+   Tolerates missing fields (real roster rows can have blank manager/startDate). */
+function newHireProfile(me) {
+  me = me || {};
+  const name = (me.name || `${me.first || ''} ${me.last || ''}`.trim()) || 'New hire';
+  return {
+    name,
+    first: me.first || name.split(' ')[0] || 'there',
+    role: me.jobTitle || '',
+    location: me.loc || me.location || '',
+    startDate: me.startDate || '',
+    manager: me.manager || '',
+    managerEmail: me.managerEmail || '',
+    email: me.workEmail || '',
+    username: me.windowsLogin || '',
+  };
+}
+window.newHireProfile = newHireProfile;
 
 /* ---- Role model: drives credentials gating + which apps get provisioned ---- */
 const ROLE_PROFILES = {
@@ -20,11 +30,11 @@ const ROLE_PROFILES = {
 
 /* ---- App catalog: each provisions via its API; ready state reveals credentials ---- */
 const APP_CATALOG = {
-  google:            { id: 'google', name: 'Google Workspace', detail: 'Email, Calendar & Drive', icon: 'mail', api: 'Google Admin SDK', provider: false, user: 'maya.robbins@puredental.com', pass: 'Welcome#Pure26', url: 'mail.google.com', reset: true },
-  denticon:          { id: 'denticon', name: 'Denticon', detail: 'Practice management & charting', icon: 'tooth', api: 'Denticon Partner API', provider: false, user: 'mrobbins', pass: 'Dnt-4xQ!92', url: 'a.denticon.com', reset: true },
-  denticon_provider: { id: 'denticon_provider', name: 'Denticon — Provider profile', detail: 'Provider record, production & e-claims', icon: 'star', api: 'Denticon Partner API', provider: true, user: 'prov-mrobbins', pass: 'auto-linked to NPI', url: 'a.denticon.com', reset: false },
-  nexhealth:         { id: 'nexhealth', name: 'NexHealth', detail: 'Patient messaging & online booking', icon: 'calendar', api: 'NexHealth API', provider: false, user: 'maya.robbins', pass: 'Nex-7teal!', url: 'app.nexhealth.com', reset: true },
-  dosespot:          { id: 'dosespot', name: 'DoseSpot', detail: 'e-Prescribing (EPCS) for controlled meds', icon: 'shield', api: 'DoseSpot SSO API', provider: true, user: 'mrobbins-dds', pass: 'SSO via Google', url: 'my.dosespot.com', reset: false },
+  google:            { id: 'google', name: 'Google Workspace', detail: 'Email, Calendar & Drive', icon: 'mail', api: 'Google Admin SDK', provider: false, emailLogin: true, url: 'mail.google.com', reset: true },
+  denticon:          { id: 'denticon', name: 'Denticon', detail: 'Practice management & charting', icon: 'tooth', api: 'Denticon Partner API', provider: false, emailLogin: false, url: 'a.denticon.com', reset: true },
+  denticon_provider: { id: 'denticon_provider', name: 'Denticon — Provider profile', detail: 'Provider record, production & e-claims', icon: 'star', api: 'Denticon Partner API', provider: true, emailLogin: false, url: 'a.denticon.com', reset: false },
+  nexhealth:         { id: 'nexhealth', name: 'NexHealth', detail: 'Patient messaging & online booking', icon: 'calendar', api: 'NexHealth API', provider: false, emailLogin: false, url: 'app.nexhealth.com', reset: true },
+  dosespot:          { id: 'dosespot', name: 'DoseSpot', detail: 'e-Prescribing (EPCS) for controlled meds', icon: 'shield', api: 'DoseSpot SSO API', provider: true, emailLogin: false, url: 'my.dosespot.com', reset: false },
 };
 
 /* ---- Role-based account provisioning rules (define settings per role) ---- */
@@ -143,14 +153,6 @@ const POLICIES = [
   { id: 'social', name: 'Social Media & Confidentiality', tag: 'Policy', mins: 2, done: false, desc: 'What you can and can’t share publicly.' },
 ];
 
-const ACCOUNTS = [
-  { id: 'email', name: 'Pure Dental email', detail: 'maya.robbins@puredental.com', status: 'ready', icon: 'mail' },
-  { id: 'pms',   name: 'Practice management (Open Dental)', detail: 'Clinical + charting access', status: 'ready', icon: 'tooth' },
-  { id: 'badge', name: 'Building access badge', detail: 'Riverside — pick up at front desk', status: 'pending', icon: 'key' },
-  { id: 'phone', name: 'Phone & voicemail extension', detail: 'Ext. 219', status: 'provisioning', icon: 'phone' },
-  { id: 'lms',   name: 'Learning portal (Paychex Learning)', detail: 'SSO enabled', status: 'ready', icon: 'book' },
-];
-
 const TRAINING = [
   { id: 't1', name: 'Welcome & company values', mins: 20, done: false, cat: 'Foundations' },
   { id: 't2', name: 'Infection control & sterilization', mins: 45, done: false, cat: 'Clinical' },
@@ -158,41 +160,6 @@ const TRAINING = [
   { id: 't4', name: 'Patient communication standards', mins: 25, done: false, cat: 'Clinical' },
   { id: 't5', name: 'Radiography safety refresher', mins: 30, done: false, cat: 'Clinical' },
   { id: 't6', name: 'Emergency procedures', mins: 15, done: false, cat: 'Foundations' },
-];
-
-const TEAM = [
-  { name: 'Dr. Elena Cho', role: 'Lead Dentist · Your manager', tag: 'manager', email: 'elena.cho@puredental.com' },
-  { name: 'Marcus Webb', role: 'Office Manager', tag: 'buddy', email: 'marcus.webb@puredental.com' },
-  { name: 'Priya Nair', role: 'Registered Dental Hygienist', tag: 'pod', email: 'priya.nair@puredental.com' },
-  { name: 'Devon Liu', role: 'Dental Assistant', tag: 'pod', email: 'devon.liu@puredental.com' },
-  { name: 'Sofia Reyes', role: 'Front Desk Coordinator', tag: 'pod', email: 'sofia.reyes@puredental.com' },
-  { name: 'Tom Becker', role: 'Regional HR · People Ops', tag: 'hr', email: 'tom.becker@puredental.com' },
-];
-
-const FIRST_WEEK = [
-  { day: 'Mon', date: 'Jun 22', items: [
-    { t: '9:00', label: 'Welcome breakfast with the team', kind: 'social' },
-    { t: '10:00', label: 'Office tour + badge pickup', kind: 'admin' },
-    { t: '11:30', label: 'Systems setup with Marcus', kind: 'setup' },
-    { t: '1:30', label: 'Shadow Priya — patient flow', kind: 'shadow' },
-  ]},
-  { day: 'Tue', date: 'Jun 23', items: [
-    { t: '8:30', label: 'Infection control training', kind: 'training' },
-    { t: '11:00', label: 'Charting practice in Open Dental', kind: 'training' },
-    { t: '2:00', label: 'First supervised patient', kind: 'clinical' },
-  ]},
-  { day: 'Wed', date: 'Jun 24', items: [
-    { t: '9:00', label: 'Shadow Dr. Cho — hygiene exams', kind: 'shadow' },
-    { t: '1:00', label: 'Benefits Q&A with Tom (HR)', kind: 'admin' },
-  ]},
-  { day: 'Thu', date: 'Jun 25', items: [
-    { t: '8:30', label: 'Solo patients (Dr. Cho on call)', kind: 'clinical' },
-    { t: '12:00', label: 'Lunch with your pod', kind: 'social' },
-  ]},
-  { day: 'Fri', date: 'Jun 26', items: [
-    { t: '9:00', label: 'Full hygiene schedule', kind: 'clinical' },
-    { t: '4:00', label: 'Week-one check-in with manager', kind: 'admin' },
-  ]},
 ];
 
 const BENEFITS = [
@@ -213,56 +180,29 @@ const BENEFITS = [
 ];
 
 /* ---- Scheduling module seed data ---- */
-const SCHED_LOCATIONS = ['Riverside', 'Downtown', 'Northgate'];
 const SCHED_ROLES = ['Dentist', 'RDH', 'DA', 'Front Desk'];
-/* role-based coverage requirements (weekdays) per location */
-const COVERAGE_REQS = {
-  Riverside: { Dentist: 1, RDH: 2, DA: 1, 'Front Desk': 1 },
-  Downtown:  { Dentist: 1, RDH: 1, DA: 1 },
-  Northgate: { RDH: 1, 'Front Desk': 1 },
-};
-/* lighter Saturday requirements */
-const WEEKEND_REQS = {
-  Riverside: { RDH: 1, 'Front Desk': 1 },
-  Downtown:  { RDH: 1 },
-  Northgate: {},
-};
-const SCHED_TEAMS = {
-  Riverside: [
-    { id: 'u1', name: 'Maya Robbins', role: 'RDH', color: 195, skills: ['Hygiene', 'Perio', 'Imaging/X-ray', 'Spanish'] },
-    { id: 'u2', name: 'Priya Nair', role: 'RDH', color: 220, skills: ['Hygiene', 'Pediatric', 'Imaging/X-ray'] },
-    { id: 'u3', name: 'Devon Liu', role: 'DA', color: 150, skills: ['Surgery assist', 'Imaging/X-ray', 'Sedation'] },
-    { id: 'u4', name: 'Sofia Reyes', role: 'Front Desk', color: 75, skills: ['Front desk', 'Insurance/Billing', 'Spanish'] },
-    { id: 'u5', name: 'Dr. Elena Cho', role: 'Dentist', color: 280, skills: ['Surgery assist', 'Implants', 'Endo', 'Invisalign'] },
-  ],
-  Downtown: [
-    { id: 'u6', name: 'Jordan Pike', role: 'RDH', color: 195, skills: ['Hygiene', 'Perio'] },
-    { id: 'u7', name: 'Amara Diaz', role: 'DA', color: 150, skills: ['Imaging/X-ray', 'Surgery assist'] },
-    { id: 'u8', name: 'Dr. Ray Okafor', role: 'Dentist', color: 280, skills: ['Endo', 'Implants', 'Sedation'] },
-  ],
-  Northgate: [
-    { id: 'u9', name: 'Lena Frost', role: 'Front Desk', color: 75, skills: ['Front desk', 'Insurance/Billing'] },
-    { id: 'u10', name: 'Beau Tran', role: 'RDH', color: 195, skills: ['Hygiene', 'Pediatric', 'Invisalign'] },
-  ],
-};
+/* Coverage requirements per office (role -> count). Empty by default — managers
+   configure per office; no requirement means no gap is flagged. */
+const COVERAGE_REQS = {};
+const WEEKEND_REQS = {};
 const SHIFT_TEMPLATES = [
   { id: 's-open', label: 'Opening', start: '7:00', end: '3:00', hue: 195 },
   { id: 's-mid',  label: 'Mid', start: '9:00', end: '5:00', hue: 220 },
   { id: 's-close',label: 'Closing', start: '11:00', end: '7:00', hue: 280 },
   { id: 's-half', label: 'Half day', start: '8:00', end: '12:00', hue: 150 },
 ];
-const WEEK_DAYS = ['Mon 22', 'Tue 23', 'Wed 24', 'Thu 25', 'Fri 26', 'Sat 27'];
-
-/* pre-seeded shifts: key `${userId}|${dayIdx}` -> shift template id */
-const SEED_SHIFTS = {
-  'u1|0': 's-mid', 'u1|1': 's-open', 'u1|3': 's-mid', 'u1|4': 's-mid',
-  'u2|0': 's-open', 'u2|1': 's-mid', 'u2|2': 's-open', 'u2|4': 's-close',
-  'u3|0': 's-mid', 'u3|2': 's-mid', 'u3|3': 's-close',
-  'u4|0': 's-open', 'u4|1': 's-open', 'u4|2': 's-open', 'u4|3': 's-open', 'u4|4': 's-open',
-  'u5|1': 's-mid', 'u5|3': 's-mid', 'u5|4': 's-half',
-};
+/* Current week, Mon–Sat (labels like "Mon 22") — generated, not hardcoded. */
+const WEEK_DAYS = (() => {
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const out = [];
+  for (let i = 0; i < 6; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); out.push(`${names[d.getDay()]} ${d.getDate()}`); }
+  return out;
+})();
 
 Object.assign(window, {
-  NEW_HIRE, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, ACCOUNTS, TRAINING, TEAM, FIRST_WEEK, BENEFITS,
-  SCHED_LOCATIONS, SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SCHED_TEAMS, SHIFT_TEMPLATES, WEEK_DAYS, SEED_SHIFTS,
+  newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
+  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS,
 });

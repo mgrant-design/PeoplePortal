@@ -105,7 +105,7 @@ function DocPreview({ doc }) {
   );
 }
 
-function SignDoc({ doc, onSigned, onCancel }) {
+function SignDoc({ doc, onSigned, onCancel, fullName }) {
   const [sig, setSig] = useState(null);
   const [agree, setAgree] = useState(false);
   const ready = sig && agree;
@@ -117,10 +117,10 @@ function SignDoc({ doc, onSigned, onCancel }) {
         <h3 style={{ fontSize: 19 }}>{doc.name}</h3>
         <p style={{ color: 'var(--ink-2)', fontSize: 13.5, margin: '8px 0 18px', lineHeight: 1.5 }}>{doc.desc}</p>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Your signature</div>
-        <SignaturePad onChange={setSig} fullName={NEW_HIRE.name} />
+        <SignaturePad onChange={setSig} fullName={fullName} />
         <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 18, cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.45 }}>
           <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 2, width: 17, height: 17, accentColor: 'var(--accent)' }} />
-          <span>I, <b style={{ color: 'var(--ink)' }}>{NEW_HIRE.name}</b>, agree to sign this document electronically and confirm the information is accurate.</span>
+          <span>I, <b style={{ color: 'var(--ink)' }}>{fullName}</b>, agree to sign this document electronically and confirm the information is accurate.</span>
         </label>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" onClick={onCancel}><Icon name="arrowLeft" /> Cancel</button>
@@ -137,10 +137,10 @@ const DELIVERY_STEPS = [
   { label: 'Sealing your signed packet', icon: 'lock' },
   { label: 'Delivering to onboarding@puredental.com', icon: 'mail' },
   { label: 'Syncing employee record to Paychex Flex', icon: 'refresh' },
-  { label: 'Notifying Tom Becker (People Ops)', icon: 'bell' },
+  { label: 'Notifying your onboarding team', icon: 'bell' },
 ];
 
-function DeliveryScreen({ onDone }) {
+function DeliveryScreen({ onDone, email }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (step < DELIVERY_STEPS.length) {
@@ -192,7 +192,7 @@ function DeliveryScreen({ onDone }) {
         {finished && (
           <div className="fade-in">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--line)', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--line)', marginBottom: 20 }}>
-              {[['Confirmation', ref], ['Synced to', 'Paychex Flex'], ['Delivered to', 'Onboarding team'], ['Copy emailed', NEW_HIRE.email]].map(([k, v]) => (
+              {[['Confirmation', ref], ['Synced to', 'Paychex Flex'], ['Delivered to', 'Onboarding team'], ['Copy emailed', email || '—']].map(([k, v]) => (
                 <div key={k} style={{ background: 'var(--surface)', padding: '12px 14px', textAlign: 'left' }}>
                   <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-3)', fontWeight: 600 }}>{k}</div>
                   <div className="mono" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 3, wordBreak: 'break-all' }}>{v}</div>
@@ -209,7 +209,8 @@ function DeliveryScreen({ onDone }) {
   );
 }
 
-function Paperwork({ onBack, onComplete }) {
+function Paperwork({ me, onBack, onComplete }) {
+  const nh = newHireProfile(me);
   const [docs, setDocs] = useState(() => PAPERWORK_DOCS.map(d => ({ ...d })));
   const [openId, setOpenId] = useState(null);
   const [phase, setPhase] = useState('list'); // list | sign | deliver
@@ -224,7 +225,7 @@ function Paperwork({ onBack, onComplete }) {
 
   if (phase === 'deliver') return (
     <StepShell icon="pen" eyebrow="Paperwork" title="Submitting your documents" onBack={onBack}>
-      <DeliveryScreen onDone={onComplete} />
+      <DeliveryScreen onDone={onComplete} email={nh.email} />
     </StepShell>
   );
 
@@ -232,7 +233,7 @@ function Paperwork({ onBack, onComplete }) {
     <StepShell icon="pen" eyebrow={`Document ${docs.findIndex(d=>d.id===openId)+1} of ${docs.length}`} title={`Sign: ${openDoc.name.split(' — ')[0]}`}
       subtitle="Review the document, then add your signature. Nothing is sent until you submit everything."
       onBack={() => { setPhase('list'); setOpenId(null); }}>
-      <SignDoc doc={openDoc} onSigned={sign} onCancel={() => { setPhase('list'); setOpenId(null); }} />
+      <SignDoc doc={openDoc} onSigned={sign} onCancel={() => { setPhase('list'); setOpenId(null); }} fullName={nh.name} />
     </StepShell>
   );
 

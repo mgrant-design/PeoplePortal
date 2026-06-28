@@ -11,6 +11,29 @@ function shiftHours(tpl) {
 
 let OPEN_SEQ = 100;
 
+/* Real-roster scheduler data (no placeholder people). Teams derive from the live
+   roster grouped by office; the scheduler role maps from each person's job title. */
+const SCHED_ROLE_HUE = { Dentist: 280, RDH: 195, DA: 150, 'Front Desk': 75 };
+function schedRoleFor(e) {
+  const s = ((e.jobTitle || '') + ' ' + (e.department || '')).toLowerCase();
+  if (/assist/.test(s)) return 'DA';
+  if (/hygien|rdh/.test(s)) return 'RDH';
+  if (/denti|dds|dmd|doctor|provider/.test(s)) return 'Dentist';
+  if (/front desk|reception|coordinator|patient experience|insurance|billing|schedul|treatment/.test(s)) return 'Front Desk';
+  return null;
+}
+function schedLocations() {
+  const all = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+  const out = [];
+  all.forEach(e => { if (e.status === 'Active' && schedRoleFor(e)) { const l = e.loc || e.location; if (l && l !== 'Unassigned' && !out.includes(l)) out.push(l); } });
+  return out.sort();
+}
+function schedTeam(loc) {
+  const all = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+  return all.filter(e => e.status === 'Active' && (e.loc || e.location) === loc && schedRoleFor(e))
+    .map(e => { const role = schedRoleFor(e); return { id: e.id, name: e.name, role, color: SCHED_ROLE_HUE[role] || 210, skills: [] }; });
+}
+
 function reqsFor(loc, dayIdx) {
   return dayIdx >= 5 ? (WEEKEND_REQS[loc] || {}) : (COVERAGE_REQS[loc] || {});
 }
@@ -53,11 +76,10 @@ function ShiftChip({ tpl, draftFlag, open, draggable, onDragStart, onRemove, onA
 }
 
 function Scheduler({ onBack }) {
-  const [location, setLocation] = useState('Riverside');
-  const [cells, setCells] = useState(() => {
-    const o = {}; Object.entries(SEED_SHIFTS).forEach(([k, v]) => { o[k] = { tpl: v, status: 'published' }; }); return o;
-  });
-  const [open, setOpen] = useState(() => ({ 2: [{ id: 'op-1', tpl: 's-close' }] })); // a pre-existing open shift Wed
+  const SLOCS = useMemo(() => schedLocations(), []);
+  const [location, setLocation] = useState(() => SLOCS[0] || 'All locations');
+  const [cells, setCells] = useState({});
+  const [open, setOpen] = useState({});
   const [dirty, setDirty] = useState(false);
   const [dragOver, setDragOver] = useState(null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -66,7 +88,7 @@ function Scheduler({ onBack }) {
   const [toast, setToast] = useState(null);
   const tplById = useMemo(() => Object.fromEntries(SHIFT_TEMPLATES.map(t => [t.id, t])), []);
   const isAll = location === 'All locations';
-  const team = SCHED_TEAMS[location] || [];
+  const team = useMemo(() => isAll ? [] : schedTeam(location), [location, isAll]);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
   const touch = () => setDirty(true);
@@ -199,11 +221,11 @@ function Scheduler({ onBack }) {
       {/* location tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <Icon name="pin" style={{ width: 16, height: 16, color: 'var(--ink-3)' }} />
-        {['All locations', ...SCHED_LOCATIONS].map(loc => (
+        {['All locations', ...SLOCS].map(loc => (
           <button key={loc} onClick={() => { setLocation(loc); setAssignFor(null); }}
             style={{ border: '1px solid', borderColor: location === loc ? 'var(--accent)' : 'var(--line)', background: location === loc ? 'var(--accent-soft)' : 'var(--surface)',
               color: location === loc ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '7px 16px', fontSize: 13.5, fontWeight: 600 }}>
-            {loc}{loc !== 'All locations' && <span style={{ opacity: 0.6, fontWeight: 500 }}> · {SCHED_TEAMS[loc].length}</span>}
+            {loc}{loc !== 'All locations' && <span style={{ opacity: 0.6, fontWeight: 500 }}> · {schedTeam(loc).length}</span>}
           </button>
         ))}
         {!isAll && <span className="badge badge-prog" style={{ marginLeft: 'auto', padding: '6px 13px' }}><Icon name="clock" /> {totalHours} hrs scheduled · {totalShifts} shifts</span>}
@@ -363,8 +385,8 @@ function Scheduler({ onBack }) {
 
 function AllLocationsView({ tplById }) {
   const hrs = (tplId) => { const t = tplById[tplId]; if (!t) return 0; const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; }; let e = toMin(t.end), s = toMin(t.start); if (e <= s) e += 12 * 60; return (e - s) / 60; };
-  const locs = SCHED_LOCATIONS.map(loc => {
-    const team = SCHED_TEAMS[loc];
+  const locs = schedLocations().map(loc => {
+    const team = schedTeam(loc);
     const wk = canonicalWeek(team);
     const rows = team.map(u => {
       const shifts = WEEK_DAYS.map((_, d) => wk[`${u.id}|${d}`] ? wk[`${u.id}|${d}`].tpl : null);

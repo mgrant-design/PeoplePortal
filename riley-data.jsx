@@ -32,14 +32,13 @@ const RILEY_KNOWLEDGE = [
   { topic: 'Credentialing & licensing', icon: 'star', keywords: 'credential license npi dea provider malpractice scope certification', answer: 'For providers, we verify your NPI, state license, and DEA automatically and set renewal reminders. Questions on coverage or clinical scope go to your Clinical Manager.' },
 ];
 
-/* ---- Routing: who an inquiry goes to when it needs a human ----
-   ⚠️ PLACEHOLDER CONTACTS — these names/roles are NOT real. Replace each `to` / `role`
-   with the actual Pure Dental person before relying on routing in production. */
+/* ---- Routing: which team an inquiry goes to when it needs a human ----
+   Routes to roles/departments (no individual names) until real owners are assigned. */
 const RILEY_ROUTING = [
-  { category: 'Payroll & pay questions', to: 'Tobin Whitaker', role: 'Director of HR & Payroll', via: 'Email + Google Chat' },
-  { category: 'Benefits & enrollment', to: 'Tobin Whitaker', role: 'HR & Payroll', via: 'Email' },
-  { category: 'Clinical / malpractice / scope', to: 'Zane Marsh', role: 'Clinical Manager', via: 'Google Chat' },
-  { category: 'Credentialing & licensing', to: 'Xenia Jennings', role: 'People Ops · Admin', via: 'Google Chat' },
+  { category: 'Payroll & pay questions', to: 'HR & Payroll', role: 'Human Resources', via: 'Email + Google Chat' },
+  { category: 'Benefits & enrollment', to: 'HR & Payroll', role: 'Human Resources', via: 'Email' },
+  { category: 'Clinical / malpractice / scope', to: 'Clinical Manager', role: 'Clinical leadership', via: 'Google Chat' },
+  { category: 'Credentialing & licensing', to: 'People Ops', role: 'Admin', via: 'Google Chat' },
   { category: 'IT, logins & access', to: 'IT Help Desk', role: 'help@puredental.com · ext. 100', via: 'Email' },
   { category: 'Scheduling & first week', to: 'Office Manager', role: 'Home location', via: 'SMS + Email' },
 ];

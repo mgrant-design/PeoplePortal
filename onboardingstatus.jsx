@@ -4,10 +4,7 @@
 const OB_STAGES = ['Prehire submitted', 'Added to Paychex', 'Paperwork', 'Credentials', 'Accounts', 'Training', 'Ready'];
 /* A couple of just-submitted hires (manager → HR) that the agent hasn't picked
    up yet — the live, in-progress runs come from seeded automations. */
-const OB_SEED = [
-  { id: 'ob1', name: 'Tara Quinn', jobTitle: 'Front Desk Coordinator', loc: 'Manorville', type: 'PT', start: 'Jun 30', stage: 1, provider: false },
-  { id: 'ob2', name: 'Luis Ortega', jobTitle: 'Insurance Specialist', loc: 'Islandia', type: 'FT', start: 'Jul 14', stage: 0, provider: false },
-];
+const OB_SEED = [];
 
 function obPct(stage) { return Math.round(stage / (OB_STAGES.length - 1) * 100); }
 

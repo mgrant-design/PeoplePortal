@@ -1,7 +1,8 @@
 /* hub.jsx — onboarding hub (dashboard). Hybrid: progress + task cards. */
 
 function HubHero({ pct, onResume, roleLabel, emp }) {
-  const who = emp || { name: NEW_HIRE.name, role: NEW_HIRE.role, loc: NEW_HIRE.location.replace('Pure Dental — ', ''), startDate: NEW_HIRE.startDate, manager: NEW_HIRE.manager };
+  const nh = newHireProfile(emp);
+  const who = { name: nh.name, role: nh.role, loc: nh.location, startDate: nh.startDate, manager: nh.manager };
   const greeting = (() => {
     const h = new Date().getHours();
     return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
@@ -15,14 +16,14 @@ function HubHero({ pct, onResume, roleLabel, emp }) {
             {greeting}, {who.name.split(' ')[0]}.
           </h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 16, marginTop: 12, maxWidth: 520, lineHeight: 1.5 }}>
-            Welcome to <b style={{ color: 'var(--ink)' }}>Pure Dental</b>. You start as a <b style={{ color: 'var(--ink)' }}>{roleLabel || who.role}</b> at {who.loc || NEW_HIRE.location.replace('Pure Dental — ', '')} on <b style={{ color: 'var(--ink)' }}>{who.startDate || NEW_HIRE.startDate}</b>. Let’s get you ready.
+            Welcome to <b style={{ color: 'var(--ink)' }}>Pure Dental</b>. You're a <b style={{ color: 'var(--ink)' }}>{roleLabel || who.role}</b>{who.loc ? ` at ${who.loc}` : ''}{who.startDate ? `, starting ${who.startDate}` : ''}. Let’s get you ready.
           </p>
           <div style={{ display: 'flex', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
             <button className="btn btn-primary btn-lg" onClick={onResume}>
               <Icon name="bolt" /> Resume where you left off
             </button>
             <div className="badge badge-warn" style={{ alignSelf: 'center', padding: '8px 14px' }}>
-              <Icon name="bell" /> 3 documents need your signature
+              <Icon name="bell" /> {PAPERWORK_DOCS.length} documents need your signature
             </div>
           </div>
         </div>
@@ -36,7 +37,7 @@ function HubHero({ pct, onResume, roleLabel, emp }) {
         </div>
       </div>
       <div style={{ display: 'flex', borderTop: '1px solid var(--line)', background: 'var(--surface-2)' }}>
-        {[['Start date', (who.startDate || NEW_HIRE.startDate).split(',')[0]], ['Location', who.loc || NEW_HIRE.location.replace('Pure Dental — ', '')], ['Manager', who.manager || NEW_HIRE.manager], ['Buddy', 'Marcus Webb']].map(([k, v], i) => (
+        {[['Start date', (who.startDate || '—').split(',')[0]], ['Location', who.loc || '—'], ['Manager', who.manager || '—']].map(([k, v], i) => (
           <div key={k} style={{ flex: 1, padding: '14px 20px', borderLeft: i ? '1px solid var(--line)' : 'none' }}>
             <div style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{k}</div>
             <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>{v}</div>

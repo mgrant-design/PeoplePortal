@@ -321,11 +321,7 @@ function Reports({ access, scope, paychexOn, me, flash }) {
 /* ---------- Report requests (mirror of feature requests, scoped to reporting) ---------- */
 const RR_STATUSES = ['Submitted', 'Under review', 'Planned', 'Built', 'Declined'];
 const RR_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'Built': 'badge-ok', 'Declined': 'badge-todo' };
-const RR_SEED = [
-  { id: 'rr1', title: 'Monthly hours by provider', desc: 'Worked vs scheduled hours per provider, by location, each month.', freq: 'Monthly', by: 'Zane Marsh', status: 'Planned', votes: 7, ts: Date.now() - 6e8 },
-  { id: 'rr2', title: 'New-hire time-to-productive', desc: 'Days from start date to first solo patient / first solo shift.', freq: 'Quarterly', by: 'Tobin Whitaker', status: 'Under review', votes: 4, ts: Date.now() - 3e8 },
-  { id: 'rr3', title: 'Overtime by office trend', desc: 'Weekly overtime hours trended by office to spot staffing gaps.', freq: 'Weekly', by: 'Vera Zimmerman', status: 'Submitted', votes: 9, ts: Date.now() - 1e8 },
-];
+const RR_SEED = [];
 function loadRR() { try { const s = JSON.parse(localStorage.getItem('pd_report_requests')); return s && s.length ? s : RR_SEED; } catch (e) { return RR_SEED; } }
 function persistRR(x) { try { localStorage.setItem('pd_report_requests', JSON.stringify(x)); } catch (e) {} }
 

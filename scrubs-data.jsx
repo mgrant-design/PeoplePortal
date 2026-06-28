@@ -95,27 +95,9 @@ function allocate(items, caps) {
   });
 }
 
-/* ---- seed sample orders ---- */
+/* ---- orders: start empty; real orders come from actual scrub requests ---- */
 function seedScrubOrders() {
-  const existing = loadOrders(); if (existing) return existing;
-  const act = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []).filter(e => e.status === 'Active' && /assist|hygien|dent|doctor|lab|clinical/i.test((e.jobTitle || '') + (e.department || '')));
-  const pick = (i) => act[i % Math.max(1, act.length)] || { id: 'x' + i, name: 'Team Member', jobTitle: 'Dental Assistant', loc: 'Manorville' };
-  const mk = (defs) => defs.map(([pid, fit, size, color, qty]) => { const p = SCRUB_PRODUCTS.find(x => x.id === pid); return { productId: pid, name: p.name, cat: p.cat, price: priceFor(p, fit), fit, size, color, qty }; });
-  const build = (i, status, defs, extra) => {
-    const e = pick(i); const caps = ALLOWANCE[ftpt(e)] || ALLOWANCE.FT; const items = allocate(mk(defs), caps);
-    const empTotal = items.reduce((s, it) => s + it.employeeQty * it.price, 0);
-    const ts = Date.now() - i * 6e8;
-    return { id: 'seed' + i, requesterId: e.id, requester: e.name, jobTitle: e.jobTitle, loc: e.loc, logo: logoForOffice(e.loc), ts, status, items, employeeTotal: empTotal, payMethod: empTotal > 0 ? 'payroll' : null, embroideredName: e.name, ...extra };
-  };
-  const seed = [
-    build(1, 'pending_approval', [['top', 'Women', 'M', 'black', 2], ['pant_s', 'Women', 'M', 'black', 1]]),
-    build(2, 'pending_approval', [['top', 'Men', 'L', 'blue', 1], ['jacket', 'Men', 'L', 'blue', 1]]),
-    build(3, 'approved', [['top', 'Women', 'S', 'black', 2], ['pant_j', 'Women', 'S', 'blue', 2], ['jacket', 'Women', 'S', 'black', 1]], { estPickup: Date.now() + 12 * 864e5 }),
-    build(4, 'submitted', [['top', 'Men', 'M', 'black', 2], ['layer', 'Men', 'M', 'black', 2]], { estPickup: Date.now() + 6 * 864e5, invoice: 'CID-inv-4471.pdf' }),
-    build(5, 'received', [['pant_s', 'Women', 'XL', 'blue', 1], ['jacket', 'Women', 'XL', 'blue', 1]], { estPickup: Date.now() - 2 * 864e5, receivedDate: Date.now() - 1 * 864e5, invoice: 'CID-inv-4460.pdf' }),
-    build(6, 'delivered', [['top', 'Women', 'S', 'black', 1], ['pant_s', 'Women', 'S', 'black', 1]], { receivedDate: Date.now() - 9 * 864e5, deliveredDate: Date.now() - 7 * 864e5, notified: true, invoice: 'CID-inv-4402.pdf' }),
-  ];
-  saveOrders(seed); return seed;
+  return loadOrders() || [];
 }
 
 /* ---- vendor export helpers ---- */

@@ -26,7 +26,6 @@ const EMPLOYEES = [];
 const byEmail = {};
 const usersByEmail = {};
 let managerEmails = new Set();
-const DEMO_ACCOUNTS = [];
 
 function buildFromHRDATA() {
   HR = window.HRDATA || { employees: [], offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
@@ -52,13 +51,6 @@ function buildFromHRDATA() {
 
   // keep window.HR pointing at current HR for modules that read window.HR
   window.HR = HR;
-
-  // rebuild demo accounts list (harmless if those emails aren't present)
-  DEMO_ACCOUNTS.length = 0;
-  ['mgrant@puredental.com','avibert@puredental.com','kvibert@puredental.com',
-   'ddibella@puredental.com','tryan@puredental.com','along@puredental.com']
-    .map(e => byEmail[e.toLowerCase()]).filter(Boolean)
-    .forEach(e => DEMO_ACCOUNTS.push(e));
 }
 
 buildFromHRDATA(); // initial build from whatever HRDATA exists at load (may be empty pre-login)
@@ -147,6 +139,6 @@ function saveSession(emp) { try { emp ? localStorage.setItem('pd_session', emp.i
 
 Object.assign(window, {
   HR, EMPLOYEES, COMPANY_DOMAINS, deriveAccess, scopedEmployees, getPhoto, setPhoto,
-  isCompanyEmail, findByEmail, loadSession, saveSession, DEMO_ACCOUNTS, normLoc, deptLeaders,
+  isCompanyEmail, findByEmail, loadSession, saveSession, normLoc, deptLeaders,
   PD_REBUILD_HRDATA: buildFromHRDATA,
 });

@@ -78,6 +78,46 @@ const NAV = [
   { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
 ];
 
+/* Grouped/compressed top nav. Direct items render as a single button; grouped items
+   render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
+const NAV_GROUPS = [
+  { id: 'dashboard', label: 'Home', view: 'dashboard', show: () => true },
+  { id: 'g_people', label: 'People', children: [
+    { id: 'people', label: 'Directory', show: () => true },
+    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
+  ] },
+  { id: 'g_mywork', label: 'My Work', children: [
+    { id: 'onboarding', label: 'My onboarding', show: () => true },
+    { id: 'myschedule', label: 'My schedule', show: a => !a.caps.schedule, flag: 'scheduler' },
+    { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
+    { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
+    { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
+    { id: 'feedback', label: 'Roadmap', show: () => true },
+  ] },
+  { id: 'scrubs', label: 'Scrubs', view: 'scrubs', show: () => true, flag: 'scrubs' },
+  { id: 'g_manage', label: 'Manage', children: [
+    { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
+    { id: 'automations', label: 'Automations', show: a => a.caps.hire, flag: 'automations' },
+    { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
+    { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
+  ] },
+  { id: 'g_settings', label: 'Settings', children: [
+    { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
+    { id: 'admin', label: 'Admin', show: a => a.caps.manageUsers },
+  ] },
+];
+/* Assistants live in a floating launcher, not the nav bar. */
+const ASSISTANTS = [
+  { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
+  { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
+];
+function CaretIcon() {
+  return <svg className="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>;
+}
+function ChatIcon() {
+  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>;
+}
+
 const ONBOARD_VIEWS = ['onboarding', 'hub', 'welcome', 'profilestep', 'paperwork', 'credentials', 'policies', 'accounts', 'training', 'team', 'schedule', 'benefits'];
 
 function Portal({ me, access, onLogout, t, setTweak }) {
@@ -178,7 +218,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     return go(id);
   };
 
-  const stepProps = { onBack: () => go('onboarding'), onComplete: () => completeTask(view) };
+  const stepProps = { me, onBack: () => go('onboarding'), onComplete: () => completeTask(view) };
   const navList = NAV.filter(n => n.show(access) && (!n.flag || flagOn(n.flag)));
   const navAllOrder = (navOrder && navOrder.length) ? navOrder : NAV.map(n => n.id);
   const orderedNav = (() => { const rank = {}; navAllOrder.forEach((id, i) => { rank[id] = i; }); return navList.slice().sort((a, b) => (rank[a.id] != null ? rank[a.id] : 999) - (rank[b.id] != null ? rank[b.id] : 999)); })();
@@ -191,6 +231,16 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     ids.splice(to, 0, ids.splice(from, 1)[0]);
     saveNavOrder(ids); setDragNav(null); setDropNav(null);
   };
+  const [navMenu, setNavMenu] = useState(null);
+  const [asstOpen, setAsstOpen] = useState(false);
+  // Close an open nav dropdown on any click outside a .navgroup (no overlay element,
+  // so the menu's own buttons stay clickable).
+  useEffect(() => {
+    if (!navMenu) return;
+    const onDoc = (e) => { if (!e.target.closest || !e.target.closest('.navgroup')) setNavMenu(null); };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, [navMenu]);
   const navBtn = (n) => (
     <button key={n.id} className={navActive(n.id) ? 'active' : ''}
       draggable={canReorder}
@@ -241,10 +291,10 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       case 'hub': return <Hub tasks={visibleTasks} onOpen={hubGo} layout={t.hubLayout} roleLabel={me.jobTitle} emp={me} notice={accountsReady ? { onView: () => go('accounts') } : null} />;
       case 'welcome': return <WelcomeStep {...stepProps} />;
       case 'profilestep': return <ProfileStep {...stepProps} />;
-      case 'paperwork': return <Paperwork onBack={stepProps.onBack} onComplete={() => completeTask('paperwork')} />;
+      case 'paperwork': return <Paperwork me={me} onBack={stepProps.onBack} onComplete={() => completeTask('paperwork')} />;
       case 'credentials': return <CredentialsStep {...stepProps} role={obRole} />;
       case 'policies': return <PoliciesStep {...stepProps} />;
-      case 'accounts': return <AccountsStep onBack={stepProps.onBack} onComplete={() => completeTask('accounts')} role={obRole} credentialsDone={credentialsDone} onReady={() => setAccountsReady(true)} onGoCredentials={() => go('credentials')} apiMode={flagOn('provisionApi')} />;
+      case 'accounts': return <AccountsStep me={me} onBack={stepProps.onBack} onComplete={() => completeTask('accounts')} role={obRole} credentialsDone={credentialsDone} onReady={() => setAccountsReady(true)} onGoCredentials={() => go('credentials')} apiMode={flagOn('provisionApi')} />;
       case 'training': return <TrainingStep {...stepProps} />;
       case 'team': return <TeamStep {...stepProps} />;
       case 'schedule': return <AgendaStep {...stepProps} onOpenScheduler={() => go('scheduler')} />;
@@ -271,10 +321,26 @@ function Portal({ me, access, onLogout, t, setTweak }) {
           <span className="mark"><Logo /></span>
           <span>Pure Dental<small>People Portal</small></span>
         </div>
-        <NavScroller className="topnav" wrapClassName="desktop-nav">
-          {orderedNav.map(n => navBtn(n))}
-          {canReorder && navOrder && <button className="btn btn-quiet" style={{ padding: '6px 9px', fontSize: 12 }} title="Reset menu order" onClick={resetNavOrder}><Icon name="refresh" style={{ width: 14, height: 14 }} /></button>}
-        </NavScroller>
+        <nav className="navgroups">
+          {NAV_GROUPS.map(g => {
+            if (!g.children) {
+              if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
+              return <div className="navgroup" key={g.id}>
+                <button className={navActive(g.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(g.view || g.id); }}>{g.label}</button>
+              </div>;
+            }
+            const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+            if (!kids.length) return null;
+            const groupActive = kids.some(c => navActive(c.id));
+            const open = navMenu === g.id;
+            return <div className="navgroup" key={g.id}>
+              <button className={groupActive ? 'active' : ''} aria-expanded={open} onClick={() => setNavMenu(open ? null : g.id)}>{g.label}<CaretIcon /></button>
+              {open && <div className="navgroup-menu fade-in">
+                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(c.id); }}>{navLabel(c)}</button>)}
+              </div>}
+            </div>;
+          })}
+        </nav>
         <div className="spacer" />
         <button className="btn btn-quiet mobile-menu-btn" style={{ padding: 9, display: 'none' }} onClick={() => setMenuOpen(m => !m)} title="Menu"><Icon name="list" /></button>
         <button className="btn btn-quiet" style={{ padding: 9 }} onClick={openHelp} title="Help & navigation"><Icon name="help" /></button>
@@ -291,7 +357,8 @@ function Portal({ me, access, onLogout, t, setTweak }) {
 
       {menuOpen && (
         <div className="mobile-nav fade-in">
-          {orderedNav.map(n => navBtn(n))}
+          {orderedNav.filter(n => n.id !== 'ask' && n.id !== 'askhr').map(n => navBtn(n))}
+          {canReorder && navOrder && <button onClick={resetNavOrder}>Reset menu order</button>}
           <button onClick={onLogout}>Sign out</button>
           <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help & navigation</button>
         </div>
@@ -302,6 +369,17 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{renderView()}</main>
+
+      {(() => {
+        const kids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+        if (!kids.length) return null;
+        return <div className="assistant-fab">
+          {asstOpen && kids.length > 1 && <div className="assistant-menu fade-in">
+            {kids.map(c => <button key={c.id} onClick={() => { setAsstOpen(false); go(c.id); }}><Icon name="sparkle" style={{ width: 16, height: 16 }} /> {c.label}</button>)}
+          </div>}
+          <button className="assistant-fab-btn" title="Assistants" onClick={() => { if (kids.length === 1) go(kids[0].id); else setAsstOpen(o => !o); }}><ChatIcon /></button>
+        </div>;
+      })()}
 
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -400,11 +478,12 @@ function App() {
       try {
         const have = window.HRDATA && Array.isArray(window.HRDATA.employees) && window.HRDATA.employees.length;
         if (!have) {
-          const res = await fetch('hrdata.json');
-          window.HRDATA = await res.json();
+          // No hrdata.json: the dev seed (single identity + real places) is provided
+          // inline by dev-bypass.js. In production this whole bridge never runs.
+          window.HRDATA = window.__PD_DEV_SEED || { employees: [], offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
           if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
         }
-        const demo = opts.emp || (window.DEMO_ACCOUNTS && window.DEMO_ACCOUNTS[0]) || (window.EMPLOYEES || []).find(e => e.status === 'Active');
+        const demo = opts.emp || (typeof findByEmail === 'function' && findByEmail('mgrant@puredental.com')) || (window.EMPLOYEES || [])[0];
         if (demo) { saveSession(demo); setMe(demo); return true; }
       } catch (e) { /* fall back to the login screen */ }
       return false;

@@ -91,7 +91,8 @@ function VerifyCard({ icon, title, subtitle, idLabel, idHint, placeholder, valid
   );
 }
 
-function CredentialsStep({ onBack, onComplete, role }) {
+function CredentialsStep({ me, onBack, onComplete, role }) {
+  const nh = newHireProfile(me);
   const rp = role || { short: 'RDH', taxonomy: 'Dental Hygienist · 124Q00000X', dea: false };
   const [hasDEA, setHasDEA] = useState(!!rp.dea);
   const [licState, setLicState] = useState('CA');
@@ -115,7 +116,7 @@ function CredentialsStep({ onBack, onComplete, role }) {
           idLabel="NPI number" idHint="Must be 10 digits" placeholder="10-digit NPI"
           mask={v => v.replace(/\D/g, '').slice(0, 10)} validate={v => /^\d{10}$/.test(v)}
           onVerified={() => setNpiOk(true)}
-            lookup={() => ({ source: 'NPPES NPI Registry', rows: [['Provider', NEW_HIRE.name], ['Credential', rp.short], ['Primary taxonomy', rp.taxonomy], ['Enumeration', 'Active since 2019']] })} />
+            lookup={() => ({ source: 'NPPES NPI Registry', rows: [['Provider', nh.name], ['Credential', rp.short], ['Primary taxonomy', rp.taxonomy], ['Enumeration', 'Active']] })} />
 
         <div className="card" style={{ padding: 'var(--pad)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
@@ -143,7 +144,7 @@ function CredentialsStep({ onBack, onComplete, role }) {
             <div style={{ marginTop: 16 }}>
               <VerifyCard icon="shield" title="" subtitle="" idLabel="DEA number" idHint="Format: 2 letters + 7 digits (e.g. AR1234563)" placeholder="AR1234563"
                 mask={v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 9)} validate={v => /^[A-Z]{2}\d{7}$/.test(v)}
-                lookup={() => ({ source: 'DEA Diversion Control', expires: 'Mar 31, 2027', rows: [['Registrant', NEW_HIRE.name], ['Schedules', 'II–V'], ['Status', 'Active'], ['Business address', 'Riverside, CA']] })}
+                lookup={() => ({ source: 'DEA Diversion Control', expires: 'Mar 31, 2027', rows: [['Registrant', nh.name], ['Schedules', 'II–V'], ['Status', 'Active'], ['Business address', nh.location || '—']] })}
                 onVerified={() => setDeaOk(true)} embedded />
             </div>
           ) : (

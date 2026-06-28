@@ -16,11 +16,11 @@ function callScript(a) {
     { who: 'hire', t: `What should I bring on my first day, and where do I park?` },
     { who: 'agent', t: `Great question. Bring a photo ID and your direct-deposit info — everything else is already in your portal. Park in the staff lot behind the ${a.office} office; I'll text you the exact entrance.`, tag: 'Answered · First day & parking' },
     { who: 'hire', t: `Perfect. When's my first paycheck?` },
-    { who: 'agent', t: `Pure runs payroll biweekly. Your first deposit lands two Fridays after your start date. If you'd like specifics on tax setup, I can loop in Tobin in Payroll — want me to?`, tag: 'Answered · Pay schedule' },
+    { who: 'agent', t: `Pure runs payroll biweekly. Your first deposit lands two Fridays after your start date. If you'd like specifics on tax setup, I can loop in HR & Payroll — want me to?`, tag: 'Answered · Pay schedule' },
     { who: 'hire', t: a.provider ? `Yes please. Also — can someone clarify my malpractice coverage and scope at this location?` : `Yes please, that'd be great.` },
     a.provider
-      ? { who: 'agent', t: `Absolutely. Malpractice and clinical scope are best answered by Zane Marsh, your Clinical Manager — I'm routing that to her now over Google Chat and she'll follow up today.`, route: { to: 'Zane Marsh', role: 'Clinical Manager', via: 'Google Chat' } }
-      : { who: 'agent', t: `Done — I've routed your payroll question to Tobin Whitaker in HR & Payroll, and she'll reach out by email.`, route: { to: 'Tobin Whitaker', role: 'HR & Payroll', via: 'Email' } },
+      ? { who: 'agent', t: `Absolutely. Malpractice and clinical scope are best answered by your Clinical Manager — I'm routing that to them now over Google Chat and they'll follow up today.`, route: { to: 'Clinical Manager', role: 'Clinical leadership', via: 'Google Chat' } }
+      : { who: 'agent', t: `Done — I've routed your payroll question to HR & Payroll, and they'll reach out by email.`, route: { to: 'HR & Payroll', role: 'Human Resources', via: 'Email' } },
     { who: 'agent', t: `Last thing — let's get your working interview booked. I have Tuesday Jul 1 at 10:00 AM open at ${a.office}. Does that work?`, },
     { who: 'hire', t: `Tuesday at 10 is perfect.` },
     { who: 'agent', t: `Booked! 🎉 You'll get a calendar invite and a text confirmation. I've shared the recap with the onboarding team. Welcome aboard, ${first}!`, tag: 'Booked · Working interview Jul 1, 10:00 AM' },
@@ -72,7 +72,7 @@ function chatPosts(a) {
   ];
   if (a.provider) posts.push({ who: 'agent', time: '9:31 AM', t: `🪪 Credentials verified — NPI, ${a.office} license${a.rk === 'dentist' ? ', DEA' : ''}. All active.` });
   posts.push({ who: 'agent', time: '9:40 AM', t: `🔐 Accounts created: ${apps.join(', ')}. Credentials delivered to ${a.workEmail}.` });
-  posts.push({ who: 'agent', time: '11:05 AM', t: `📞 Call complete. ${a.provider ? '@Zane Marsh' : '@Tobin Whitaker'} — ${a.name.split(' ')[0]} asked about ${a.provider ? 'malpractice coverage & clinical scope' : 'payroll/tax setup'}. Routing to you 🙏`, mention: a.provider ? 'Zane Marsh' : 'Tobin Whitaker' });
+  posts.push({ who: 'agent', time: '11:05 AM', t: `📞 Call complete. ${a.provider ? '@Clinical Manager' : '@HR & Payroll'} — ${a.name.split(' ')[0]} asked about ${a.provider ? 'malpractice coverage & clinical scope' : 'payroll/tax setup'}. Routing to you 🙏`, mention: a.provider ? 'Clinical Manager' : 'HR & Payroll' });
   posts.push({ who: a.provider ? 'denise' : 'amanda', time: '11:09 AM', t: a.provider ? `Thanks Riley — I'll call ${a.name.split(' ')[0]} this afternoon to walk through coverage.` : `Got it, I'll email the tax + pay details today.` });
   posts.push({ who: 'agent', time: '11:10 AM', t: `🗓️ Working interview booked: Tue Jul 1, 10:00 AM @ ${a.office}. Calendar invites sent.` });
   return posts;
@@ -80,7 +80,7 @@ function chatPosts(a) {
 
 function GoogleChatFeed({ auto }) {
   const posts = useMemo(() => chatPosts(auto), [auto]);
-  const person = (who) => who === 'denise' ? { name: 'Zane Marsh', color: 195 } : who === 'amanda' ? { name: 'Tobin Whitaker', color: 280 } : null;
+  const person = (who) => who === 'denise' ? { name: 'Clinical Manager', color: 195 } : who === 'amanda' ? { name: 'HR & Payroll', color: 280 } : null;
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', maxWidth: 720 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px var(--pad)', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' }}>

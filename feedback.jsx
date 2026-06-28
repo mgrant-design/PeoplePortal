@@ -5,14 +5,7 @@ const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Com
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
 const FB_CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
 
-const FB_SEED = [
-  { id: 'fr1', title: 'Shift swap approvals from mobile', desc: 'Let staff request and approve swaps on their phone.', cat: 'Scheduling', by: 'Sofia Reyes', status: 'Planned', votes: 14, eta: 'Q3 2026', ts: Date.now() - 8e8 },
-  { id: 'fr2', title: 'Text reminders for required training', desc: 'SMS nudge a few days before a course is due.', cat: 'Learning', by: 'Marcus Webb', status: 'In progress', votes: 9, eta: 'August 2026', ts: Date.now() - 6e8 },
-  { id: 'fr3', title: 'Bulk import schedules from spreadsheet', desc: 'Paste a CSV to build a week quickly.', cat: 'Scheduling', by: 'Zane Marsh', status: 'Under review', votes: 6, eta: '', ts: Date.now() - 4e8 },
-  { id: 'fr4', title: 'Dark mode', desc: 'Easier on the eyes for late shifts.', cat: 'Mobile', by: 'Devon Liu', status: 'Submitted', votes: 21, eta: '', ts: Date.now() - 2e8 },
-  { id: 'fr5', title: 'Paychex payroll sync', desc: 'Two-way sync of hours and pay rules.', cat: 'Time clock', by: 'Product', status: 'Planned', votes: 0, eta: 'August 2026', ts: Date.now() - 1e8, planned: true },
-  { id: 'fr6', title: 'Ideal schedule from history', desc: 'Auto-generate the best week per location from worked-hours history.', cat: 'Scheduling', by: 'Product', status: 'Planned', votes: 0, eta: 'Q4 2026', ts: Date.now() - 5e7, planned: true },
-];
+const FB_SEED = [];
 
 function loadFB() { try { const s = JSON.parse(localStorage.getItem('pd_feedback')); return s && s.length ? s : FB_SEED; } catch (e) { return FB_SEED; } }
 function persistFB(x) { try { localStorage.setItem('pd_feedback', JSON.stringify(x)); } catch (e) {} }

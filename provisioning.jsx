@@ -62,7 +62,8 @@ const RESOURCES = [
   { icon: 'phone', name: 'IT help desk', detail: 'help@puredental.com · ext. 100' },
 ];
 
-function AccountsStep({ role, credentialsDone, onBack, onComplete, onReady, onGoCredentials, apiMode = true }) {
+function AccountsStep({ me, role, credentialsDone, onBack, onComplete, onReady, onGoCredentials, apiMode = true }) {
+  const nh = newHireProfile(me);
   const apps = useMemo(() => (role.apps || []).map(id => APP_CATALOG[id]), [role]);
   const isLocked = (app) => app.provider && role.clinical && !credentialsDone;
   const provisionable = apps.filter(a => !isLocked(a));
@@ -96,7 +97,7 @@ function AccountsStep({ role, credentialsDone, onBack, onComplete, onReady, onGo
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--ok)', color: '#fff', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name="bell" style={{ width: 18, height: 18 }} /></div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: 'oklch(0.4 0.12 155)' }}>Credentials delivered</div>
-            <div style={{ fontSize: 13, color: 'oklch(0.42 0.1 155)' }}>A secure copy was also emailed to {NEW_HIRE.email}.</div>
+            <div style={{ fontSize: 13, color: 'oklch(0.42 0.1 155)' }}>A secure copy was also emailed to {nh.email || 'your work email'}.</div>
           </div>
         </div>
 
@@ -111,8 +112,8 @@ function AccountsStep({ role, credentialsDone, onBack, onComplete, onReady, onGo
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <CredField label={app.user.includes('@') ? 'Email' : 'Username'} value={app.user} />
-                <CredField label={app.reset ? 'Temporary password' : 'Access'} value={app.pass} secret={app.reset} />
+                <CredField label={app.emailLogin ? 'Email' : 'Username'} value={app.emailLogin ? (nh.email || '—') : (nh.username || (nh.email ? nh.email.split('@')[0] : '—'))} />
+                <CredField label={app.reset ? 'Temporary password' : 'Access'} value={app.reset ? 'Set on first sign-in' : 'Single sign-on (Google)'} />
               </div>
               {app.reset
                 ? <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" style={{ width: 13, height: 13 }} /> Reset required on first sign-in</div>

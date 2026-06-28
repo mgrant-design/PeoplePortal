@@ -1,10 +1,11 @@
 /* steps.jsx — guided step screens (everything except paperwork + scheduler) */
 
 /* ---------- Welcome ---------- */
-function WelcomeStep({ onBack, onComplete }) {
+function WelcomeStep({ me, onBack, onComplete }) {
+  const nh = newHireProfile(me);
   return (
-    <StepShell icon="sparkle" eyebrow="Get started" title={`Welcome to Pure Dental, ${NEW_HIRE.name.split(' ')[0]}`}
-      subtitle="We’re genuinely glad you’re here. Here’s what your first day looks like and the people who’ll help you settle in."
+    <StepShell icon="sparkle" eyebrow="Get started" title={`Welcome to Pure Dental, ${nh.first}`}
+      subtitle="We’re genuinely glad you’re here. Here’s what to expect as you get started."
       onBack={onBack}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 20, alignItems: 'start' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -13,21 +14,23 @@ function WelcomeStep({ onBack, onComplete }) {
             <div className="mono" style={{ fontSize: 12, color: 'var(--ink-3)', background: 'var(--surface)', padding: '6px 12px', borderRadius: 99, border: '1px solid var(--line)' }}>welcome video / team photo</div>
           </div>
           <div style={{ padding: 'var(--pad)' }}>
-            <h3 style={{ fontSize: 18 }}>A note from Dr. Cho</h3>
+            <h3 style={{ fontSize: 18 }}>You’re joining {nh.location || 'Pure Dental'}</h3>
             <p style={{ color: 'var(--ink-2)', fontSize: 14.5, lineHeight: 1.6, marginTop: 10 }}>
-              “The Riverside team has been looking forward to having a hygienist with your patient-first approach. Don’t worry about knowing everything on day one — lean on your pod, ask questions, and we’ll get you up to speed. Can’t wait to work with you.”
+              We’re excited to have you on the team{nh.role ? ` as a ${nh.role}` : ''}. Over the next few steps you’ll complete your paperwork, set up your accounts, and get everything you need for a great first day.
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
-              <Avatar name="Elena Cho" size={40} />
-              <div><div style={{ fontWeight: 600, fontSize: 14 }}>Dr. Elena Cho</div><div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Lead Dentist · Your manager</div></div>
-            </div>
+            {nh.manager ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
+                <Avatar name={nh.manager} size={40} />
+                <div><div style={{ fontWeight: 600, fontSize: 14 }}>{nh.manager}</div><div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Your manager</div></div>
+              </div>
+            ) : null}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {[['pin', 'Where to go', '4820 Riverside Ave — park in the staff lot behind the building.'],
-            ['clock', 'When to arrive', 'Monday 8:45 AM. Breakfast is on us at 9:00.'],
-            ['tooth', 'What to wear', 'Scrubs in any solid color. We’ll order your Pure Dental set.'],
-            ['phone', 'Who to ask for', 'Marcus Webb (Office Manager) — he’s your day-one buddy.']].map(([ic, t, d]) => (
+          {[['pin', 'Where to go', nh.location ? `Your home office: ${nh.location}. Your manager will share parking and entrance details.` : 'Your manager will confirm your office location and directions.'],
+            ['clock', 'When to arrive', nh.startDate ? `Your start date is ${nh.startDate}. Your manager will confirm your first-day start time.` : 'Your manager will confirm your start date and first-day time.'],
+            ['tooth', 'What to wear', 'Clinical team wears solid-color scrubs (we’ll order your Pure Dental set). Front office is business casual.'],
+            ['phone', 'Who to ask for', nh.manager ? `${nh.manager} is your manager and day-one point of contact.` : 'Your manager will be your day-one point of contact.']].map(([ic, t, d]) => (
             <div key={t} className="card" style={{ padding: '16px var(--pad)', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}><Icon name={ic} style={{ width: 19, height: 19 }} /></div>
               <div><div style={{ fontWeight: 600, fontSize: 14.5 }}>{t}</div><p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 3, lineHeight: 1.45 }}>{d}</p></div>
@@ -135,16 +138,31 @@ function TrainingStep({ onBack, onComplete }) {
 
 /* ---------- Team ---------- */
 const TEAM_TAG = { manager: ['Manager', 'badge-prog'], buddy: ['Day-one buddy', 'badge-warn'], hr: ['People Ops', 'badge-todo'], pod: ['Your pod', 'badge-ok'] };
-function TeamStep({ onBack, onComplete }) {
+function TeamStep({ me, onBack, onComplete }) {
+  const all = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+  const myLoc = (me && (me.loc || me.location)) || '';
+  const meId = me && me.id;
+  const mgrEmail = ((me && me.managerEmail) || '').toLowerCase();
+  const manager = all.find(e => mgrEmail && (e.workEmail || '').toLowerCase() === mgrEmail);
+  const mates = all.filter(e => e.status === 'Active' && e.id !== meId && (!manager || e.id !== manager.id) && (e.loc || e.location) === myLoc).slice(0, 9);
+  const list = [];
+  if (manager) list.push({ name: manager.name, role: manager.jobTitle, email: manager.workEmail, tag: 'manager' });
+  mates.forEach(e => list.push({ name: e.name, role: e.jobTitle, email: e.workEmail, tag: 'pod' }));
   return (
     <StepShell icon="users" eyebrow="Connect" title="Meet your team"
-      subtitle="The people you’ll work with every day at Riverside. Reach out and say hi before your first shift."
+      subtitle={myLoc ? `The people you’ll work with at ${myLoc}. Reach out and say hi.` : 'Your team at Pure Dental.'}
       onBack={onBack}>
+      {list.length === 0 ? (
+        <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-2)' }}>
+          <Icon name="users" style={{ width: 30, height: 30, color: 'var(--ink-3)', margin: '0 auto 10px', display: 'block' }} />
+          <p style={{ fontSize: 14 }}>Your team roster will appear here once your office and manager are assigned.</p>
+        </div>
+      ) : (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 'var(--gap)' }}>
-        {TEAM.map(p => {
+        {list.map(p => {
           const [label, cls] = TEAM_TAG[p.tag];
           return (
-            <div key={p.email} className="card" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div key={p.email || p.name} className="card" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
                 <Avatar name={p.name} size={46} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -154,12 +172,13 @@ function TeamStep({ onBack, onComplete }) {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className={`badge ${cls}`}>{label}</span>
-                <a href={`mailto:${p.email}`} className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13, textDecoration: 'none' }}><Icon name="mail" style={{ width: 15, height: 15 }} /> Say hi</a>
+                {p.email ? <a href={`mailto:${p.email}`} className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13, textDecoration: 'none' }}><Icon name="mail" style={{ width: 15, height: 15 }} /> Say hi</a> : null}
               </div>
             </div>
           );
         })}
       </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
         <button className="btn btn-primary btn-lg" onClick={onComplete}><Icon name="check" /> Met the team</button>
       </div>
@@ -168,30 +187,15 @@ function TeamStep({ onBack, onComplete }) {
 }
 
 /* ---------- First-week agenda ---------- */
-const KIND_COLOR = { social: 75, admin: 220, setup: 280, shadow: 195, training: 150, clinical: 340 };
-function AgendaStep({ onBack, onComplete, onOpenScheduler }) {
+function AgendaStep({ me, onBack, onComplete, onOpenScheduler }) {
   return (
     <StepShell icon="calendar" eyebrow="Connect" title="Schedule & first week"
-      subtitle="Your shifts are set and your first week is mapped out hour by hour. Your manager built this in the scheduler."
+      subtitle="Your shifts and first-week plan will appear here once your manager builds them in the scheduler."
       onBack={onBack}
       aside={<button className="btn btn-ghost" onClick={onOpenScheduler}><Icon name="grid" /> Open scheduler</button>}>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${FIRST_WEEK.length}, 1fr)`, gap: 12, overflowX: 'auto' }}>
-        {FIRST_WEEK.map(day => (
-          <div key={day.day} className="card" style={{ padding: 14, minWidth: 150 }}>
-            <div style={{ textAlign: 'center', paddingBottom: 10, borderBottom: '1px solid var(--line-soft)', marginBottom: 12 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{day.day}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{day.date}</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {day.items.map((it, i) => (
-                <div key={i} style={{ padding: '8px 10px', borderRadius: 'var(--r-sm)', background: `oklch(0.96 0.04 ${KIND_COLOR[it.kind]})`, borderLeft: `3px solid oklch(0.6 0.12 ${KIND_COLOR[it.kind]})` }}>
-                  <div className="mono" style={{ fontSize: 10.5, color: 'var(--ink-2)', fontWeight: 600 }}>{it.t}</div>
-                  <div style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.3 }}>{it.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+      <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-2)' }}>
+        <Icon name="calendar" style={{ width: 30, height: 30, color: 'var(--ink-3)', margin: '0 auto 10px', display: 'block' }} />
+        <p style={{ fontSize: 14, maxWidth: 440, margin: '0 auto', lineHeight: 1.5 }}>No first-week agenda yet. Once your manager publishes your schedule, your shifts and day-by-day plan will show up here.</p>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
         <button className="btn btn-primary btn-lg" onClick={onComplete}><Icon name="check" /> Looks good</button>

@@ -59,12 +59,13 @@ function SSNField({ value, onChange }) {
   );
 }
 
-function ProfileStep({ onBack, onComplete }) {
+function ProfileStep({ me, onBack, onComplete }) {
+  const nh = newHireProfile(me);
   const [resume, setResume] = useState(null);
   const [dob, setDob] = useState('');
   const [ssn, setSsn] = useState('');
-  const [wi, setWi] = useState('2026-06-05');
-  const [orient, setOrient] = useState('2026-06-19');
+  const [wi, setWi] = useState('');
+  const [orient, setOrient] = useState('');
   const ssnOk = ssn.replace(/\D/g, '').length === 9;
   const ready = resume && dob && ssnOk;
 
@@ -79,7 +80,7 @@ function ProfileStep({ onBack, onComplete }) {
           <h3 style={{ fontSize: 16.5, marginBottom: 4 }}>Personal information</h3>
           <p style={{ color: 'var(--ink-3)', fontSize: 13, marginBottom: 18 }}>Used for payroll, benefits, and your I-9.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Lbl label="Legal name"><input value={NEW_HIRE.name} readOnly style={{ ...inp, background: 'var(--surface-2)', color: 'var(--ink-2)' }} /></Lbl>
+            <Lbl label="Legal name"><input value={nh.name} readOnly style={{ ...inp, background: 'var(--surface-2)', color: 'var(--ink-2)' }} /></Lbl>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Lbl label="Date of birth" req><input type="date" value={dob} onChange={e => setDob(e.target.value)} style={inp} /></Lbl>
               <Lbl label="Social Security #" req hint="Encrypted · used for tax & I-9"><SSNField value={ssn} onChange={setSsn} /></Lbl>
@@ -99,7 +100,7 @@ function ProfileStep({ onBack, onComplete }) {
             <Lbl label="Start date">
               <div style={{ ...inp, display: 'flex', alignItems: 'center', gap: 9, background: 'var(--surface-2)' }}>
                 <Icon name="calendar" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-                <span style={{ fontWeight: 600 }}>Mon, Jun 22, 2026</span>
+                <span style={{ fontWeight: 600 }}>{nh.startDate || 'To be set by HR'}</span>
                 <span className="badge badge-prog" style={{ marginLeft: 'auto' }}>HR-set</span>
               </div>
             </Lbl>

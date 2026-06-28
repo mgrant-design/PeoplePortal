@@ -33,7 +33,7 @@ function AddHire({ offices, onCreate, onBack, apiMode = true }) {
         <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)' }}>
           <h3 style={{ fontSize: 15.5, marginBottom: 16 }}>Who are we onboarding?</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <F label="Full name" req><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Jordan Avery" style={fld} /></F>
+            <F label="Full name" req><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="First and last name" style={fld} /></F>
             <F label="Job title" req><input value={f.jobTitle} onChange={e => set('jobTitle', e.target.value)} placeholder="e.g. Dental Hygienist" style={fld} /></F>
             <F label="Personal email" req hint="The agent reaches out here first"><input value={f.personalEmail} onChange={e => set('personalEmail', e.target.value)} placeholder="jordan@gmail.com" style={fld} /></F>
             <F label="Mobile" req hint="For the welcome text + reminders"><input value={f.mobile} onChange={e => set('mobile', e.target.value)} placeholder="(631) 555-0199" style={fld} /></F>
