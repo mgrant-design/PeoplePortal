@@ -37,6 +37,9 @@
        Blank = sign-in shows a "not configured" notice. -->
   <script>window.PD_AUTH = { googleClientId: '754040134895-71g5l7sv85t5ihl8hp75a2fb8jvpdqqu.apps.googleusercontent.com' };</script>
   <script type="text/babel" src="rbac.jsx"></script>
+  <!-- Client persistence for shared org-config (offices/departments/titles/managers/users/
+       offboarding) → /api/orgconfig (Cosmos appState). Depends on window.HR from rbac.jsx. -->
+  <script type="text/babel" src="orgconfig.jsx"></script>
   <script type="text/babel" src="hrseed.jsx"></script>
   <script type="text/babel" src="login.jsx"></script>
 

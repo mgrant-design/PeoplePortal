@@ -1,15 +1,15 @@
 /* offices.jsx — view all offices + add a new one. Headcount per office from live data. */
 
 function Offices({ access }) {
-  const seed = useMemo(() => (window.HR.offices || []).map(o => ({ ...o })), []);
-  const [offices, setOffices] = useState(seed);
+  // Offices persist to Cosmos (appState/roster-support) via /api/orgconfig.
+  const [offices, saveOffices, saveStatus] = useOrgSection('offices');
   const [adding, setAdding] = useState(false);
   const counts = useMemo(() => { const m = {}; EMPLOYEES.forEach(e => { if (e.status === 'Active') m[e.loc] = (m[e.loc] || 0) + 1; }); return m; }, []);
   const canEdit = access.caps.manageUsers || access.caps.viewAll;
 
   const [nf, setNf] = useState({ name: '', address: '', city: '', state: 'NY', zip: '', phone: '', email: '' });
   const setF = (k, v) => setNf(s => ({ ...s, [k]: v }));
-  const add = () => { setOffices(o => [...o, { id: 'new' + Date.now(), ...nf }]); setNf({ name: '', address: '', city: '', state: 'NY', zip: '', phone: '', email: '' }); setAdding(false); };
+  const add = () => { saveOffices([...offices, { id: 'new' + Date.now(), ...nf }]); setNf({ name: '', address: '', city: '', state: 'NY', zip: '', phone: '', email: '' }); setAdding(false); };
 
   const fld2 = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
 
@@ -20,7 +20,13 @@ function Offices({ access }) {
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Offices</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{offices.length} locations · {Object.values(counts).reduce((a, b) => a + b, 0)} active staff across all offices</p>
         </div>
-        {canEdit && <button className="btn btn-primary" onClick={() => setAdding(a => !a)}><Icon name="plus" /> Add office</button>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {saveStatus === 'saving' && <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Saving…</span>}
+          {saveStatus === 'saved' && <span className="mono" style={{ fontSize: 12, color: 'var(--accent-strong)' }}><Icon name="check" style={{ width: 13, height: 13 }} /> Saved</span>}
+          {saveStatus === 'conflict' && <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Reload — changed elsewhere</span>}
+          {saveStatus === 'error' && <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Saved locally</span>}
+          {canEdit && <button className="btn btn-primary" onClick={() => setAdding(a => !a)}><Icon name="plus" /> Add office</button>}
+        </div>
       </div>
 
       {adding && (
