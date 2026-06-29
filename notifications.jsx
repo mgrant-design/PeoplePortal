@@ -132,7 +132,7 @@ function NotificationsPanel({ me, access, onClose, flash }) {
   const sndNames = window.PDSound ? window.PDSound.names() : ['Sound 1', 'Sound 2'];
   const pickSnd = (n) => { if (!window.PDSound) return; window.PDSound.setMuted(false); window.PDSound.setChoice(me.id, n); setSndMuted(false); setSndChoice(n); window.PDSound.preview(n); };
   const toggleSndMute = () => { if (!window.PDSound) return; const m = !sndMuted; window.PDSound.setMuted(m); setSndMuted(m); };
-  const sndCirc = (active) => ({ width: 26, height: 26, borderRadius: '50%', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--line)'), background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-3)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, lineHeight: 1, flex: 'none' });
+  const sndCirc = (active) => ({ width: 26, height: 26, borderRadius: '50%', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--line)'), background: active ? 'var(--accent)' : 'var(--surface)', color: active ? 'var(--on-accent)' : 'var(--ink-3)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, lineHeight: 1, flex: 'none' });
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
   const isHR = access.flags.isHR || access.caps.viewAll;
   const locs = Object.keys(openByOffice);
