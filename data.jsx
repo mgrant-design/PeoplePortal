@@ -236,10 +236,31 @@ async function publishSchedule(body) {
   return res.json();
 }
 
+/* ---- coverage requirements API (talks to the /api/coverage Function) ----
+   Per-office weekday/weekend role→count targets. Outside production (sandbox)
+   there is no /api, so these reject and callers fall back to empty config. */
+async function fetchCoverage(office) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const qs = office ? '?office=' + encodeURIComponent(office) : '';
+  const res = await fetch('/api/coverage' + qs, { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('coverage read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.coverage || [];
+}
+async function saveCoverage(body) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/coverage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('save failed (' + res.status + ')')); }
+  return res.json();
+}
+
 /* ---- time-off persistence API (talks to the /api/timeoff Function) ---- */
 async function fetchTimeoff() {
   const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/timeoff', { headers: { 'X-Google-Token': token } });
   if (!res.ok) throw new Error('timeoff read failed (' + res.status + ')');
   const data = await res.json();
   return data.requests || [];
@@ -258,4 +279,5 @@ async function timeoffAction(body) {
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
+  fetchCoverage, saveCoverage,
 });

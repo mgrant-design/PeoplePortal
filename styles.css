@@ -4,7 +4,7 @@
    [data-style] and --accent-hue on :root.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:ital,wght@0,300..800;1,400..600&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital,wght@0,400..700;1,400..600&family=DM+Serif+Display:ital@0;1&family=Sacramento&family=Varela+Round&family=Space+Mono:wght@400;700&family=Archivo+Black&family=Archivo:ital,wght@0,400..800;1,400..700&family=Patrick+Hand&family=Nunito:ital,wght@0,400..800;1,400..600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Anton&family=Cinzel+Decorative:wght@400;700&family=Handjet:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Jost:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..600&family=Manrope:wght@400;500;600;700&family=Great+Vibes&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 :root {
   --accent-hue: 220;          /* tweakable */
@@ -187,10 +187,13 @@ button { font-family: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.03em; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-/* Sweet's script has a small x-height — scale it up (font-size-adjust keeps the size
-   hierarchy) and keep heading weight bold so headers still read as headers. */
-[data-font="sweet"] :is(h1, h2, h3, .brand) { font-size-adjust: 0.5; }
+/* Sweet's script (Mea Culpa) has a tiny x-height — scale it up so the size hierarchy
+   holds. No faux-weight: the unedited single-weight face reads best on the dashboard. */
+[data-font="sweet"] :is(h1, h2, h3, h4, .brand) { font-size-adjust: 0.5; }
 [data-font="sweet"] .brand small { margin-top: 9px; }
+/* Noir's display (Cinzel Decorative) is ornamental with tight spacing — generous
+   tracking keeps double-O and swashy pairs from crowding/overlapping in headers. */
+[data-font="noir"] :is(h1, h2, h3, h4, .brand) { letter-spacing: 0.10em; }
 /* Bold: no lowercase anywhere — force uppercase on every element (buttons/inputs
    don't reliably inherit text-transform, which left them lowercase). */
 [data-font="bold"] .app, [data-font="bold"] .app * { text-transform: uppercase; }

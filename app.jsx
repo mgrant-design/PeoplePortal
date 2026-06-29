@@ -149,6 +149,8 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   const [notifReqs, setNotifReqs] = useState([]);
   const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
   useEffect(() => { refreshNotifs(); }, [me.id]);
+  // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
+  useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
   const notifN = (typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
@@ -220,6 +222,12 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   const stepProps = { me, onBack: () => go('onboarding'), onComplete: () => completeTask(view) };
   const [navMenu, setNavMenu] = useState(null);
   const [asstOpen, setAsstOpen] = useState(false);
+  // Nav dropdowns open on hover (desktop) and stay clickable for touch. A short
+  // close delay bridges the small gap between the button and its menu so moving
+  // the pointer across it doesn't dismiss the menu.
+  const navTimer = useRef(null);
+  const openNav = (id) => { if (navTimer.current) { clearTimeout(navTimer.current); navTimer.current = null; } setNavMenu(id); };
+  const closeNavSoon = () => { if (navTimer.current) clearTimeout(navTimer.current); navTimer.current = setTimeout(() => setNavMenu(null), 160); };
   // Close an open nav dropdown on any click outside a .navgroup (no overlay element,
   // so the menu's own buttons stay clickable).
   useEffect(() => {
@@ -306,7 +314,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
             if (!kids.length) return null;
             const groupActive = kids.some(c => navActive(c.id));
             const open = navMenu === g.id;
-            return <div className="navgroup" key={g.id}>
+            return <div className="navgroup" key={g.id} onMouseEnter={() => openNav(g.id)} onMouseLeave={closeNavSoon}>
               <button className={groupActive ? 'active' : ''} aria-expanded={open} onClick={() => setNavMenu(open ? null : g.id)}>{g.label}<CaretIcon /></button>
               {open && <div className="navgroup-menu fade-in">
                 {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(c.id); }}>{navLabel(c)}</button>)}

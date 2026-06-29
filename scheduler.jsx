@@ -34,8 +34,9 @@ function schedTeam(loc) {
     .map(e => { const role = schedRoleFor(e); return { id: e.id, name: e.name, role, color: SCHED_ROLE_HUE[role] || 210, skills: [] }; });
 }
 
-function reqsFor(loc, dayIdx) {
-  return dayIdx >= 5 ? (WEEKEND_REQS[loc] || {}) : (COVERAGE_REQS[loc] || {});
+function reqsFor(cfg, dayIdx) {
+  if (!cfg) return {};
+  return dayIdx >= 5 ? (cfg.weekend || {}) : (cfg.weekday || {});
 }
 
 function ShiftChip({ tpl, draftFlag, open, draggable, onDragStart, onRemove, onAssign }) {
@@ -69,6 +70,8 @@ function Scheduler({ onBack }) {
   const [assignFor, setAssignFor] = useState(null); // {day, id}
   const [picked, setPicked] = useState(null); // tap-to-move: {kind:'tpl'|'mv', tpl?, from?}
   const [toast, setToast] = useState(null);
+  const [coverageCfg, setCoverageCfg] = useState({ weekday: {}, weekend: {} });
+  const [covOpen, setCovOpen] = useState(false);
   const tplById = useMemo(() => Object.fromEntries(SHIFT_TEMPLATES.map(t => [t.id, t])), []);
   const isAll = location === 'All locations';
   const team = useMemo(() => isAll ? [] : schedTeam(location), [location, isAll]);
@@ -81,6 +84,17 @@ function Scheduler({ onBack }) {
     fetchSchedules({ office: location, weekKey: WEEK_KEY })
       .then(list => { if (cancelled) return; const doc = list[0]; if (doc) { setCells(doc.cells || {}); setOpen(doc.open || {}); } })
       .catch(() => { /* no /api in sandbox — stay empty */ });
+    return () => { cancelled = true; };
+  }, [location, isAll]);
+
+  // Load this office's coverage requirements from Cosmos (falls back to the seed/empty).
+  useEffect(() => {
+    if (isAll) { setCoverageCfg({ weekday: {}, weekend: {} }); return; }
+    let cancelled = false;
+    setCoverageCfg({ weekday: COVERAGE_REQS[location] || {}, weekend: WEEKEND_REQS[location] || {} });
+    fetchCoverage(location)
+      .then(list => { if (cancelled) return; const doc = list[0]; if (doc) setCoverageCfg({ weekday: doc.weekday || {}, weekend: doc.weekend || {} }); })
+      .catch(() => { /* no /api in sandbox — keep seed */ });
     return () => { cancelled = true; };
   }, [location, isAll]);
 
@@ -139,9 +153,26 @@ function Scheduler({ onBack }) {
   const publish = () => {
     const published = Object.fromEntries(Object.entries(cells).map(([k, v]) => [k, { ...v, status: 'published' }]));
     setCells(published); setDirty(false); setPicked(null);
-    publishSchedule({ office: location, weekKey: WEEK_KEY, cells: published, open })
-      .then(() => flash('Schedule published & saved.'))
+    const templates = Object.fromEntries(SHIFT_TEMPLATES.map(t => [t.id, { hours: shiftHours(t) }]));
+    publishSchedule({ office: location, weekKey: WEEK_KEY, cells: published, open, templates })
+      .then((res) => {
+        const n = res && res.notify;
+        const parts = [];
+        if (n && !n.simulated) {
+          if (n.gchat) parts.push('Google Chat');
+          if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`);
+        }
+        // Truthful: only claim a notification when one actually went out.
+        flash(parts.length ? `Schedule published & saved — team notified via ${parts.join(' + ')}.` : 'Schedule published & saved.');
+      })
       .catch((e) => flash('Published on screen, but the server save failed: ' + e.message));
+  };
+
+  const saveCov = (next) => {
+    setCoverageCfg(next); setCovOpen(false);
+    saveCoverage({ office: location, weekday: next.weekday, weekend: next.weekend })
+      .then(() => flash('Coverage requirements saved for ' + location + '.'))
+      .catch((e) => flash('Saved on screen, but the server save failed: ' + e.message));
   };
   const applyCopy = () => { setCopyOpen(false); flash('Nothing to copy yet — saved schedules arrive with persistence.'); };
   const clearWeek = () => { setCells({}); setCopyOpen(false); setDirty(true); setOpen({}); flash('Week cleared.'); };
@@ -150,7 +181,7 @@ function Scheduler({ onBack }) {
     setCells(c => {
       const next = { ...c };
       WEEK_DAYS.forEach((_, d) => {
-        const req = reqsFor(location, d);
+        const req = reqsFor(coverageCfg, d);
         Object.entries(req).forEach(([role, need]) => {
           let have = team.filter(u => u.role === role && next[`${u.id}|${d}`]).length;
           const cands = team.filter(u => u.role === role && !next[`${u.id}|${d}`]).sort((a, b) => (b.skills ? b.skills.length : 0) - (a.skills ? a.skills.length : 0));
@@ -177,14 +208,14 @@ function Scheduler({ onBack }) {
   }, [cells, team]);
 
   const dayGaps = WEEK_DAYS.map((_, d) => {
-    const req = reqsFor(location, d); let gap = 0;
+    const req = reqsFor(coverageCfg, d); let gap = 0;
     Object.entries(req).forEach(([r, need]) => { gap += Math.max(0, need - (coverage[r] ? coverage[r][d] : 0)); });
     return gap;
   });
   const totalShifts = Object.keys(cells).length;
   const totalHours = Math.round(Object.values(cells).reduce((s, c) => s + shiftHours(tplById[c.tpl]), 0));
   const totalGaps = dayGaps.reduce((a, b) => a + b, 0);
-  const rolesForLoc = SCHED_ROLES.filter(r => team.some(u => u.role === r) || (COVERAGE_REQS[location] || {})[r]);
+  const rolesForLoc = SCHED_ROLES.filter(r => team.some(u => u.role === r) || (coverageCfg.weekday || {})[r] || (coverageCfg.weekend || {})[r]);
 
   const colTemplate = `184px repeat(${WEEK_DAYS.length}, minmax(96px, 1fr))`;
 
@@ -194,6 +225,7 @@ function Scheduler({ onBack }) {
       onBack={onBack}
       aside={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!isAll && <button className="btn btn-ghost" onClick={() => setCovOpen(true)} title="Set required staff per role for this office"><Icon name="users" /> Coverage</button>}
           <button className="btn btn-ghost" onClick={smartFill} title="Auto-fill role coverage using skills"><Icon name="sparkle" /> Smart fill</button>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-ghost" onClick={() => setCopyOpen(o => !o)}><Icon name="refresh" /> Copy <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(90deg)' }} /></button>
@@ -293,7 +325,7 @@ function Scheduler({ onBack }) {
             <div style={{ display: 'grid', gridTemplateColumns: colTemplate, borderBottom: '2px solid var(--line)', background: 'oklch(0.985 0.006 230)' }}>
               <div style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'flex', alignItems: 'center' }}>Coverage</div>
               {WEEK_DAYS.map((_, di) => {
-                const req = reqsFor(location, di);
+                const req = reqsFor(coverageCfg, di);
                 return (
                   <div key={di} style={{ padding: '6px 5px', borderLeft: '1px solid var(--line-soft)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {rolesForLoc.map(r => {
@@ -387,12 +419,76 @@ function Scheduler({ onBack }) {
       </p>
       </>}
 
+      {covOpen && !isAll && (
+        <CoverageModal location={location} cfg={coverageCfg} roles={SCHED_ROLES} onSave={saveCov} onClose={() => setCovOpen(false)} />
+      )}
+
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
           <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
         </div>
       )}
     </StepShell>
+  );
+}
+
+function CoverageModal({ location, cfg, roles, onSave, onClose }) {
+  const [draft, setDraft] = useState(() => ({
+    weekday: { ...(cfg.weekday || {}) },
+    weekend: { ...(cfg.weekend || {}) },
+  }));
+  const set = (kind, role, v) => {
+    const n = Math.max(0, Math.min(20, Math.round(Number(v) || 0)));
+    setDraft(d => {
+      const grp = { ...d[kind] };
+      if (n > 0) grp[role] = n; else delete grp[role];
+      return { ...d, [kind]: grp };
+    });
+  };
+  const Stepper = ({ kind, role }) => {
+    const val = draft[kind][role] || 0;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+        <button onClick={() => set(kind, role, val - 1)} disabled={val <= 0} className="btn btn-quiet" style={{ width: 28, height: 28, padding: 0, justifyContent: 'center', opacity: val <= 0 ? 0.4 : 1 }}><Icon name="x" style={{ width: 11, height: 11, transform: 'rotate(45deg)' }} /></button>
+        <input value={val} onChange={e => set(kind, role, e.target.value)} inputMode="numeric"
+          className="mono" style={{ width: 42, textAlign: 'center', padding: '6px 4px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 14, fontWeight: 700, background: 'var(--surface)' }} />
+        <button onClick={() => set(kind, role, val + 1)} className="btn btn-quiet" style={{ width: 28, height: 28, padding: 0, justifyContent: 'center' }}><Icon name="plus" style={{ width: 12, height: 12 }} /></button>
+      </div>
+    );
+  };
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
+      <div className="card fade-in" role="dialog" aria-modal="true"
+        style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(540px, 92vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Coverage requirements</div>
+              <h3 style={{ fontSize: 18, margin: '3px 0 0' }}>{location}</h3>
+            </div>
+            <button onClick={onClose} className="btn btn-quiet" style={{ width: 32, height: 32, padding: 0, justifyContent: 'center', flex: 'none' }}><Icon name="x" style={{ width: 15, height: 15 }} /></button>
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 8, lineHeight: 1.5 }}>Minimum staff per role. A day shows a gap until it's met; Smart fill targets these numbers. Saved per office.</p>
+        </div>
+        <div style={{ padding: '6px 22px 18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', alignItems: 'center', gap: '0 14px', padding: '10px 0 8px', borderBottom: '1px solid var(--line)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
+            <span>Role</span><span style={{ textAlign: 'center' }}>Mon–Fri</span><span style={{ textAlign: 'center' }}>Sat / Sun</span>
+          </div>
+          {roles.map(r => (
+            <div key={r} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', alignItems: 'center', gap: '0 14px', padding: '11px 0', borderBottom: '1px solid var(--line-soft)' }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{r}</span>
+              <Stepper kind="weekday" role={r} />
+              <Stepper kind="weekend" role={r} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 22px 18px', borderTop: '1px solid var(--line)' }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={() => onSave(draft)} className="btn btn-primary"><Icon name="check" /> Save coverage</button>
+        </div>
+      </div>
+    </>
   );
 }
 

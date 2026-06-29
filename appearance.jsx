@@ -12,12 +12,12 @@ const ACCENTS = [
 
 /* Font pairings [id, display, body, label] — previewed in their own type. */
 const FONTS = [
-  ['modern', 'Bricolage Grotesque', 'Hanken Grotesk', 'Clean'],
-  ['editorial', 'DM Serif Display', 'Lora', 'Editorial'],
-  ['sweet', 'Sacramento', 'Varela Round', 'Sweet'],
-  ['terminal', 'Space Mono', 'JetBrains Mono', 'Terminal'],
-  ['bold', 'Archivo Black', 'Archivo', 'Bold'],
-  ['playful', 'Patrick Hand', 'Nunito', 'Playful'],
+  ['modern', 'IBM Plex Sans', 'IBM Plex Sans', 'Clean'],
+  ['editorial', 'Abril Fatface', 'Lora', 'Editorial'],
+  ['sweet', 'Great Vibes', 'Jost', 'Sweet'],
+  ['terminal', 'Handjet', 'IBM Plex Mono', 'Terminal'],
+  ['bold', 'Anton', 'Manrope', 'Bold'],
+  ['noir', 'Cinzel Decorative', 'Spectral', 'Noir'],
 ];
 
 function loadAppearance(empId) {
@@ -61,7 +61,7 @@ function applyAppearance(p) {
   r.style.setProperty('--tint-mult', washed ? (levelMult * aS * cmul) : 1);
   r.style.setProperty('--ink-tint', heavy ? (a.dark ? 0.035 : 0.05) : (a.tint === 'tinted' ? (a.dark ? 0.015 : 0.022) : 0));
   r.style.setProperty('--paper-l', 0);
-  const f = (typeof FONTS !== 'undefined' ? FONTS.find(x => x[0] === a.font) : null) || ['modern', 'Bricolage Grotesque', 'Hanken Grotesk'];
+  const f = (typeof FONTS !== 'undefined' ? FONTS.find(x => x[0] === a.font) : null) || ['modern', 'IBM Plex Sans', 'IBM Plex Sans'];
   r.style.setProperty('--font-display', `'${f[1]}', system-ui, sans-serif`);
   r.style.setProperty('--font-body', `'${f[2]}', system-ui, sans-serif`);
   r.setAttribute('data-font', a.font || 'modern');
@@ -91,17 +91,26 @@ function AppSeg({ label, value, options, onChange }) {
 
 function AppearanceMenu({ me, onClose }) {
   const [p, setP] = useState(() => loadAppearance(me.id));
-  const [colorChanges, setColorChanges] = useState(() => { try { return (+localStorage.getItem('pd_color_changes')) || 0; } catch (e) { return 0; } });
   const [advOpen, setAdvOpen] = useState(false);
-  const set = (k, v) => { const next = { ...p, [k]: v }; setP(next); applyAppearance(next); saveAppearance(me.id, next); if (typeof pushSettings === 'function') pushSettings(next).catch(() => {}); };
-  const bumpColors = () => { setColorChanges(n => { const v = n + 1; try { localStorage.setItem('pd_color_changes', v); } catch (e) {} return v; }); };
+  // Snarky nudge: fires after every 10 option-clicks in the panel OR every 5 color
+  // changes. Once it shows it lingers for exactly one more click, then the cycle resets.
+  const clicksRef = React.useRef(0);
+  const colorRef = React.useRef((() => { try { return (+localStorage.getItem('pd_color_changes')) || 0; } catch (e) { return 0; } })());
+  const [snarky, setSnarky] = useState(false);
+  const bump = (isColor) => {
+    if (snarky) { setSnarky(false); clicksRef.current = 0; colorRef.current = 0; try { localStorage.setItem('pd_color_changes', 0); } catch (e) {} return; }
+    clicksRef.current += 1;
+    if (isColor) { colorRef.current += 1; try { localStorage.setItem('pd_color_changes', colorRef.current); } catch (e) {} }
+    if (clicksRef.current % 10 === 0 || (isColor && colorRef.current % 5 === 0)) setSnarky(true);
+  };
+  const set = (k, v) => { const next = { ...p, [k]: v }; setP(next); applyAppearance(next); saveAppearance(me.id, next); if (typeof pushSettings === 'function') pushSettings(next).catch(() => {}); bump(false); };
   const setMany = (obj) => { const next = { ...p, ...obj }; setP(next); applyAppearance(next); saveAppearance(me.id, next); if (typeof pushSettings === 'function') pushSettings(next).catch(() => {}); };
   const drag = React.useRef(null);
   const swatchDown = (hue, e) => {
     const startSat = p.accentHue === hue ? (p.accentSat || 1) : 1;
     drag.current = { hue, startY: e.clientY, startSat };
     setMany({ accentHue: hue, accentSat: startSat });
-    bumpColors();
+    bump(true);
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
   };
   const swatchMove = (e) => {
@@ -118,7 +127,7 @@ function AppearanceMenu({ me, onClose }) {
       <div onClick={e => e.stopPropagation()} className="fade-in cust-menu"
         style={{ position: 'fixed', top: 64, left: 'clamp(12px, 2vw, 22px)', width: 'min(320px, 92vw)', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.16), 0 30px 70px rgba(0,0,0,0.2)', padding: 16, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', scrollbarWidth: 'none' }}>
         <div style={{ position: 'relative', marginBottom: 14 }}>
-          {(() => { const snarky = colorChanges > 10 && colorChanges <= 12; return <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: snarky ? 13 : 19, lineHeight: 1.25, textAlign: 'center', padding: '0 22px' }}>{snarky ? 'Interaction with this easter egg is monitored; Please choose a color already!' : 'Customization'}</div>; })()}
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.25, textAlign: 'center', padding: '0 22px' }}>{snarky ? 'Indecisive, huh?' : 'Customization'}</div>
           <button onClick={onClose} style={{ position: 'absolute', top: -3, right: -3, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}><Icon name="x" style={{ width: 16, height: 16 }} /></button>
         </div>
 

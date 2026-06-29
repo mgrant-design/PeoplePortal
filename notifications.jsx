@@ -9,6 +9,79 @@ function saveTimeoff(t) { try { localStorage.setItem('pd_timeoff', JSON.stringif
 function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
 const TO_STATUS = { hr_review: ['badge-prog', 'With HR · balance check'], mgr_review: ['badge-warn', 'With manager'], approved: ['badge-ok', 'Approved'], denied: ['badge-todo', 'Denied'], insufficient: ['badge-todo', 'Not enough balance'] };
 
+/* Empty-state: no "0 notifications" noise — just a soft, satisfied kaomoji that
+   quietly exhales. Lines pick at random (never the same twice in a row) and start
+   on a fresh one every time the panel reopens, so it never feels like a fixed loop.
+   Color is mixed only 20% toward ink from the panel background — present but barely
+   there. A breath-pause between fades keeps it calm, not blinky. */
+const ZEN_LINES = [
+  { face: '(っ˘ ³˘)っ ♡', msg: 'all caught up' },
+  { face: '( ˶• ᵕ •˶ )', msg: 'nothing needs you right now' },
+  { face: '(っ˘ω˘ς )', msg: 'quiet everywhere — phew' },
+  { face: '( ˶ᵔ ᵕ ᵔ˶ )', msg: "you're all clear" },
+  { face: '( ´ ˘ ` )ﾉ゛', msg: 'smooth sailing' },
+  { face: '( ˶˘ ᵕ ˘˶ )', msg: 'inbox at peace' },
+  { face: '( ˶ˆ ꒳ ˆ˵ )', msg: 'all tidy' },
+  { face: '✧ ( ˶• ᵕ •˶ ) ✧', msg: 'sparkling clean' },
+  { face: '(っ ˶• ᵕ •˶ )っ', msg: 'easy breezy' },
+  { face: '( ´ - ᵕ - ` )', msg: 'taking a breather' },
+  { face: '( ˶• ‿ •˶ )', msg: 'calm and clear' },
+  { face: '＼( ˶• ᵕ •˶ )／', msg: 'nothing on the list' },
+  { face: '＼( ˶ˆ ᵕ ˆ˶ )／', msg: 'huzzah!' },
+  { face: '＼( ˶> ᵕ <˶ )／', msg: 'caught up, woo' },
+  { face: '( ˶ᵔ ‿ ᵔ˶ )', msg: 'all settled' },
+  { face: '·˚ ✧ ( ˶• ᵕ •˶ ) ✧ ˚·', msg: 'pristine' },
+  { face: '( ˘ ω ˘ )ｽﾔ', msg: 'resting easy' },
+  { face: '( ˶• ᴗ •˶ )b', msg: 'handled' },
+  { face: '(づ ´ ᵕ ` )づ', msg: 'soft and silent' },
+  { face: '˚ ✧ ( ˶˃ ᵕ ˂˶ ) ✧ ˚', msg: 'shiny and done' },
+  { face: '( ´ ˘ ` )づ', msg: 'sending calm' },
+  { face: '( ˶ˆ ‿ ˆ˶ )', msg: 'at ease' },
+  { face: '( ˶ˆ ᵕ ˆ˶ )♡', msg: 'content' },
+  { face: '＼( ´ ᵕ ` )／', msg: 'free as a breeze' },
+  { face: '( ｡ᵕ ‿ ᵕ ｡)', msg: 'light as air' },
+  { face: '✦ ( ˶• ﻌ •˶ ) ✦', msg: 'all quiet on deck' },
+  { face: '( ´ ◡ ` )つ', msg: 'clear skies' },
+  { face: '( ˙ ᵕ ˙ )', msg: 'nothing pending' },
+  { face: '｡ ✧ ( ˶˘ ᵕ ˘˶ ) ✧ ｡', msg: 'peaceful' },
+  { face: '(っ ˶ˆ ᵕ ˆ˶ )っ ♡', msg: 'phew, all done' },
+];
+
+function ZenEmpty({ isMgr, onRequest }) {
+  const [i, setI] = useState(() => Math.floor(Math.random() * ZEN_LINES.length));
+  const [show, setShow] = useState(true);
+  useEffect(() => {
+    let outT, swapT;
+    const loop = () => {
+      // hold the current line ~15s, fade it out, breathe, then fade in a fresh one
+      outT = setTimeout(() => {
+        setShow(false);
+        swapT = setTimeout(() => {
+          setI(v => { let n = v; while (n === v && ZEN_LINES.length > 1) n = Math.floor(Math.random() * ZEN_LINES.length); return n; });
+          setShow(true);
+          loop();
+        }, 1500);  // 0.8s fade-out + ~0.7s calm pause before the next appears
+      }, 15000);
+    };
+    loop();
+    return () => { clearTimeout(outT); clearTimeout(swapT); };
+  }, []);
+  const soft = 'color-mix(in oklch, var(--surface), var(--ink) 20%)';
+  const softer = 'color-mix(in oklch, var(--surface), var(--ink) 28%)';
+  const cur = ZEN_LINES[i];
+  return (
+    <div style={{ margin: 'auto', textAlign: 'center', padding: '24px 20px', userSelect: 'none', maxWidth: 300 }}>
+      <div style={{ opacity: show ? 1 : 0, transition: 'opacity .8s ease' }}>
+        <div style={{ fontSize: 30, letterSpacing: '.03em', color: soft, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{cur.face}</div>
+        <div style={{ fontSize: 13, marginTop: 13, color: soft, fontWeight: 500, letterSpacing: '.01em' }}>{cur.msg}</div>
+      </div>
+      {!isMgr && (
+        <button onClick={onRequest} style={{ marginTop: 24, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>request time off</button>
+      )}
+    </div>
+  );
+}
+
 function scopedRequests(all, me, access) {
   if (access.caps.viewAll) return all;
   if (access.caps.viewTeam) return all.filter(r => r.loc === me.loc);
@@ -54,11 +127,18 @@ function NotificationsPanel({ me, access, onClose, flash }) {
   const [reqs, setReqs] = useState(loadTimeoff);
   const [openByOffice, setOpenByOffice] = useState({});
   const [adding, setAdding] = useState(false);
+  const [sndChoice, setSndChoice] = useState(() => (window.PDSound ? window.PDSound.getChoice(me.id) : 1));
+  const [sndMuted, setSndMuted] = useState(() => (window.PDSound ? window.PDSound.isMuted() : false));
+  const sndNames = window.PDSound ? window.PDSound.names() : ['Sound 1', 'Sound 2'];
+  const pickSnd = (n) => { if (!window.PDSound) return; window.PDSound.setMuted(false); window.PDSound.setChoice(me.id, n); setSndMuted(false); setSndChoice(n); window.PDSound.preview(n); };
+  const toggleSndMute = () => { if (!window.PDSound) return; const m = !sndMuted; window.PDSound.setMuted(m); setSndMuted(m); };
+  const sndCirc = (active) => ({ width: 26, height: 26, borderRadius: '50%', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--line)'), background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-3)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, lineHeight: 1, flex: 'none' });
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
   const isHR = access.flags.isHR || access.caps.viewAll;
   const locs = Object.keys(openByOffice);
   const myScope = scopedRequests(reqs, me, access);
   const actionable = myScope.filter(r => (isHR && r.status === 'hr_review') || (isMgr && r.status === 'mgr_review'));
+  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0;
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
 
@@ -114,10 +194,19 @@ function NotificationsPanel({ me, access, onClose, flash }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
           <Icon name="bell" style={{ width: 19, height: 19, color: 'var(--accent)' }} />
           <h2 style={{ fontSize: 18, flex: 1 }}>Notifications</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 4 }}>
+            {[1, 2].map(n => (
+              <button key={n} onClick={() => pickSnd(n)} aria-label={sndNames[n - 1] || ('Sound ' + n)} style={sndCirc(!sndMuted && sndChoice === n)}>{n}</button>
+            ))}
+            <button onClick={toggleSndMute} aria-label={sndMuted ? 'Unmute notifications' : 'Mute notifications'} style={sndCirc(sndMuted)}>
+              <svg viewBox="0 0 20 20" style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h2.5L10 5v10L6.5 12H4z" /><path d="M13.5 7.5l3.5 5M17 7.5l-3.5 5" /></svg>
+            </button>
+          </div>
           <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: fullyEmpty && !adding ? 'flex' : 'block' }}>
+          {fullyEmpty && !adding ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} /> : <>
           {/* open shifts — managers/HR */}
           {isMgr && (
             <div style={{ marginBottom: 24 }}>
@@ -193,6 +282,7 @@ function NotificationsPanel({ me, access, onClose, flash }) {
               ); })}
             </div>
           </div>
+          </>}
         </div>
       </div>
     </div>

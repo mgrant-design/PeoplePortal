@@ -37,6 +37,8 @@ function MySchedule({ me }) {
   });
   const total = week.reduce((a, w) => a + msHours(w.tpl), 0);
   const hasAny = week.some(w => w.tpl);
+  const todayIdx = (new Date().getDay() + 6) % 7; // 0=Mon … 6=Sun
+  const next = week.find((w, i) => w.tpl && i >= todayIdx) || week.find(w => w.tpl);
 
   return (
     <div className="fade-in">
@@ -50,6 +52,17 @@ function MySchedule({ me }) {
         {hasAny && <span className="badge badge-ok" style={{ padding: '8px 14px' }}><Icon name="check" /> Published</span>}
       </div>
 
+      {loaded && hasAny && next && (
+        <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', display: 'flex', alignItems: 'center', gap: 16, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent)', color: '#fff' }}><Icon name="calendar" style={{ width: 24, height: 24 }} /></div>
+          <div style={{ flex: 1 }}>
+            <div className="eyebrow" style={{ marginBottom: 2 }}>Next shift</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{next.dname}, {next.dnum} · {next.tpl.start}–{next.tpl.end}</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{next.tpl.label}{me.loc ? ` · ${me.loc}` : ''}</div>
+          </div>
+        </div>
+      )}
+
       {!loaded ? (
         <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-3)' }}>Loading your schedule…</div>
       ) : !hasAny ? (
@@ -61,9 +74,9 @@ function MySchedule({ me }) {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--gap)' }}>
           {week.map((w, i) => (
-            <div key={i} className="card" style={{ padding: 'var(--pad)', textAlign: 'center', opacity: w.tpl ? 1 : 0.7 }}>
+            <div key={i} className="card" style={{ padding: 'var(--pad)', textAlign: 'center', opacity: w.tpl ? 1 : 0.7, borderColor: i === todayIdx ? 'var(--accent)' : undefined }}>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{w.dname}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 12 }}>{w.dnum}</div>
+              <div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 12 }}>{w.dnum}{i === todayIdx ? ' · today' : ''}</div>
               {!w.tpl ? (
                 <div style={{ padding: '14px 0', color: 'var(--ink-3)', fontSize: 13.5, fontWeight: 600 }}>Off</div>
               ) : (

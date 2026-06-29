@@ -51,6 +51,82 @@ function cosmos({ endpoint, key, verb, resId, path, body, partitionKey, upsert }
   });
 }
 
+/* ---- generic HTTPS POST (used for Google Chat webhooks & Twilio) ---- */
+function httpPost(urlStr, { headers = {}, body = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try { url = new URL(urlStr); } catch (e) { return reject(new Error('bad url')); }
+    const payload = typeof body === 'string' ? body : JSON.stringify(body);
+    const opts = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: { 'Content-Length': Buffer.byteLength(payload), ...headers },
+    };
+    const rq = https.request(opts, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    rq.on('error', reject);
+    rq.write(payload);
+    rq.end();
+  });
+}
+
+/* ---- publish notifications: Google Chat space + optional Twilio SMS ----
+   Both are wired only when their env vars are present; otherwise the function
+   returns a `simulated` summary so the client can be honest about what happened.
+   Never throws — a notify failure must not fail an already-saved publish. */
+async function sendPublishNotifications({ office, weekKey, publishedBy, shiftCount, hours, recipients }) {
+  const summary = { gchat: false, sms: 0, simulated: true, errors: [] };
+  const webhook = process.env.SCHEDULE_GCHAT_WEBHOOK || '';
+  const sid = process.env.TWILIO_ACCOUNT_SID || '';
+  const tok = process.env.TWILIO_AUTH_TOKEN || '';
+  const from = process.env.TWILIO_FROM || '';
+  const wired = !!(webhook || (sid && tok && from));
+  if (!wired) return summary;           // integration not wired → stay simulated
+  summary.simulated = false;
+
+  const human = `${office} — week of ${weekKey}: ${shiftCount} shift${shiftCount === 1 ? '' : 's'} (${hours} hrs) published by ${publishedBy}. View it under My schedule.`;
+
+  // Google Chat: post a simple text message to the office space's incoming webhook.
+  if (webhook) {
+    try {
+      const r = await httpPost(webhook, { headers: { 'Content-Type': 'application/json' }, body: { text: `📅 *Schedule published* — ${human}` } });
+      summary.gchat = r.status >= 200 && r.status < 300;
+      if (!summary.gchat) summary.errors.push('gchat ' + r.status);
+    } catch (e) { summary.errors.push('gchat ' + e.message); }
+  }
+
+  // Twilio SMS: text each scheduled person who has a mobile on file.
+  if (sid && tok && from && Array.isArray(recipients) && recipients.length) {
+    const auth = 'Basic ' + Buffer.from(`${sid}:${tok}`).toString('base64');
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`;
+    const text = `Your ${office} schedule for the week of ${weekKey} is published. Open the portal → My schedule.`;
+    for (const to of recipients) {
+      try {
+        const form = new URLSearchParams({ To: to, From: from, Body: text }).toString();
+        const r = await httpPost(url, { headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form });
+        if (r.status >= 200 && r.status < 300) summary.sms++;
+        else summary.errors.push('sms ' + r.status);
+      } catch (e) { summary.errors.push('sms ' + e.message); }
+    }
+  }
+  return summary;
+}
+
+/* normalize a phone number to E.164-ish; returns '' if it doesn't look textable */
+function normPhone(p) {
+  const raw = String(p || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('+')) { const d = raw.replace(/[^\d]/g, ''); return d.length >= 10 ? '+' + d : ''; }
+  const d = raw.replace(/[^\d]/g, '');
+  if (d.length === 10) return '+1' + d;
+  if (d.length === 11 && d[0] === '1') return '+' + d;
+  return '';
+}
+
 /* ---- scheduling permission, derived from the roster (compact port of rbac.jsx) ---- */
 function canSchedule(me, usersByEmail, managerEmails, employees) {
   const perms = usersByEmail[(me.workEmail || '').toLowerCase()] || {};
@@ -164,7 +240,25 @@ module.exports = async function (context, req) {
         context.res = { status: 500, headers, body: JSON.stringify({ error: 'write failed', status: up.status, detail: up.body }) };
         return;
       }
-      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, schedule: strip(up.body) }) };
+
+      /* notify the team — real Google Chat / SMS when wired, else a simulated summary.
+         Recipients: the mobiles of staff who have a shift in this published week. */
+      const scheduledIds = new Set(Object.keys(doc.cells).map(k => k.split('|')[0]));
+      const recipients = employees
+        .filter(e => scheduledIds.has(e.id))
+        .map(e => normPhone(e.mobile || e.personalPhone || e.phone || e.cell))
+        .filter(Boolean);
+      const shiftCount = Object.keys(doc.cells).length;
+      const hours = Math.round(Object.values(doc.cells).reduce((s, c) => {
+        const t = (input.templates || {})[c.tpl];
+        return s + (t && typeof t.hours === 'number' ? t.hours : 8);
+      }, 0));
+      let notify = { gchat: false, sms: 0, simulated: true, errors: [] };
+      try {
+        notify = await sendPublishNotifications({ office: doc.office, weekKey: doc.weekKey, publishedBy: identity.email, shiftCount, hours, recipients });
+      } catch (e) { notify.errors = [e.message]; }
+
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, schedule: strip(up.body), notify }) };
       return;
     }
 
