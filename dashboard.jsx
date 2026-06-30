@@ -4,10 +4,10 @@ function StatCard({ icon, label, value, sub, tone = 'accent' }) {
   const bg = tone === 'ok' ? 'var(--ok-soft)' : tone === 'warn' ? 'var(--warn-soft)' : 'var(--accent-soft)';
   const fg = tone === 'ok' ? 'oklch(0.45 0.12 155)' : tone === 'warn' ? 'oklch(0.5 0.13 60)' : 'var(--accent-strong)';
   return (
-    <div className="card" style={{ padding: 'var(--pad)' }}>
-      <div style={{ width: 38, height: 38, borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', background: bg, color: fg, marginBottom: 12 }}><Icon name={icon} style={{ width: 20, height: 20 }} /></div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 30, letterSpacing: '-0.02em' }}>{value}</div>
-      <div style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 2 }}>{label}</div>
+    <div className="card" style={{ padding: 'var(--pad)', position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 'calc(var(--pad) - 3px)', right: 'calc(var(--pad) - 3px)', width: 36, height: 36, borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', background: bg, color: fg }}><Icon name={icon} style={{ width: 19, height: 19 }} /></div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 32, letterSpacing: '-0.02em', paddingRight: 44 }}>{value}</div>
+      <div style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 5 }}>{label}</div>
       {sub && <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>{sub}</div>}
     </div>
   );
@@ -110,7 +110,7 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
         <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{access.caps.viewAll ? 'Company-wide view' : 'Your team'} · {active.length} active people</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
+      <div className="statgrid" style={{ marginBottom: 'var(--gap)' }}>
         <StatCard icon="users" label="Active team members" value={active.length} sub={`${team.length - active.length} inactive`} />
         <StatCard icon="star" label="Providers" value={providers.length} sub="NPI / DEA on file" />
         <StatCard icon="bolt" label="Onboarding in progress" value={onboarding.length} sub="accounts pending" tone="accent" />

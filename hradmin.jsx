@@ -57,7 +57,7 @@ function Reports({ access }) {
       <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>Reports</h1>
       <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 18 }}>Build headcount & workforce reports live from your HR data.</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
+      <div className="statgrid" style={{ marginBottom: 'var(--gap)' }}>
         <StatCard icon="users" label="Active employees" value={active.length} />
         <StatCard icon="star" label="Providers" value={active.filter(e => e.provider).length} tone="ok" />
         <StatCard icon="building" label="Offices" value={new Set(active.map(e => e.loc)).size} />
@@ -116,9 +116,14 @@ function Toggle({ on, onClick, disabled }) {
 
 const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['canPrint', 'Print'], ['canSuspend', 'Suspend'], ['canTerminate', 'Terminate'], ['canDelete', 'Delete']];
 
+const SAVE_LABEL = { saving: 'Saving…', saved: 'Saved', error: 'Save failed — retry', conflict: 'Someone else saved — reload' };
+
 function AdminUsers({ me, flags, flagDefs, onFlag }) {
-  const [rows, setRows] = useState(() => (window.HR.users || []).map(u => ({ ...u })));
-  const toggle = (i, col) => setRows(rs => rs.map((r, j) => j === i ? { ...r, [col]: !r[col] } : r));
+  // users persist to Cosmos (appState/roster-support) via /api/orgconfig — same hook as Offices.
+  const [rows, saveUsers, saveStatus, setRows] = useOrgSection('users');
+  const [dirty, setDirty] = useState(false);
+  const toggle = (i, col) => { setDirty(true); setRows(rs => rs.map((r, j) => j === i ? { ...r, [col]: !r[col] } : r)); };
+  const save = () => { saveUsers(rows); setDirty(false); };
   const [tab, setTab] = useState('Permissions');
   const TABS = flagDefs ? ['Permissions', 'Feature rollout'] : ['Permissions'];
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];
@@ -178,7 +183,9 @@ function AdminUsers({ me, flags, flagDefs, onFlag }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="shield" style={{ width: 14, height: 14, color: 'var(--accent)' }} /> Changes are logged. Only Admins can grant Delete.</span>
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }}><Icon name="check" /> Save changes</button>
+        {saveStatus !== 'idle' && saveStatus !== 'saved' && <span style={{ fontSize: 12.5, fontWeight: 600, color: saveStatus === 'conflict' || saveStatus === 'error' ? 'var(--danger)' : 'var(--ink-3)' }}>{SAVE_LABEL[saveStatus]}</span>}
+        {saveStatus === 'saved' && !dirty && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ok)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="check" style={{ width: 13, height: 13 }} /> Saved</span>}
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saveStatus === 'saving' || !dirty}><Icon name="check" /> {saveStatus === 'saving' ? 'Saving…' : 'Save changes'}</button>
       </div>
       </div>
       )}
@@ -186,4 +193,4 @@ function AdminUsers({ me, flags, flagDefs, onFlag }) {
   );
 }
 
-Object.assign(window, { Reports, AdminUsers });
+Object.assign(window, { Reports, AdminUsers, Toggle });

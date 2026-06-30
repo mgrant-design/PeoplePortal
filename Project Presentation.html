@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pure Dental People Portal — Project Presentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --accent: oklch(0.56 0.11 220);
+    --accent-strong: oklch(0.47 0.11 220);
+    --accent-soft: oklch(0.95 0.03 220);
+    --teal: oklch(0.55 0.09 200);
+    --teal-soft: oklch(0.95 0.035 200);
+    --ink: oklch(0.24 0.025 240);
+    --ink-2: oklch(0.45 0.022 240);
+    --ink-3: oklch(0.62 0.018 240);
+    --line: oklch(0.9 0.012 240);
+    --line-soft: oklch(0.94 0.008 240);
+    --bg: oklch(0.985 0.006 240);
+    --surface: #fff;
+    --surface-2: oklch(0.975 0.007 240);
+    --ok: oklch(0.58 0.13 155);
+    --ok-soft: oklch(0.95 0.04 155);
+    --warn: oklch(0.7 0.13 75);
+    --warn-soft: oklch(0.96 0.05 75);
+    --ink-deep: oklch(0.22 0.03 250);
+    --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+    --font-display: 'Bricolage Grotesque', 'Hanken Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #0d1420; }
+  deck-stage:not(:defined) { visibility: hidden; }
+
+  section { font-family: var(--font-body); color: var(--ink); background: var(--bg); overflow: hidden; }
+  .slide { width: 100%; height: 100%; position: relative; padding: 88px 104px; display: flex; flex-direction: column; }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
+
+  /* ---- shared chrome ---- */
+  .kicker { display: inline-flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-strong); margin-bottom: 26px; }
+  .kicker .num { font-family: var(--font-mono); }
+  .kicker::before { content: ''; width: 34px; height: 2px; background: var(--accent); }
+  .foot { position: absolute; left: 104px; right: 104px; bottom: 46px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 16px; }
+  .foot .brand-sm { display: flex; align-items: center; gap: 9px; font-weight: 600; color: var(--ink-2); }
+  .foot .brand-sm svg { width: 17px; height: 17px; color: var(--accent); }
+
+  .logo-mark { width: 64px; height: 64px; border-radius: 17px; background: linear-gradient(150deg, var(--accent), var(--teal)); display: grid; place-items: center; color: #fff; box-shadow: 0 10px 30px oklch(0.5 0.12 215 / 0.4); }
+  .logo-mark svg { width: 38px; height: 38px; }
+
+  /* ---- title slide ---- */
+  .title-slide { background: linear-gradient(160deg, #0e1827 0%, #122436 55%, #143a44 100%); color: #fff; align-items: flex-start; justify-content: center; }
+  .title-slide::after { content: ''; position: absolute; right: -180px; bottom: -180px; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, oklch(0.6 0.12 205 / 0.34), transparent 68%); }
+  .title-slide .logo-mark { width: 80px; height: 80px; border-radius: 22px; margin-bottom: 40px; }
+  .title-slide .logo-mark svg { width: 48px; height: 48px; }
+  .title-slide h1 { font-size: 96px; font-weight: 800; letter-spacing: -0.035em; width: 100%; }
+  .title-slide .tagline { font-size: 30px; color: oklch(0.86 0.03 220); margin-top: 24px; max-width: 1100px; line-height: 1.34; font-weight: 400; }
+  .title-slide .eyebrow { font-size: 24px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: oklch(0.78 0.08 200); margin-bottom: 30px; }
+  .title-slide .metarow { display: flex; gap: 14px; margin-top: 56px; flex-wrap: wrap; position: relative; z-index: 1; }
+  .title-slide .chip { font-size: 24px; font-weight: 500; padding: 12px 24px; border-radius: 999px; background: oklch(1 0 0 / 0.09); border: 1px solid oklch(1 0 0 / 0.16); color: #fff; backdrop-filter: blur(4px); white-space: nowrap; }
+
+  /* ---- lead text ---- */
+  h2.big { font-size: 62px; letter-spacing: -0.03em; }
+  .subhead { font-size: 26px; color: var(--ink-2); line-height: 1.45; margin-top: 22px; max-width: 1180px; font-weight: 400; }
+
+  /* ---- generic grids ---- */
+  .cards { display: grid; gap: 22px; margin-top: auto; margin-bottom: auto; }
+  .c4 { grid-template-columns: repeat(4, 1fr); }
+  .c3 { grid-template-columns: repeat(3, 1fr); }
+  .c2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 30px 30px; box-shadow: 0 1px 3px rgba(20,30,50,0.04), 0 14px 40px rgba(20,30,50,0.05); }
+  .card .ic { width: 56px; height: 56px; border-radius: 15px; background: var(--accent-soft); color: var(--accent-strong); display: grid; place-items: center; margin-bottom: 22px; }
+  .card .ic svg { width: 30px; height: 30px; }
+  .card h3 { font-size: 27px; margin-bottom: 11px; }
+  .card p { font-size: 19px; color: var(--ink-2); line-height: 1.45; margin: 0; }
+
+  /* ---- module list grid (denser) ---- */
+  .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 20px; margin-top: 14px; }
+  .mcat { margin-top: 14px; }
+  .mcat-h { font-size: 17px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-strong); font-family: var(--font-display); margin: 0 0 14px; display: flex; align-items: center; gap: 12px; }
+  .mcat-h::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .mod { display: flex; gap: 14px; align-items: flex-start; }
+  .mod .dot { width: 40px; height: 40px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--line); color: var(--accent-strong); display: grid; place-items: center; flex: none; }
+  .mod .dot svg { width: 21px; height: 21px; }
+  .mod h4 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; font-family: var(--font-display); }
+  .mod p { font-size: 15.5px; color: var(--ink-2); line-height: 1.36; margin: 3px 0 0; }
+
+  /* ---- roles ---- */
+  .roles { display: flex; flex-direction: column; gap: 0; margin-top: 6px; }
+  .role { display: grid; grid-template-columns: 220px 1fr; gap: 28px; align-items: center; padding: 19px 0; border-bottom: 1px solid var(--line); }
+  .role:last-child { border-bottom: none; }
+  .role .tag { font-family: var(--font-display); font-weight: 700; font-size: 23px; letter-spacing: -0.01em; }
+  .role .scope { font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-strong); margin-top: 3px; }
+  .role .d { font-size: 19px; color: var(--ink-2); line-height: 1.4; }
+  .role .d b { color: var(--ink); font-weight: 600; }
+
+  /* ---- architecture diagram ---- */
+  .arch { display: flex; align-items: stretch; gap: 0; margin: 30px 0; }
+  .arch-col { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+  .arch-node { background: var(--surface); border: 1.5px solid var(--line); border-radius: 16px; padding: 22px 24px; box-shadow: 0 8px 24px rgba(20,30,50,0.05); }
+  .arch-node .lbl { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-strong); margin-bottom: 8px; }
+  .arch-node .ttl { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+  .arch-node .sm { font-size: 15.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+  .arch-node.dark { background: var(--ink-deep); border-color: var(--ink-deep); }
+  .arch-node.dark .ttl, .arch-node.dark .sm { color: #fff; }
+  .arch-node.dark .sm { color: oklch(0.82 0.02 220); }
+  .arch-arrow { display: flex; align-items: center; padding: 0 20px; color: var(--ink-3); }
+  .arch-arrow svg { width: 40px; height: 40px; }
+
+  /* ---- status ---- */
+  .statrow { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: 17px 0; border-bottom: 1px solid var(--line); }
+  .statrow:last-child { border-bottom: none; }
+  .statrow .lab { font-size: 21px; }
+  .statrow .lab b { font-weight: 600; }
+  .statrow .lab span { display: block; font-size: 15.5px; color: var(--ink-3); margin-top: 2px; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; padding: 7px 16px; border-radius: 999px; white-space: nowrap; }
+  .badge::before { content: ''; width: 9px; height: 9px; border-radius: 999px; background: currentColor; }
+  .badge.live { background: var(--ok-soft); color: oklch(0.42 0.12 155); }
+  .badge.sim { background: var(--warn-soft); color: oklch(0.45 0.12 65); }
+  .badge.local { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+
+  .keystone { margin-top: 26px; background: var(--ink-deep); color: #fff; border-radius: 18px; padding: 26px 32px; display: flex; gap: 22px; align-items: center; }
+  .keystone .kic { width: 54px; height: 54px; border-radius: 14px; background: oklch(0.7 0.13 75 / 0.2); color: var(--warn); display: grid; place-items: center; flex: none; }
+  .keystone .kic svg { width: 30px; height: 30px; }
+  .keystone h3 { font-size: 23px; color: #fff; margin-bottom: 5px; }
+  .keystone p { font-size: 18px; color: oklch(0.85 0.02 220); margin: 0; line-height: 1.4; }
+
+  /* ---- roadmap ---- */
+  .timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: auto; margin-bottom: auto; }
+  .tl { position: relative; padding-top: 74px; }
+  .tl .pn { position: absolute; top: 0; left: 0; width: 56px; height: 56px; border-radius: 999px; background: var(--surface); border: 2px solid var(--line); color: var(--ink-3); font-family: var(--font-display); font-weight: 700; font-size: 24px; display: grid; place-items: center; }
+  .tl.now .pn { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 10px 26px oklch(0.55 0.11 220 / 0.4); }
+  .tl .barline { position: absolute; top: 27px; left: 56px; right: -26px; height: 2px; background: var(--line); }
+  .tl:last-child .barline { display: none; }
+  .tl h3 { font-size: 25px; margin: 12px 0 8px; }
+  .tl .when { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-strong); }
+  .tl p { font-size: 18px; color: var(--ink-2); line-height: 1.42; margin: 0 0 14px; }
+  .tl ul { list-style: none; padding: 0; margin: 0; }
+  .tl li { position: relative; padding-left: 22px; font-size: 16px; color: var(--ink-2); margin-bottom: 8px; line-height: 1.35; }
+  .tl li::before { content: ''; position: absolute; left: 2px; top: 8px; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
+
+  /* ---- closing ---- */
+  .close-slide { background: linear-gradient(160deg, #0e1827 0%, #122436 55%, #143a44 100%); color: #fff; align-items: flex-start; justify-content: center; }
+  .close-slide::after { content: ''; position: absolute; left: -160px; top: -160px; width: 560px; height: 560px; border-radius: 50%; background: radial-gradient(circle, oklch(0.6 0.12 205 / 0.3), transparent 68%); }
+  .close-slide h2 { font-size: 74px; font-weight: 800; letter-spacing: -0.03em; position: relative; z-index: 1; width: 100%; }
+  .close-slide p { font-size: 27px; color: oklch(0.86 0.03 220); margin-top: 24px; max-width: 1080px; line-height: 1.4; position: relative; z-index: 1; }
+  .close-slide .stats { display: flex; gap: 56px; margin-top: 64px; position: relative; z-index: 1; }
+  .close-slide .stat .n { font-family: var(--font-display); font-weight: 800; font-size: 64px; letter-spacing: -0.03em; background: linear-gradient(120deg, #fff, oklch(0.8 0.1 200)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .close-slide .stat .l { font-size: 18px; color: oklch(0.82 0.03 220); margin-top: 6px; }
+
+  /* Entrance — transform-only so content is always fully opaque even if the
+     animation never starts to play (e.g. a non-compositing capture context).
+     The visible end-state is the base style; we animate a subtle rise from it. */
+  @media (prefers-reduced-motion: no-preference) {
+    [data-deck-active] .anim { animation: rise 0.55s cubic-bezier(0.2,0.7,0.2,1) both; }
+    [data-deck-active] .anim:nth-child(2) { animation-delay: 0.06s; }
+    [data-deck-active] .anim:nth-child(3) { animation-delay: 0.12s; }
+    [data-deck-active] .anim:nth-child(4) { animation-delay: 0.18s; }
+    @keyframes rise { from { transform: translateY(14px); } to { transform: none; } }
+  }
+</style>
+</head>
+<body>
+
+<template id="__bundler_thumbnail" data-bg-color="#0e7c88">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(470,250) scale(20)" fill="#ffffff"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></g>
+  </svg>
+</template>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- 1 · TITLE -->
+  <section data-label="Title">
+    <div class="slide title-slide">
+      <div class="logo-mark anim"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg></div>
+      <div class="eyebrow anim">Pure Dental · People Portal</div>
+      <h1 class="anim">The whole<br/>employee lifecycle.</h1>
+      <div class="tagline anim">One secure, role-based home for hiring, onboarding, scheduling, time, learning, reviews and offboarding — across Pure Dental, Four Ever Smile &amp; Pure Dental Lab.</div>
+      <div class="metarow anim">
+        <span class="chip">~20 modules</span>
+        <span class="chip">7 access levels</span>
+        <span class="chip">Google SSO + Azure</span>
+        <span class="chip">Project overview · Jun 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · WHAT IT IS -->
+  <section data-label="What it is">
+    <div class="slide">
+      <div class="kicker"><span class="num">01</span> · What it is</div>
+      <h2 class="big anim">A single portal that adapts to who's looking.</h2>
+      <div class="subhead anim">Sign in once with a company Google account and the portal shows exactly what your role needs — nothing more, nothing less.</div>
+      <div class="cards c3" style="margin-top:56px">
+        <div class="card anim">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2L3 7v6c0 5 3.5 8 9 9 5.5-1 9-4 9-9V7z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>Secure by role</h3>
+          <p>Google Workspace sign-in, domain-locked. Seven access levels drive every screen, menu and action.</p>
+        </div>
+        <div class="card anim">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 3a14 14 0 0 0 0 18M3 12h18"/></svg></div>
+          <h3>One roster, scoped</h3>
+          <p>The server returns only the people you may see — everyone, your reporting tree, or just you.</p>
+        </div>
+        <div class="card anim">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <h3>Modular &amp; phased</h3>
+          <p>Around twenty modules, each behind a rollout flag, so capability turns on one piece at a time.</p>
+        </div>
+      </div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>01</span></div>
+    </div>
+  </section>
+
+  <!-- 3 · ACCESS MODEL -->
+  <section data-label="Access model">
+    <div class="slide">
+      <div class="kicker"><span class="num">02</span> · Access model</div>
+      <h2 class="big anim" style="font-size:52px">Seven roles. The right view for each.</h2>
+      <div class="subhead anim" style="font-size:21px; margin-top:14px; margin-bottom:20px">Access is derived from each person's title, department and explicit grants — then the roster is scoped to match.</div>
+      <div class="roles anim">
+        <div class="role"><div><div class="tag" style="color:var(--accent-strong)">Administrator</div><div class="scope">Full control</div></div><div class="d"><b>Manages users, permissions and feature rollout</b>, and can delete records.</div></div>
+        <div class="role"><div><div class="tag" style="color:var(--teal)">HR &amp; Payroll</div><div class="scope">Sees everyone</div></div><div class="d">Hiring, offboarding approval, reviews, payroll &amp; time, compliance.</div></div>
+        <div class="role"><div><div class="tag">Leadership</div><div class="scope">Sees everyone</div></div><div class="d">Org-wide visibility and reports, without user administration.</div></div>
+        <div class="role"><div><div class="tag">Accounting</div><div class="scope">Payroll &amp; reports</div></div><div class="d">Time, overtime and cost analytics.</div></div>
+        <div class="role"><div><div class="tag">Manager / Supervisor</div><div class="scope">Sees their team</div></div><div class="d">Scheduling, prehire requests, team reviews &amp; offboarding.</div></div>
+        <div class="role"><div><div class="tag">Employee</div><div class="scope">Sees themselves</div></div><div class="d">Onboarding, schedule, time clock, learning, scrubs and reviews.</div></div>
+      </div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>02</span></div>
+    </div>
+  </section>
+
+  <!-- 4 · CAPABILITIES -->
+  <section data-label="Capabilities">
+    <div class="slide" style="padding:72px 88px">
+      <div class="kicker"><span class="num">03</span> · Capabilities</div>
+      <h2 class="big anim" style="font-size:46px; margin-bottom:6px">Everything, built and navigable today.</h2>
+
+      <div class="mcat anim">
+        <div class="mcat-h">Hiring &amp; onboarding</div>
+        <div class="mods">
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg></div><div><h4>Applicant Tracking</h4><p>Applied → Screening → Interview → Offer → Hired, with one-click hire-to-onboarding.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></div><div><h4>Guided onboarding</h4><p>Welcome → details → paperwork → credentials → accounts → training, adapting to role.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg></div><div><h4>Onboarding agent</h4><p>Multi-channel agent: voice transcript, chat feed, credential checks, account provisioning.</p></div></div>
+        </div>
+      </div>
+
+      <div class="mcat anim">
+        <div class="mcat-h">Daily operations</div>
+        <div class="mods">
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div><h4>Scheduling</h4><p>Draft → publish, coverage targets, open-shift lane, drag-to-swap. Plus personal schedules.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><h4>Time clock</h4><p>Clock in/out by location, breaks, timesheets, approval and Paychex export.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div><div><h4>Directory &amp; records</h4><p>Everyone's contact &amp; role; full records — relations, documents — gated by access.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3"/></svg></div><div><h4>Offices</h4><p>Live headcount per location; add new offices.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="m7 14 3-3 3 3 5-6"/></svg></div><div><h4>Reports</h4><p>Drag-and-drop builder, time &amp; overtime analytics, scheduled email reports.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg></div><div><h4>Offboarding</h4><p>Termination requests, scoped, with manager initiation and HR approval.</p></div></div>
+        </div>
+      </div>
+
+      <div class="mcat anim">
+        <div class="mcat-h">People, growth &amp; assistance</div>
+        <div class="mods">
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 2 2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/></svg></div><div><h4>Performance reviews</h4><p>Question sets, employee self-review and manager review, role-gated results.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div><h4>Learning Library</h4><p>Required/recommended training, due dates, assignment, orientation timelines.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg></div><div><h4>Scrubs ordering</h4><p>Storefront with eligibility engine, ops pipeline, invoices and analytics.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div><h4>Ask Riley</h4><p>Employee AI assistant for portal &amp; policy questions, with optional voice.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 9V5a3 3 0 0 0-6 0v4M5 9h14l1 12H4z"/></svg></div><div><h4>Ask HR</h4><p>Outsourced-HR advisor: chat, guides &amp; templates, webinars, compliance alerts.</p></div></div>
+          <div class="mod"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div><div><h4>Personalize &amp; localize</h4><p>Per-user appearance (accent, tint, theme, density, themed font pairings) &amp; preferences, plus runtime translation into new languages.</p></div></div>
+        </div>
+      </div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>03</span></div>
+    </div>
+  </section>
+
+  <!-- 5 · ARCHITECTURE -->
+  <section data-label="Architecture">
+    <div class="slide">
+      <div class="kicker"><span class="num">04</span> · How it's built</div>
+      <h2 class="big anim" style="font-size:48px">A modular front end on Azure, scoped at the door.</h2>
+      <div class="arch anim" style="margin-top:46px">
+        <div class="arch-col">
+          <div class="arch-node"><div class="lbl">Front end</div><div class="ttl">React 18 · modular JSX</div><div class="sm">~40 files, no build step. OKLCH design tokens, tweakable theme.</div></div>
+        </div>
+        <div class="arch-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <div class="arch-col">
+          <div class="arch-node"><div class="lbl">Identity</div><div class="ttl">Google Workspace SSO</div><div class="sm">Token verified server-side. Domain-locked to the three companies.</div></div>
+          <div class="arch-node dark"><div class="lbl" style="color:var(--warn)">API · Azure Functions</div><div class="ttl">Roster · AI · Schedule · Settings</div><div class="sm">Verifies, domain-locks, derives access, scopes the roster to the caller.</div></div>
+        </div>
+        <div class="arch-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <div class="arch-col">
+          <div class="arch-node"><div class="lbl">Database</div><div class="ttl">Azure Cosmos DB</div><div class="sm">Collections for roster, app state, schedules &amp; coverage.</div></div>
+          <div class="arch-node"><div class="lbl">Security</div><div class="ttl">AES-256-GCM at rest</div><div class="sm">Sensitive in-browser PII encrypted. Secrets in Functions env, never in code.</div></div>
+        </div>
+      </div>
+      <div class="subhead anim" style="font-size:21px; max-width:none">Sign in → <b style="color:var(--ink)">/api/roster</b> with the token → server verifies, domain-locks and reads Cosmos → returns only the people you're allowed to see → the app renders from it.</div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>04</span></div>
+    </div>
+  </section>
+
+  <!-- 6 · STATUS -->
+  <section data-label="Live vs simulated">
+    <div class="slide">
+      <div class="kicker"><span class="num">05</span> · Where it stands</div>
+      <h2 class="big anim" style="font-size:48px">Built end-to-end. Honest about what's stubbed.</h2>
+      <div class="anim" style="margin-top:30px">
+        <div class="statrow"><div class="lab"><b>Google sign-in &amp; scoped roster read</b><span>Verified token, domain lock, Cosmos read</span></div><span class="badge live">Live</span></div>
+        <div class="statrow"><div class="lab"><b>All module interfaces &amp; logic</b><span>Scheduling, time, reviews, ATS, learning, scrubs…</span></div><span class="badge live">Live</span></div>
+        <div class="statrow"><div class="lab"><b>Cosmos write path</b><span>Signed upserts: settings, schedules, coverage, time-off, org config</span></div><span class="badge live">Live</span></div>
+        <div class="statrow"><div class="lab"><b>Credentials lookup · e-sign · Paychex sync</b><span>Constructed results until the registries &amp; APIs connect</span></div><span class="badge sim">Simulated</span></div>
+        <div class="statrow"><div class="lab"><b>Integration flags</b><span>Paychex, account provisioning, Drive, résumé parsing</span></div><span class="badge sim">Simulated</span></div>
+        <div class="statrow"><div class="lab"><b>Remaining local data</b><span>Photos, punches, reviews, orders, applicants, automations</span></div><span class="badge local">Migrating</span></div>
+      </div>
+      <div class="keystone anim">
+        <div class="kic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div><h3>The write path is live — the keystone is in</h3><p>A shared signed-upsert helper backs authenticated, role-checked writes across five domains. What's left is migrating the last <b style="color:#fff">localStorage-only</b> domains onto the same pattern.</p></div>
+      </div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>05</span></div>
+    </div>
+  </section>
+
+  <!-- 7 · ROADMAP -->
+  <section data-label="Roadmap">
+    <div class="slide">
+      <div class="kicker"><span class="num">06</span> · What's next</div>
+      <h2 class="big anim" style="font-size:52px">Write path done. Now durable everywhere, then connected.</h2>
+      <div class="timeline">
+        <div class="tl anim">
+          <div class="pn">✓</div><div class="barline"></div>
+          <div class="when">Done</div>
+          <h3>Cosmos write path</h3>
+          <p>Shared signed-upsert helper and authenticated endpoints — each enforcing token, domain and role before writing.</p>
+          <ul><li>settings, schedule, coverage</li><li>time-off + org config</li><li>etag concurrency</li></ul>
+        </div>
+        <div class="tl now anim">
+          <div class="pn">1</div><div class="barline"></div>
+          <div class="when">Now</div>
+          <h3>Migrate off local storage</h3>
+          <p>Move the last browser-only domains onto the same pattern.</p>
+          <ul><li>Photos, forms, punches</li><li>Reviews, orders, applicants</li><li>Automations + org editors</li></ul>
+        </div>
+        <div class="tl anim">
+          <div class="pn">2</div><div class="barline"></div>
+          <div class="when">As APIs go live</div>
+          <h3>Wire the integrations</h3>
+          <p>Connect the stubbed services as each becomes available.</p>
+          <ul><li>Paychex payroll</li><li>Account provisioning</li><li>Drive, résumé &amp; credentials</li></ul>
+        </div>
+      </div>
+      <div class="foot"><span class="brand-sm"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg> Pure Dental — People Portal</span><span>06</span></div>
+    </div>
+  </section>
+
+  <!-- 8 · CLOSE -->
+  <section data-label="Summary">
+    <div class="slide close-slide">
+      <div class="logo-mark anim" style="margin-bottom:34px"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg></div>
+      <h2 class="anim">A complete platform,<br/>persisting for real.</h2>
+      <p class="anim">The experience is built across the whole employee lifecycle and the write path is live. What's left is migrating the last local domains, then connecting the integrations.</p>
+      <div class="stats anim">
+        <div class="stat"><div class="n">~20</div><div class="l">feature modules</div></div>
+        <div class="stat"><div class="n">7</div><div class="l">access levels</div></div>
+        <div class="stat"><div class="n">3</div><div class="l">roadmap phases</div></div>
+      </div>
+    </div>
+  </section>
+
+</deck-stage>
+
+<script src="deck-stage.js"></script>
+</body>
+</html>

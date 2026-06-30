@@ -15,10 +15,10 @@ const ACCENTS = [
 const FONTS = [
   ['modern', 'IBM Plex Sans', 'IBM Plex Sans', 'Clean'],
   ['editorial', 'Abril Fatface', 'Lora', 'Editorial'],
-  ['sweet', 'Great Vibes', 'Jost', 'Sweet'],
-  ['terminal', 'Handjet', 'IBM Plex Mono', 'Terminal'],
-  ['bold', 'Anton', 'Manrope', 'Bold'],
-  ['noir', 'Cinzel Decorative', 'Spectral', 'Noir'],
+  ['sweet', 'Rochester', 'Oregano', 'Sweet'],
+  ['terminal', 'Sixtyfour', 'Kode Mono', 'Terminal'],
+  ['bold', 'Sekuya', 'Manrope', 'Bold'],
+  ['noir', 'Manufacturing Consent', 'Jim Nightshade', 'Noir'],
 ];
 
 function loadAppearance(empId) {
@@ -50,7 +50,9 @@ function applyAppearance(p) {
   const r = document.documentElement;
   const a = { ...APPEARANCE_DEFAULTS, ...(p || {}) };
   const heavy = a.tint === 'unprofessional';
-  const washed = a.tint === 'tinted' || heavy;
+  // The full-screen neutral wash is Unprofessional's alone now. Tinted no longer washes
+  // the page/text — it expresses itself via card + linework accents in styles.css.
+  const washed = heavy;
   r.style.setProperty('--accent-hue', a.accentHue);
   const aS = a.accentSat || 1;
   const acc = (typeof ACCENTS !== 'undefined') ? ACCENTS.find(c => c[1] === a.accentHue) : null;
@@ -77,9 +79,9 @@ function applyAppearance(p) {
   r.setAttribute('data-accent-tone', (!a.dark && accL >= 0.88) ? 'light' : 'normal');
   r.setAttribute('data-accent', acc ? String(acc[0]).toLowerCase() : 'custom');
   r.style.setProperty('--neutral-hue', (washed && !mono) ? a.accentHue : 240);
-  const levelMult = heavy ? (a.dark ? 9 : 14) : (a.tint === 'tinted' ? (a.dark ? 5 : 6.5) : 1);
+  const levelMult = heavy ? (a.dark ? 9 : 14) : 1;
   r.style.setProperty('--tint-mult', (washed && !mono) ? (levelMult * aS * cmul) : 1);
-  r.style.setProperty('--ink-tint', mono ? 0 : (heavy ? (a.dark ? 0.035 : 0.05) : (a.tint === 'tinted' ? (a.dark ? 0.015 : 0.022) : 0)));
+  r.style.setProperty('--ink-tint', mono ? 0 : (heavy ? (a.dark ? 0.035 : 0.05) : 0));
   let paperL = 0;
   if (mono && a.tint === 'tinted') paperL = a.dark ? 0.02 : 0.035;
   else if (mono && a.tint === 'unprofessional') paperL = a.dark ? 0.045 : 0.07;
@@ -149,7 +151,7 @@ function AppearanceMenu({ me, onClose }) {
       const L = Math.max(0.12, Math.min(0.99, d.startL + (d.startY - e.clientY) * 0.0026));
       setMany({ accentHue: d.hue, accentL: +L.toFixed(3) });
     } else {
-      const S = Math.max(0.55, Math.min(2.6, d.startSat + (d.startY - e.clientY) * 0.006));
+      const S = Math.max(0.4, Math.min(2.6, d.startSat + (d.startY - e.clientY) * 0.006));
       setMany({ accentHue: d.hue, accentSat: +S.toFixed(3) });
     }
   };

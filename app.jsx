@@ -72,6 +72,7 @@ const NAV = [
   { id: 'automations', label: 'Automations', show: a => a.caps.hire, flag: 'automations' },
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
+  { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
   { id: 'admin', label: 'Admin', show: a => a.caps.manageUsers },
   { id: 'feedback', label: 'Roadmap', show: () => true },
   { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
@@ -103,6 +104,7 @@ const NAV_GROUPS = [
   ] },
   { id: 'g_settings', label: 'Settings', children: [
     { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
+    { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
     { id: 'admin', label: 'Admin', show: a => a.caps.manageUsers },
   ] },
 ];
@@ -126,6 +128,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   const [tasks, setTasks] = useState(() => (ROLE_ONBOARDING[onboardRole(me).id] || TASKS).map(x => ({ ...x })));
   const [accountsReady, setAccountsReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileGroup, setMobileGroup] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const openHelp = () => setHelpOpen(true);
   const closeHelp = () => { setHelpOpen(false); try { localStorage.setItem('pd_help_seen', '1'); } catch (e) {} };
@@ -236,6 +239,13 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     document.addEventListener('click', onDoc);
     return () => document.removeEventListener('click', onDoc);
   }, [navMenu]);
+  // Same outside-click close for the topbar assistants dropdown.
+  useEffect(() => {
+    if (!asstOpen) return;
+    const onDoc = (e) => { if (!e.target.closest || !e.target.closest('.asst-topbar')) setAsstOpen(false); };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, [asstOpen]);
   const tourSteps = (typeof TOUR_STEPS_ALL !== 'undefined' ? TOUR_STEPS_ALL : []).filter(s => { if (['dashboard', 'me'].includes(s.view)) return true; const n = NAV.find(x => x.id === s.view); return n && n.show(access) && (!n.flag || flagOn(n.flag)); });
 
   const renderView = () => {
@@ -254,6 +264,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       case 'timeclock': return <TimeClock me={me} access={access} offices={tcOffices} teamList={tcTeam} flash={flash} paychexOn={flagOn('paychex')} />;
       case 'offboarding': return <Offboarding me={me} access={access} viewOnly={!access.caps.offboard && access.caps.offboardView} onOpenEmp={openEmp} />;
       case 'offices': return <Offices access={access} />;
+      case 'organization': return <OrgEditor access={access} />;
       case 'automations': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('agentconsole')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} />;
       case 'agentconsole': return <AgentConsole onBack={() => go('automations')} knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} />;
@@ -294,6 +305,13 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     if (id === 'automations') return ['automations', 'addhire', 'autodetail', 'agentconsole'].includes(view);
     return view === id;
   };
+  // Which grouped category contains the current view — used to auto-open it in the mobile
+  // accordion so the menu opens already showing where you are.
+  const activeNavGroup = () => {
+    const g = NAV_GROUPS.find(g => g.children && g.children.some(c => navActive(c.id)));
+    return g ? g.id : null;
+  };
+  useEffect(() => { if (menuOpen) setMobileGroup(activeNavGroup()); }, [menuOpen]);
 
   return (
     <div className="app">
@@ -324,7 +342,20 @@ function Portal({ me, access, onLogout, t, setTweak }) {
         </nav>
         <div className="spacer" />
         <button className="btn btn-quiet mobile-menu-btn" style={{ padding: 9, display: 'none' }} onClick={() => setMenuOpen(m => !m)} title="Menu"><Icon name="list" /></button>
-        <button className="btn btn-quiet" style={{ padding: 9 }} onClick={openHelp} title="Help & navigation"><Icon name="help" /></button>
+        {(() => {
+          const akids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+          if (!akids.length) return null;
+          return (
+            <div className="asst-topbar">
+              <button className="btn btn-quiet" style={{ padding: 9 }} title="Assistants" onClick={() => { if (akids.length === 1) go(akids[0].id); else setAsstOpen(o => !o); }}><ChatIcon /></button>
+              {asstOpen && akids.length > 1 && (
+                <div className="asst-topbar-menu fade-in">
+                  {akids.map(c => <button key={c.id} onClick={() => { setAsstOpen(false); go(c.id); }}><Icon name="sparkle" style={{ width: 16, height: 16 }} /> {c.label}</button>)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <button className="btn btn-quiet" style={{ padding: 9, position: 'relative' }} onClick={() => setNotifOpen(true)} title="Notifications">
           <Icon name="bell" />
           {notifN > 0 && <span style={{ position: 'absolute', top: 5, right: 6, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 99, background: 'var(--warn)', color: '#3a2a00', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--surface)' }}>{notifN}</span>}
@@ -341,32 +372,62 @@ function Portal({ me, access, onLogout, t, setTweak }) {
           {NAV_GROUPS.map(g => {
             if (!g.children) {
               if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
-              return <button key={g.id} className={navActive(g.id) ? 'active' : ''} onClick={() => go(g.view || g.id)}>{g.label}</button>;
+              return <button key={g.id} className={'mnav-top' + (navActive(g.id) ? ' active' : '')} onClick={() => go(g.view || g.id)}>{g.label}</button>;
             }
             const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
             if (!kids.length) return null;
+            const open = mobileGroup === g.id;
+            const groupActive = kids.some(c => navActive(c.id));
             return (
-              <div key={g.id} className="mnav-group">
-                <div className="mnav-label">{g.label}</div>
-                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{navLabel(c)}</button>)}
+              <div key={g.id} className="mnav-acc">
+                <button className={'mnav-top' + (groupActive ? ' active' : '')} aria-expanded={open} onClick={() => setMobileGroup(open ? null : g.id)}>
+                  <span>{g.label}</span>
+                  <Icon name="chevron" className="mnav-chev" style={{ transform: open ? 'rotate(90deg)' : 'none' }} />
+                </button>
+                {open && (
+                  <div className="mnav-children">
+                    {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{navLabel(c)}</button>)}
+                  </div>
+                )}
               </div>
             );
           })}
           {(() => {
             const kids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
             if (!kids.length) return null;
+            const open = mobileGroup === 'assistants';
+            const groupActive = kids.some(c => navActive(c.id));
             return (
-              <div className="mnav-group">
-                <div className="mnav-label">Assistants</div>
-                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{c.label}</button>)}
+              <div className="mnav-acc">
+                <button className={'mnav-top' + (groupActive ? ' active' : '')} aria-expanded={open} onClick={() => setMobileGroup(open ? null : 'assistants')}>
+                  <span>Assistants</span>
+                  <Icon name="chevron" className="mnav-chev" style={{ transform: open ? 'rotate(90deg)' : 'none' }} />
+                </button>
+                {open && (
+                  <div className="mnav-children">
+                    {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{c.label}</button>)}
+                  </div>
+                )}
               </div>
             );
           })()}
-          <div className="mnav-group">
-            <div className="mnav-label">Account</div>
-            <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help &amp; navigation</button>
-            <button onClick={onLogout}>Sign out</button>
-          </div>
+          {(() => {
+            const open = mobileGroup === 'account';
+            return (
+              <div className="mnav-acc">
+                <button className="mnav-top" aria-expanded={open} onClick={() => setMobileGroup(open ? null : 'account')}>
+                  <span>Account</span>
+                  <Icon name="chevron" className="mnav-chev" style={{ transform: open ? 'rotate(90deg)' : 'none' }} />
+                </button>
+                {open && (
+                  <div className="mnav-children">
+                    <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help &amp; navigation</button>
+                    <button onClick={onLogout}>Sign out</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -377,16 +438,10 @@ function Portal({ me, access, onLogout, t, setTweak }) {
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{renderView()}</main>
 
-      {(() => {
-        const kids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
-        if (!kids.length) return null;
-        return <div className="assistant-fab">
-          {asstOpen && kids.length > 1 && <div className="assistant-menu fade-in">
-            {kids.map(c => <button key={c.id} onClick={() => { setAsstOpen(false); go(c.id); }}><Icon name="sparkle" style={{ width: 16, height: 16 }} /> {c.label}</button>)}
-          </div>}
-          <button className="assistant-fab-btn" title="Assistants" onClick={() => { if (kids.length === 1) go(kids[0].id); else setAsstOpen(o => !o); }}><ChatIcon /></button>
-        </div>;
-      })()}
+      {/* Floating bubble is Help (the assistants launcher moved into the topbar). Always available. */}
+      <div className="assistant-fab">
+        <button className="assistant-fab-btn" title="Help & navigation" onClick={openHelp}><Icon name="help" style={{ width: 20, height: 20 }} /></button>
+      </div>
 
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>

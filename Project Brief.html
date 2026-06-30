@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pure Dental People Portal — Project Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --accent: oklch(0.56 0.11 220);
+    --accent-strong: oklch(0.47 0.11 220);
+    --accent-soft: oklch(0.95 0.03 220);
+    --teal: oklch(0.55 0.09 200);
+    --teal-soft: oklch(0.95 0.035 200);
+    --ink: oklch(0.26 0.025 240);
+    --ink-2: oklch(0.45 0.022 240);
+    --ink-3: oklch(0.6 0.018 240);
+    --line: oklch(0.9 0.012 240);
+    --line-soft: oklch(0.94 0.008 240);
+    --bg: oklch(0.985 0.006 240);
+    --surface: #fff;
+    --surface-2: oklch(0.975 0.007 240);
+    --ok: oklch(0.58 0.13 155);
+    --ok-soft: oklch(0.95 0.04 155);
+    --warn: oklch(0.7 0.13 75);
+    --warn-soft: oklch(0.95 0.05 75);
+    --danger: oklch(0.58 0.16 25);
+    --danger-soft: oklch(0.95 0.04 25);
+    --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+    --font-display: 'Bricolage Grotesque', 'Hanken Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    width: 850px;
+    margin: 0 auto;
+    background: var(--surface);
+    padding: 76px 80px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 10px 40px rgba(0,0,0,0.06);
+  }
+  /* ---- type ---- */
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.12; margin: 0; }
+  h2 { font-size: 25px; margin: 0 0 4px; }
+  h3 { font-size: 17px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+  p { margin: 0 0 12px; text-wrap: pretty; }
+  a { color: var(--accent-strong); }
+  strong { font-weight: 600; }
+  small { font-size: 12.5px; }
+  .mono { font-family: var(--font-mono); }
+
+  /* ---- masthead ---- */
+  .masthead { display: flex; align-items: flex-start; gap: 18px; padding-bottom: 26px; border-bottom: 2px solid var(--ink); margin-bottom: 30px; }
+  .logo { width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(150deg, var(--accent), var(--teal)); display: grid; place-items: center; color: #fff; flex: none; box-shadow: 0 4px 14px oklch(0.55 0.1 210 / 0.3); }
+  .logo svg { width: 30px; height: 30px; }
+  .masthead .eyebrow { font-size: 11.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-strong); margin-bottom: 5px; }
+  .masthead h1 { font-size: 33px; font-weight: 800; }
+  .masthead .sub { color: var(--ink-2); font-size: 15px; margin-top: 5px; }
+  .masthead .meta { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-3); line-height: 1.7; flex: none; padding-top: 4px; }
+  .masthead .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---- section ---- */
+  section.block { margin-top: 38px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+  .sec-num { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
+  .sec-head h2 { flex: 1; }
+  .lead { font-size: 16px; color: var(--ink-2); line-height: 1.65; }
+
+  /* ---- callout ---- */
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 14px; line-height: 1.6; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout.warn strong { color: oklch(0.45 0.12 60); }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* ---- grids ---- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+  /* ---- module cards ---- */
+  .mod { border: 1px solid var(--line); border-radius: 12px; padding: 15px 16px; background: var(--surface); break-inside: avoid; }
+  .mod .ic { width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent-strong); display: grid; place-items: center; margin-bottom: 9px; }
+  .mod .ic svg { width: 17px; height: 17px; }
+  .mod h3 { font-size: 14.5px; margin-bottom: 3px; }
+  .mod p { font-size: 12.8px; color: var(--ink-2); line-height: 1.5; margin: 0; }
+
+  /* ---- pills ---- */
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; letter-spacing: 0.01em; }
+  .pill.live { background: var(--ok-soft); color: oklch(0.4 0.12 155); }
+  .pill.sim { background: var(--warn-soft); color: oklch(0.44 0.12 65); }
+  .pill.todo { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+  /* ---- status table ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  thead th { text-align: left; font-family: var(--font-display); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); padding: 0 12px 8px; border-bottom: 1.5px solid var(--line); }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  td b { font-weight: 600; }
+  td .sub { color: var(--ink-3); font-size: 12px; }
+
+  /* ---- roles ---- */
+  .role-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+  .role-row:last-child { border-bottom: none; }
+  .role-tag { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: #fff; background: var(--ink); padding: 3px 9px; border-radius: 6px; height: fit-content; white-space: nowrap; flex: none; min-width: 96px; text-align: center; }
+  .role-tag.admin { background: var(--accent-strong); }
+  .role-tag.hr { background: var(--teal); }
+  .role-row .desc { font-size: 13px; color: var(--ink-2); }
+  .role-row .desc b { color: var(--ink); }
+
+  /* ---- arch list ---- */
+  .stack { list-style: none; padding: 0; margin: 0; }
+  .stack li { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line-soft); align-items: baseline; }
+  .stack li:last-child { border-bottom: none; }
+  .stack .k { font-family: var(--font-mono); font-size: 12px; color: var(--accent-strong); font-weight: 600; min-width: 150px; flex: none; }
+  .stack .v { font-size: 13.5px; color: var(--ink-2); }
+  .stack .v b { color: var(--ink); font-weight: 600; }
+
+  /* ---- roadmap ---- */
+  .phase { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line-soft); break-inside: avoid; }
+  .phase:last-child { border-bottom: none; }
+  .phase .pnum { width: 34px; height: 34px; border-radius: 999px; background: var(--ink); color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 15px; display: grid; place-items: center; flex: none; }
+  .phase.next .pnum { background: var(--accent); }
+  .phase h3 { font-size: 15px; margin-bottom: 3px; }
+  .phase p { font-size: 13px; color: var(--ink-2); margin: 0; }
+
+  ul.ticks { list-style: none; padding: 0; margin: 10px 0 0; }
+  ul.ticks li { position: relative; padding-left: 24px; font-size: 13.5px; color: var(--ink-2); margin-bottom: 7px; line-height: 1.5; }
+  ul.ticks li::before { content: ''; position: absolute; left: 4px; top: 7px; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+  ul.ticks li b { color: var(--ink); font-weight: 600; }
+
+  .footer { margin-top: 44px; padding-top: 18px; border-top: 2px solid var(--ink); display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--ink-3); }
+
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; width: auto; margin: 0; padding: 40px 44px; }
+    section.block { break-inside: avoid-page; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="logo">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></svg>
+    </div>
+    <div>
+      <div class="eyebrow">Project Brief</div>
+      <h1>Pure Dental People Portal</h1>
+      <div class="sub">A secure, role-based HR &amp; onboarding platform for Pure Dental, Four Ever Smile &amp; Pure Dental Lab.</div>
+    </div>
+    <div class="meta">
+      <div><b>Status</b> · Active prototype</div>
+      <div><b>Updated</b> · Jun 2026</div>
+      <div><b>Stack</b> · React + Azure</div>
+    </div>
+  </header>
+
+  <p class="lead">The People Portal is a single, login-gated home for the entire employee lifecycle — hiring, onboarding, scheduling, time, learning, reviews and offboarding — that adapts what each person sees to their role. It runs on Google Workspace sign-in, a server-scoped roster, and a modular React front end. This brief captures everything currently built, what is live versus simulated, and what remains.</p>
+
+  <!-- 1. OVERVIEW -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">01</span><h2>What it is</h2></div>
+    <div class="grid-3">
+      <div class="mod">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L3 7v6c0 5 3.5 8 9 9 5.5-1 9-4 9-9V7z"/></svg></div>
+        <h3>Secure by role</h3>
+        <p>Google Workspace SSO, domain-locked. Seven access levels drive every nav item, view and action.</p>
+      </div>
+      <div class="mod">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a14 14 0 0 0 0 18M3 12h18"/></svg></div>
+        <h3>One roster, scoped</h3>
+        <p>The server returns only the people a user may see — all, their reporting tree, or just themselves.</p>
+      </div>
+      <div class="mod">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+        <h3>Modular &amp; phased</h3>
+        <p>~20 feature modules, each behind a rollout flag so the platform turns on capability by capability.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. ACCESS MODEL -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Access model</h2></div>
+    <p>Sign-in is restricted to <span class="mono">puredental.com</span>, <span class="mono">foureversmile.com</span> and <span class="mono">puredentallab.com</span>. After Google verifies identity, access is derived from the person's title, department and explicit permission grants — then the roster is scoped to match.</p>
+    <div class="role-row"><span class="role-tag admin">Administrator</span><div class="desc"><b>Full control.</b> Manages users &amp; permissions, feature rollout, and can delete records.</div></div>
+    <div class="role-row"><span class="role-tag hr">HR &amp; Payroll</span><div class="desc"><b>Sees everyone.</b> Hiring, offboarding approval, reviews, payroll/time, compliance.</div></div>
+    <div class="role-row"><span class="role-tag">Leadership</span><div class="desc"><b>Sees everyone.</b> Org-wide visibility and reports, without user administration.</div></div>
+    <div class="role-row"><span class="role-tag">Accounting</span><div class="desc"><b>Payroll &amp; reports.</b> Time, overtime and cost analytics.</div></div>
+    <div class="role-row"><span class="role-tag">Manager</span><div class="desc"><b>Sees their reporting tree.</b> Scheduling, prehire requests, team reviews &amp; offboarding.</div></div>
+    <div class="role-row"><span class="role-tag">Supervisor</span><div class="desc"><b>Sees their team.</b> Scheduling and team visibility without hire/terminate rights.</div></div>
+    <div class="role-row"><span class="role-tag">Employee</span><div class="desc"><b>Sees themselves.</b> Onboarding, schedule, time clock, learning, scrubs, reviews.</div></div>
+  </section>
+
+  <!-- 3. MODULES -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Capabilities</h2></div>
+    <p class="lead" style="margin-bottom:18px">Every module below is built and navigable in the app today. Most run on live in-app logic; integration-dependent features are flagged for later phases.</p>
+
+    <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Hiring &amp; onboarding</h3>
+    <div class="grid-2">
+      <div class="mod"><h3>Applicant Tracking (ATS)</h3><p>Hiring pipeline board — Applied → Screening → Interview → Offer → Hired — with applicant detail, manual add, résumé import, and a one-click hand-off straight into onboarding. PII encrypted at rest.</p></div>
+      <div class="mod"><h3>Guided onboarding</h3><p>Step-by-step new-hire flow: welcome, details intake, e-signature paperwork, provider credentials, policies, accounts &amp; access, training, team, schedule and benefits. Task templates adapt to role.</p></div>
+      <div class="mod"><h3>Onboarding automations &amp; agent</h3><p>Add a hire and a multi-channel agent takes over — voice-call transcript, Google Chat collaboration feed, routing directory — verifying credentials and provisioning role-based accounts as a live pipeline.</p></div>
+      <div class="mod"><h3>Provider credentials</h3><p>Verify-first capture of NPI, license and DEA — type an ID, look it up, auto-fill the rest.</p></div>
+    </div>
+
+    <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Daily operations</h3>
+    <div class="grid-2">
+      <div class="mod"><h3>Scheduling</h3><p>Deputy-style builder: draft → publish, copy last week or pay period, role-based coverage targets, an open-shifts lane (create / assign / claim) and drag-to-swap. Employees get a read-only personal schedule.</p></div>
+      <div class="mod"><h3>Time clock</h3><p>Clock in/out by location with a live timer, breaks, timesheets, manager/HR approval and export to Paychex.</p></div>
+      <div class="mod"><h3>Directory &amp; records</h3><p>Contact and role for everyone; full employee records — overview, relations, documents, offboarding — gated by access.</p></div>
+      <div class="mod"><h3>Offices</h3><p>View all offices with live headcount per location, and add new ones.</p></div>
+    </div>
+
+    <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Growth, people &amp; perks</h3>
+    <div class="grid-2">
+      <div class="mod"><h3>Performance reviews</h3><p>HR/leadership define question sets; employees self-review and managers review; results gated by role.</p></div>
+      <div class="mod"><h3>Learning Library</h3><p>Training catalog with required/recommended items, due dates and reminders, per-team or individual assignment, plus transcribed clerical &amp; clinical orientation timelines.</p></div>
+      <div class="mod"><h3>Scrubs ordering</h3><p>Staff storefront with an eligibility engine (90-day gate, annual April reset), cart, and an ops pipeline — approve → batch to CID Resources → receive → deliver — with invoices and analytics.</p></div>
+      <div class="mod"><h3>Offboarding</h3><p>Termination requests with scoped visibility, manager initiation and HR approval.</p></div>
+      <div class="mod"><h3>Celebrations</h3><p>Birthday &amp; work-anniversary moments at sign-in, with Sunshine Club helpers.</p></div>
+      <div class="mod"><h3>Reports</h3><p>Drag-and-drop report builder, Time &amp; Overtime analytics, and scheduled email reports.</p></div>
+    </div>
+
+    <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Assistance &amp; experience</h3>
+    <div class="grid-2">
+      <div class="mod"><h3>Ask Riley</h3><p>Employee-facing AI assistant for portal and policy questions, with optional voice narration.</p></div>
+      <div class="mod"><h3>Ask HR</h3><p>Management-facing outsourced-HR advisor (CEDR-style): advisor chat, guides &amp; templates, webinars and jurisdiction-specific compliance alerts.</p></div>
+      <div class="mod"><h3>Help &amp; guided tour</h3><p>AI-presenter walkthrough plus a dismissible interactive tour available on every page.</p></div>
+      <div class="mod"><h3>Roadmap &amp; feedback</h3><p>Anyone can submit and view feature requests; admins set status and publish a visual roadmap.</p></div>
+      <div class="mod"><h3>Personalization</h3><p>Per-employee appearance from a hidden menu — accent, three tint depths, light/dark, density, corners, text size, and five themed font pairings (each weight-tuned) — plus preferences like language and Riley's voice.</p></div>
+      <div class="mod"><h3>Localization</h3><p>Runtime translation that swaps interface text per language; new languages can be added on the fly.</p></div>
+    </div>
+  </section>
+
+  <!-- 4. ARCHITECTURE -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">04</span><h2>How it's built</h2></div>
+    <ul class="stack">
+      <li><span class="k">Front end</span><span class="v"><b>React 18</b> with in-browser Babel, split across ~40 modular JSX files — no build step. Theming via CSS design tokens (OKLCH color, tweakable accent/density/corners).</span></li>
+      <li><span class="k">Hosting / API</span><span class="v"><b>Azure Static Web Apps + Functions.</b> Read endpoint for the roster, AI transport, and signed write endpoints for scheduling, coverage, settings, time-off and org config.</span></li>
+      <li><span class="k">Identity</span><span class="v"><b>Google Workspace SSO.</b> Token verified server-side (signature, audience, expiry); email domain-locked to the three company domains.</span></li>
+      <li><span class="k">Database</span><span class="v"><b>Azure Cosmos DB</b> (<span class="mono">portal</span>) — collections for roster, app state, schedules, coverage requirements and per-employee settings. Writes go through one shared signed-upsert helper with etag concurrency.</span></li>
+      <li><span class="k">Sign-in flow</span><span class="v">Browser signs in → calls <span class="mono">/api/roster</span> with the token → server verifies, domain-locks, reads Cosmos, scopes the roster to the caller → app renders from it.</span></li>
+      <li><span class="k">Security</span><span class="v">Sensitive in-browser data (applicant contact details, résumés, notes) stored as <b>AES-256-GCM</b> ciphertext. Secrets held as Functions environment variables, never in code.</span></li>
+    </ul>
+  </section>
+
+  <!-- 5. STATUS -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Live vs. simulated</h2></div>
+    <p>An honest read of what's real today. The interface and logic are fully built; several external integrations are stubbed so the experience is complete end-to-end before the APIs are wired up.</p>
+    <table>
+      <thead><tr><th style="width:42%">Area</th><th style="width:16%">Status</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td><b>Google sign-in &amp; roster read</b></td><td><span class="pill live">Live</span></td><td>Verified token, domain lock, scoped Cosmos read.</td></tr>
+        <tr><td><b>All module interfaces &amp; logic</b></td><td><span class="pill live">Live</span></td><td>Scheduling, time, reviews, ATS, learning, scrubs and more run on real in-app logic.</td></tr>
+        <tr><td><b>AI assistants</b></td><td><span class="pill live">Live</span></td><td>Riley &amp; Ask HR call a live model with an offline fallback.</td></tr>
+        <tr><td><b>Cosmos write path</b></td><td><span class="pill live">Live</span></td><td>Authenticated, signed upsert endpoints for settings, schedules, coverage, time-off and org config.</td></tr>
+        <tr><td><b>Credentials lookup</b></td><td><span class="pill sim">Simulated</span></td><td>NPI / DEA / license verification returns constructed results, not registry calls.</td></tr>
+        <tr><td><b>Paperwork e-sign &amp; Paychex sync</b></td><td><span class="pill sim">Simulated</span></td><td>Signing flow and payroll export are mocked.</td></tr>
+        <tr><td><b>Integration flags</b></td><td><span class="pill sim">Simulated</span></td><td>Paychex, Workspace/Denticon/NexHealth/DoseSpot provisioning, Google Drive, résumé parsing — no live API yet.</td></tr>
+        <tr><td><b>Remaining local data</b></td><td><span class="pill todo">Migrating</span></td><td>Photos, forms, punches, reviews, orders, applicants &amp; automations still in the browser, pending migration.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><strong>The write path is live.</strong> A shared signed-upsert helper (<span class="mono">api/_shared/cosmos.js</span>) backs authenticated endpoints for settings, schedules, coverage, time-off and org config — each enforcing token, domain lock and role before writing. What remains is migrating the last localStorage-only domains (photos, forms, punches, reviews, orders, applicants, automations) onto the same pattern.</p>
+    </div>
+  </section>
+
+  <!-- 6. ROADMAP -->
+  <section class="block">
+    <div class="sec-head"><span class="sec-num">06</span><h2>What's next</h2></div>
+    <div class="phase">
+      <div class="pnum">✓</div>
+      <div>
+        <h3>Cosmos write path <span class="pill live" style="vertical-align:middle">Done</span></h3>
+        <p>Shared signed-upsert helper plus authenticated endpoints (settings, schedules, coverage, time-off, org config) — each enforcing token verification, domain lock and role permissions, and returning the updated record.</p>
+      </div>
+    </div>
+    <div class="phase next">
+      <div class="pnum">1</div>
+      <div>
+        <h3>Migrate remaining data off local storage</h3>
+        <p>Move the last browser-only domains onto the write path: photos, forms, time-clock punches, reviews, scrub orders, applicants and automations — plus the offboarding request flow. (Office, department, title, manager and user editors are now wired.)</p>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="pnum">2</div>
+      <div>
+        <h3>Wire the integrations</h3>
+        <p>Connect the stubbed services as their APIs go live.</p>
+        <ul class="ticks">
+          <li><b>Paychex</b> — payroll sync, export &amp; pay rules</li>
+          <li><b>Account provisioning</b> — Google Workspace, Denticon, NexHealth, DoseSpot</li>
+          <li><b>Google Drive</b> — browse &amp; attach documents</li>
+          <li><b>Résumé parsing</b> &amp; <b>credentials registry</b> lookups (NPI / DEA / license)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>Pure Dental — People Portal · Project Brief</span>
+    <span>Confidential · Internal</span>
+  </footer>
+
+</div>
+</body>
+</html>

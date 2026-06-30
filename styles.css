@@ -4,7 +4,7 @@
    [data-style] and --accent-hue on :root.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Anton&family=Cinzel+Decorative:wght@400;700&family=Handjet:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Jost:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..600&family=Manrope:wght@400;500;600;700&family=Great+Vibes&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Cinzel+Decorative:wght@400;700&family=Rochester&family=Oregano&family=Sixtyfour&family=Kode+Mono:wght@400;500;600;700&family=Manufacturing+Consent&family=Astloch:wght@400;700&family=Jim+Nightshade&family=Sekuya&family=Handjet:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Jost:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..600&family=Manrope:wght@400;500;600;700&family=Great+Vibes&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 :root {
   --accent-hue: 220;          /* tweakable */
@@ -78,13 +78,48 @@
   --accent-softer: oklch(0.96 0.04 var(--accent-hue));
 }
 
+/* ---- Tinted: a true in-between, not a softer Unprofessional ----
+   The full-screen wash belongs to Unprofessional alone — here the page bg and the text
+   stay neutral. Tinted instead puts color in the CARDS (a whisper of accent muted toward
+   white; toward the surface tone in dark) and in the LINEWORK (accent borders/dividers/
+   outlines). Chroma rides --accent-chroma so Mono stays achromatic; lightness adapts per
+   theme. The card stays brighter+hued while the page keeps its neutral tone, so the accent
+   border + shadow do the separating. */
+[data-tint="tinted"] {
+  --surface:   oklch(0.99  calc(var(--accent-chroma) * 0.13) var(--accent-hue));
+  --surface-2: oklch(0.965 calc(var(--accent-chroma) * 0.20) var(--accent-hue));
+  --line:      oklch(0.85  calc(var(--accent-chroma) * 0.50) var(--accent-hue));
+  --line-soft: oklch(0.91  calc(var(--accent-chroma) * 0.34) var(--accent-hue));
+}
+[data-theme="dark"][data-tint="tinted"] {
+  --surface:   oklch(0.255 calc(var(--accent-chroma) * 0.20) var(--accent-hue));
+  --surface-2: oklch(0.295 calc(var(--accent-chroma) * 0.26) var(--accent-hue));
+  --line:      oklch(0.42  calc(var(--accent-chroma) * 0.45) var(--accent-hue));
+  --line-soft: oklch(0.34  calc(var(--accent-chroma) * 0.30) var(--accent-hue));
+}
+
 /* Unprofessional: homogenize the nav into the theme — accent-colored labels and a
    faintly accent-tinted bar (surface-2 is already washed at this level). */
 [data-tint] .topbar { background: var(--surface-2); }
-[data-tint="tinted"] .navgroup > button:not(.active),
 [data-tint="unprofessional"] .navgroup > button:not(.active),
-[data-tint="tinted"] .mobile-nav button:not(.active),
-[data-tint="unprofessional"] .mobile-nav button:not(.active) { color: var(--accent); }
+[data-tint="unprofessional"] .mobile-nav button:not(.active) { color: var(--accent-strong); }
+
+/* Yellow accent sits very light (L .85) so even --accent-strong washes out as nav-bar text
+   — every other accent is dark enough. Darken ONLY the nav bar (not popups) to a legible
+   gold, for both tinted-inactive labels and the active item. Specificity beats the rules
+   above so it applies regardless of tint. */
+[data-tint="unprofessional"][data-accent="yellow"] .navgroup > button:not(.active),
+[data-tint="unprofessional"][data-accent="yellow"] .mobile-nav button:not(.active) { color: oklch(0.46 0.14 105); }
+[data-accent="yellow"] .navgroup > button.active,
+[data-accent="yellow"] .mobile-nav button.active { color: oklch(0.43 0.14 105); }
+
+/* Dark mode: same contrast eye, inverted. The bar is dark, so accent-tinted nav labels
+   must stay LIGHT (--ink already flips light, covering the non-tinted case). These generic
+   accent rules also cover yellow, and are placed last so they win on specificity ties. */
+[data-theme="dark"][data-tint="unprofessional"] .navgroup > button:not(.active),
+[data-theme="dark"][data-tint="unprofessional"] .mobile-nav button:not(.active) { color: oklch(0.82 var(--accent-chroma) var(--accent-hue)); }
+[data-theme="dark"] .navgroup > button.active,
+[data-theme="dark"] .mobile-nav button.active { color: oklch(0.86 var(--accent-chroma) var(--accent-hue)); }
 
 [data-corners="sharp"] { --r-sm: 1px; --r-md: 2px; --r-lg: 4px; --r-xl: 6px; --r-pill: 6px; }
 [data-corners="cut"] { --r-sm: 0; --r-md: 0; --r-lg: 0; --r-xl: 0; --r-pill: 5px; }
@@ -109,9 +144,24 @@
   --line-soft: oklch(0.56 0.01 var(--neutral-hue));
 }
 
-/* Text size — content zoom (inline px sizes ignore font-size, so zoom is needed) */
+/* Text size — content zoom (inline px sizes ignore font-size, so zoom is needed).
+   NOTE: zoom scales geometry too. To stop text size from reflowing/ballooning the stat
+   cards, those grids use .statgrid below (fixed column counts via media queries, which
+   are immune to this zoom) instead of content-based auto-fit. */
 [data-textsize="s"] .main { zoom: 0.9; }
-[data-textsize="l"] .main { zoom: 1.12; }
+[data-textsize="m"] .main { zoom: 1.0; }
+[data-textsize="l"] .main { zoom: 1.1; }
+
+/* Zoom-stable stat-card grid. auto-fit + minmax(px) reflows when the text-size zoom
+   scales the px, so cards jump rows as you change size. Fixed column counts keyed to the
+   real viewport (media queries ignore .main's zoom) keep the layout put — only the text
+   inside the cards scales. */
+.statgrid { display: grid; gap: var(--gap); grid-template-columns: 1fr; }
+@media (min-width: 620px) { .statgrid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1080px) { .statgrid { grid-template-columns: repeat(4, 1fr); } }
+/* 5-up variant (Time & Overtime analytics): five stats in a stable row on wide screens. */
+@media (min-width: 1080px) { .statgrid.five { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 620px) and (max-width: 1079px) { .statgrid.five { grid-template-columns: repeat(3, 1fr); } }
 
 /* Motion */
 [data-motion="calm"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.06s !important; }
@@ -213,18 +263,57 @@ button { font-family: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.03em; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-/* Sweet's script (Mea Culpa) has a tiny x-height — scale it up so the size hierarchy
-   holds. No faux-weight: the unedited single-weight face reads best on the dashboard. */
-[data-font="sweet"] :is(h1, h2, h3, h4, .brand) { font-size-adjust: 0.5; }
+/* DECORATIVE DISPLAY FACES — weight honesty. The global heading rule (font-weight:600,
+   letter-spacing:-0.02em) faux-bolds and crunches single-weight display fonts, so they
+   render fatter/rounder than their true design (and than the font picker preview). Each
+   ornamental face below is pinned to its real 400 weight with the negative tracking
+   removed, so what you pick is what you get. (Modern/Terminal are real multi-weight
+   families and keep the 600; Bold/Sekuya is intentionally heavy and stays as tuned.) */
+
+/* Editorial — Abril Fatface, a high-contrast didone display, drawn at a single weight. */
+[data-font="editorial"] :is(h1, h2, h3, h4, .brand) { font-weight: 400; letter-spacing: normal; }
+
+/* Sweet — Rochester, an upright, tidy casual script (no connecting loops). Pin 400 and
+   normalize x-height so it sizes like a real header. Body is Just Another Hand. */
+[data-font="sweet"] :is(h1, h2, h3, h4, .brand) { font-weight: 400; letter-spacing: normal; font-size-adjust: 0.56; }
+/* Sweet's body (Oregano) is a casual italic hand with a fairly normal x-height; light
+   x-height normalization keeps it comfortable. Glyph-only scaling, layout stays put. */
+[data-font="sweet"] .app { font-size-adjust: 0.48; }
 [data-font="sweet"] .brand small { margin-top: 9px; }
-/* Noir's display (Cinzel Decorative) is ornamental with tight spacing — generous
-   tracking keeps double-O and swashy pairs from crowding/overlapping in headers. */
-[data-font="noir"] :is(h1, h2, h3, h4, .brand) { letter-spacing: 0.14em; }
+/* Noir's display (Manufacturing Consent) is an ornate single-weight blackletter — the
+   global 600 faux-bolds it into mush. Pin 400. Its cap proportions render small, so
+   font-size-adjust scales the glyphs up to feel like a real header; tracking stays tight
+   since blackletter is dense and looks disconnected when over-spaced. */
+[data-font="noir"] :is(h1, h2, h3, h4, .brand) { font-weight: 400; letter-spacing: 0.01em; font-size-adjust: 0.62; }
+/* Noir's body (Jim Nightshade) is a script with a small x-height, so it reads smaller and
+   harder than the other body faces at the same px. Normalize by x-height to enlarge it for
+   readability — font-size-adjust scales glyphs only, so card sizes/layout stay put. */
+[data-font="noir"] .app { font-size-adjust: 0.6; }
 /* Bold: no lowercase anywhere — force uppercase on every element (buttons/inputs
    don't reliably inherit text-transform, which left them lowercase). */
 [data-font="bold"] .app, [data-font="bold"] .app * { text-transform: uppercase; }
-/* Anton is condensed — a little tracking opens the letters so headers read easily. */
-[data-font="bold"] :is(h1, h2, h3, h4, .brand) { letter-spacing: 0.045em; }
+/* Sekuya is an all-caps display face — a hair of tracking opens the caps. */
+[data-font="bold"] :is(h1, h2, h3, h4, .brand) { letter-spacing: 0.012em; }
+
+/* Bold style — marker-highlight behind headers (a nod to Zilla Slab Highlight, but
+   themeable: a translucent accent band drawn behind the text, so it works on any
+   surface in light OR dark, and the letters keep their own color on top). Tuned to
+   Sekuya's all-caps metrics: caps sit high in the line box, so the band is nudged up
+   to wrap the letters evenly with a little breathing room top and bottom. */
+[data-font="bold"] .app :is(h1, h2, h3) {
+  width: fit-content; max-width: 100%;
+  background-image: linear-gradient(
+    color-mix(in oklch, var(--accent) 46%, transparent),
+    color-mix(in oklch, var(--accent) 46%, transparent));
+  background-repeat: no-repeat;
+  background-size: 100% 1.12em;
+  background-position: 0 38%;
+  padding-inline: 0.16em;
+  margin-inline: -0.16em;
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 .brand > span:not(.mark) { display: flex; flex-direction: column; line-height: 1.12; white-space: nowrap; }
 .brand .mark {
   width: 34px; height: 34px; border-radius: 10px; flex: none;
@@ -239,7 +328,7 @@ button { font-family: inherit; cursor: pointer; }
 .navgroups { display: flex; align-items: center; gap: 2px; }
 @media (max-width: 980px) { .navgroups { display: none; } }
 .navgroup { position: relative; }
-.navgroup > button { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: var(--ink-2); font-size: 14px; font-weight: 500; padding: 8px 13px; border-radius: var(--r-pill); transition: all .16s; white-space: nowrap; cursor: pointer; font-family: var(--font-body); }
+.navgroup > button { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: var(--ink); font-size: 15px; font-weight: 500; padding: 8px 13px; border-radius: var(--r-pill); transition: all .16s; white-space: nowrap; cursor: pointer; font-family: var(--font-body); }
 .navgroup > button:hover { background: var(--surface-2); color: var(--ink); }
 .navgroup > button.active { background: var(--accent-soft); color: var(--accent-strong); }
 .navgroup > button .caret { width: 13px; height: 13px; opacity: .55; transition: transform .16s; }
@@ -250,13 +339,19 @@ button { font-family: inherit; cursor: pointer; }
 .navgroup-menu button.active { background: var(--accent-soft); color: var(--accent-strong); }
 .nav-backdrop { position: fixed; inset: 0; z-index: 64; background: transparent; }
 
-/* floating assistant launcher (Ask Riley / Ask HR) */
+/* floating help launcher */
 .assistant-fab { position: fixed; right: 22px; bottom: 22px; z-index: 58; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-.assistant-fab-btn { width: 52px; height: 52px; border-radius: 50%; border: none; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); cursor: pointer; display: grid; place-items: center; transition: transform .16s; }
-.assistant-fab-btn:hover { transform: translateY(-2px); }
+.assistant-fab-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); box-shadow: var(--shadow-md); cursor: pointer; display: grid; place-items: center; transition: transform .16s, background .16s, color .16s; }
+.assistant-fab-btn:hover { background: var(--surface-2); color: var(--ink); transform: translateY(-2px); }
 .assistant-menu { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; }
 .assistant-menu button { display: flex; align-items: center; gap: 9px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 9px 16px 9px 13px; font-size: 13.5px; font-weight: 600; color: var(--ink); box-shadow: var(--shadow-md); cursor: pointer; font-family: var(--font-body); white-space: nowrap; }
 .assistant-menu button:hover { background: var(--surface-2); }
+
+/* assistants launcher relocated into the topbar (small icon) — dropdown opens below it */
+.asst-topbar { position: relative; display: inline-flex; }
+.asst-topbar-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; display: flex; flex-direction: column; gap: 4px; min-width: 184px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+.asst-topbar-menu button { display: flex; align-items: center; gap: 9px; text-align: left; border: none; background: none; color: var(--ink-2); font-size: 13.5px; font-weight: 600; padding: 9px 12px; border-radius: var(--r-md); white-space: nowrap; cursor: pointer; font-family: var(--font-body); }
+.asst-topbar-menu button:hover { background: var(--surface-2); color: var(--ink); }
 
 .topbar .spacer { flex: 1; }
 .userchip { display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 12px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface); }
@@ -335,13 +430,18 @@ button { font-family: inherit; cursor: pointer; }
 /* directory selects */
 .dir-select { padding: 6px 12px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 12.5px; font-weight: 600; font-family: var(--font-body); cursor: pointer; outline: none; }
 
-/* mobile nav */
-.mobile-nav { display: none; flex-direction: column; gap: 2px; padding: 8px clamp(16px,4vw,40px) 12px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 64px; z-index: 25; }
-.mobile-nav button { text-align: left; border: none; background: none; color: var(--ink-2); font-size: 15px; font-weight: 600; padding: 11px 12px; border-radius: var(--r-md); font-family: var(--font-body); cursor: pointer; }
-.mobile-nav button.active { background: var(--accent-soft); color: var(--accent-strong); }
-.mnav-group { display: flex; flex-direction: column; gap: 2px; }
-.mnav-group + .mnav-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
-.mnav-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); padding: 9px 12px 3px; }
+/* mobile nav — accordion mirroring the desktop's 5 grouped categories: tap a category to
+   reveal its items, others collapse. The active category auto-opens when the menu opens. */
+.mobile-nav { display: none; flex-direction: column; gap: 1px; padding: 8px clamp(16px,4vw,40px) 14px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 64px; z-index: 25; max-height: calc(100vh - 64px); overflow-y: auto; }
+.mobile-nav .mnav-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: none; background: none; color: var(--ink); font-size: 16px; font-weight: 600; padding: 13px 12px; border-radius: var(--r-md); font-family: var(--font-body); cursor: pointer; }
+.mobile-nav .mnav-top span { white-space: nowrap; }
+.mobile-nav .mnav-top:hover { background: var(--surface-2); }
+.mobile-nav .mnav-top.active { color: var(--accent-strong); }
+.mnav-chev { width: 17px; height: 17px; color: var(--ink-3); flex: none; transition: transform .2s ease; }
+.mnav-children { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 6px 11px; padding-left: 11px; border-left: 2px solid var(--line); }
+.mnav-children button { text-align: left; border: none; background: none; color: var(--ink-2); font-size: 15px; font-weight: 500; padding: 11px 12px; border-radius: var(--r-md); font-family: var(--font-body); cursor: pointer; width: 100%; }
+.mnav-children button:hover { background: var(--surface-2); }
+.mnav-children button.active { background: var(--accent-soft); color: var(--accent-strong); }
 @media (max-width: 980px) {
   .desktop-nav { display: none; }
   .mobile-menu-btn { display: inline-flex !important; }

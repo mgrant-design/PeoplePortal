@@ -204,7 +204,7 @@ function TimeOvertime({ access, emps, paychexOn }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
+      <div className="statgrid five" style={{ marginBottom: 'var(--gap)' }}>
         <StatCard icon="calendar" label="Scheduled (wk)" value={totSched + 'h'} />
         <StatCard icon="clock" label="Worked (wk)" value={Math.round(totWorked) + 'h'} tone={totWorked > totSched ? 'warn' : 'ok'} />
         <StatCard icon="bell" label="In overtime" value={over.length} tone="warn" sub="over 40h" />
