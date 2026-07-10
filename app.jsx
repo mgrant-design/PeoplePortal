@@ -79,6 +79,12 @@ const NAV = [
   { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
 ];
 
+/* Flat "all pages" nav (the default). Everyday pages render as a single horizontally
+   scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
+   appears for management-level access (supervisor and up). Built from the same NAV ids. */
+const FLAT_MAIN_IDS = ['dashboard', 'onboarding', 'people', 'myschedule', 'timeclock', 'library', 'scrubs', 'reviews', 'feedback'];
+const FLAT_ADMIN_IDS = ['applicants', 'scheduler', 'reports', 'automations', 'offboarding', 'offices', 'organization', 'admin'];
+
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
 const NAV_GROUPS = [
@@ -122,7 +128,53 @@ function ChatIcon() {
 
 const ONBOARD_VIEWS = ['onboarding', 'hub', 'welcome', 'profilestep', 'paperwork', 'credentials', 'policies', 'accounts', 'training', 'team', 'schedule', 'benefits'];
 
-function Portal({ me, access, onLogout, t, setTweak }) {
+/* Admin-only view switcher — preview the portal at a different access level without
+   logging out. Mirrors the login-screen dev picker; sets the same override the app
+   reads in <App>. Opened by long-pressing the user chip. */
+const VIEW_LEVELS = [
+  ['', 'My access', 'Your real permissions'],
+  ['admin', 'Admin', 'Full access — everything'],
+  ['hr', 'HR & Payroll', 'Company-wide people + payroll'],
+  ['leadership', 'Leadership', 'Company-wide view'],
+  ['accounting', 'Accounting', 'Payroll + reports'],
+  ['manager', 'Manager', 'Own team / direct reports'],
+  ['supervisor', 'Supervisor', 'Own team, lighter'],
+  ['employee', 'Employee', 'Just their own stuff'],
+];
+
+function ViewSwitcher({ current, onPick, onClose }) {
+  useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
+      <div onClick={e => e.stopPropagation()} className="fade-in cust-menu"
+        style={{ position: 'fixed', top: 64, right: 'clamp(12px, 2vw, 22px)', width: 'min(300px, 92vw)', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.16), 0 30px 70px rgba(0,0,0,0.2)', padding: 16, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', scrollbarWidth: 'none' }}>
+        <div style={{ position: 'relative', marginBottom: 6 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.25, textAlign: 'center', padding: '0 22px' }}>Switch view</div>
+          <button onClick={onClose} style={{ position: 'absolute', top: -3, right: -3, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}><Icon name="x" style={{ width: 16, height: 16 }} /></button>
+        </div>
+        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-3)', textAlign: 'center', padding: '0 4px 12px' }}>Preview the portal at another access level. Your real access is unchanged.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {VIEW_LEVELS.map(([val, label, desc]) => {
+            const on = current === val;
+            return (
+              <button key={val || 'real'} onClick={() => onPick(val)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '9px 11px', fontFamily: 'var(--font-body)',
+                  border: on ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: on ? 'var(--accent-softer)' : 'var(--surface)' }}>
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{label}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>{desc}</span>
+                </span>
+                {on && <Icon name="check" style={{ width: 16, height: 16, color: 'var(--accent-strong)' }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogout, t, setTweak }) {
   const [view, setView] = useState('dashboard');
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [tasks, setTasks] = useState(() => (ROLE_ONBOARDING[onboardRole(me).id] || TASKS).map(x => ({ ...x })));
@@ -149,6 +201,36 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   }, [me]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [viewSwitchOpen, setViewSwitchOpen] = useState(false);
+  // Tier 3 modules stream in after the dashboard. Until they're ready, any view other
+  // than the dashboard shows a brief spinner (see the <main> guard below).
+  const [modulesAllReady, setModulesAllReady] = useState(() => !!window.__PD_ALL_DONE);
+  useEffect(() => {
+    if (modulesAllReady) return;
+    let live = true;
+    (window.__PD_MODULES_ALL_READY || Promise.resolve()).then(() => { if (live) { window.__PD_ALL_DONE = true; setModulesAllReady(true); } });
+    return () => { live = false; };
+  }, []);
+  // Only a real admin may preview other access levels (independent of any active preview,
+  // so you can always switch back). Long-press the user chip to open the switcher.
+  const canSwitchView = !!(realAccess && realAccess.caps && realAccess.caps.manageUsers);
+  const applyViewOverride = (val) => {
+    setViewOverride(val ? val : null);
+    setViewSwitchOpen(false);
+    setView('dashboard');
+    window.scrollTo({ top: 0 });
+  };
+  const chipHold = useRef({ t: null, fired: false, x: 0, y: 0 });
+  const chipDown = (e) => {
+    if (!canSwitchView) return;
+    const h = chipHold.current; h.fired = false; h.x = e.clientX; h.y = e.clientY;
+    if (h.t) clearTimeout(h.t);
+    h.t = setTimeout(() => { h.t = null; h.fired = true; setViewSwitchOpen(true); }, 550);
+  };
+  const chipMove = (e) => { const h = chipHold.current; if (h.t && (Math.abs(e.clientX - h.x) > 8 || Math.abs(e.clientY - h.y) > 8)) { clearTimeout(h.t); h.t = null; } };
+  const chipUp = () => { const h = chipHold.current; if (h.t) { clearTimeout(h.t); h.t = null; } };
+  const chipClick = () => { if (chipHold.current.fired) { chipHold.current.fired = false; return; } go('me'); };
+  const [navMode, setNavMode] = useState(() => { try { return (loadAppearance(me.id).navMode) || 'all'; } catch (e) { return 'all'; } });
   const [notifReqs, setNotifReqs] = useState([]);
   const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
   useEffect(() => { refreshNotifs(); }, [me.id]);
@@ -229,6 +311,7 @@ function Portal({ me, access, onLogout, t, setTweak }) {
   // close delay bridges the small gap between the button and its menu so moving
   // the pointer across it doesn't dismiss the menu.
   const navTimer = useRef(null);
+  const navflatRef = useRef(null);
   const openNav = (id) => { if (navTimer.current) { clearTimeout(navTimer.current); navTimer.current = null; } setNavMenu(id); };
   const closeNavSoon = () => { if (navTimer.current) clearTimeout(navTimer.current); navTimer.current = setTimeout(() => setNavMenu(null), 160); };
   // Close an open nav dropdown on any click outside a .navgroup (no overlay element,
@@ -246,6 +329,54 @@ function Portal({ me, access, onLogout, t, setTweak }) {
     document.addEventListener('click', onDoc);
     return () => document.removeEventListener('click', onDoc);
   }, [asstOpen]);
+  // Flat "all pages" bar: make it actually scroll. Vertical wheel → horizontal scroll,
+  // autoscroll when the pointer nears either edge, and edge fades that show when there's
+  // more off-screen. Re-runs when the nav content (mode/access/flags) changes.
+  useEffect(() => {
+    if (navMode !== 'all') return;
+    const el = navflatRef.current;
+    if (!el) return;
+    const overflowing = () => el.scrollWidth > el.clientWidth + 1;
+    const updateFades = () => {
+      const ov = overflowing();
+      el.classList.toggle('has-more-left', ov && el.scrollLeft > 2);
+      el.classList.toggle('has-more-right', ov && el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+    };
+    const onWheel = (e) => {
+      if (!overflowing()) return;
+      const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!d) return;
+      el.scrollLeft += d;
+      e.preventDefault();
+      updateFades();
+    };
+    let speed = 0, raf = null;
+    const tick = () => { if (!speed) { raf = null; return; } el.scrollLeft += speed; updateFades(); raf = requestAnimationFrame(tick); };
+    const onMove = (e) => {
+      if (!overflowing()) { speed = 0; return; }
+      const r = el.getBoundingClientRect();
+      const edge = 80;
+      if (e.clientX < r.left + edge) speed = -Math.ceil((r.left + edge - e.clientX) / edge * 16);
+      else if (e.clientX > r.right - edge) speed = Math.ceil((e.clientX - (r.right - edge)) / edge * 16);
+      else speed = 0;
+      if (speed && !raf) raf = requestAnimationFrame(tick);
+    };
+    const onLeave = () => { speed = 0; if (raf) { cancelAnimationFrame(raf); raf = null; } };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('mouseleave', onLeave);
+    el.addEventListener('scroll', updateFades, { passive: true });
+    window.addEventListener('resize', updateFades);
+    updateFades();
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('mousemove', onMove);
+      el.removeEventListener('mouseleave', onLeave);
+      el.removeEventListener('scroll', updateFades);
+      window.removeEventListener('resize', updateFades);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [navMode, access, flags, view]);
   const tourSteps = (typeof TOUR_STEPS_ALL !== 'undefined' ? TOUR_STEPS_ALL : []).filter(s => { if (['dashboard', 'me'].includes(s.view)) return true; const n = NAV.find(x => x.id === s.view); return n && n.show(access) && (!n.flag || flagOn(n.flag)); });
 
   const renderView = () => {
@@ -320,27 +451,59 @@ function Portal({ me, access, onLogout, t, setTweak }) {
           <span className="mark" onDoubleClick={() => setAppearanceOpen(true)}><Logo /></span>
           <span>Pure Dental<small>People Portal</small></span>
         </div>
-        <nav className="navgroups">
-          {NAV_GROUPS.map(g => {
-            if (!g.children) {
-              if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
-              return <div className="navgroup" key={g.id}>
-                <button className={navActive(g.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(g.view || g.id); }}>{g.label}</button>
-              </div>;
-            }
-            const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
-            if (!kids.length) return null;
-            const groupActive = kids.some(c => navActive(c.id));
-            const open = navMenu === g.id;
-            return <div className="navgroup" key={g.id} onMouseEnter={() => openNav(g.id)} onMouseLeave={closeNavSoon}>
-              <button className={groupActive ? 'active' : ''} aria-expanded={open} onClick={() => setNavMenu(open ? null : g.id)}>{g.label}<CaretIcon /></button>
-              {open && <div className="navgroup-menu fade-in">
-                {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(c.id); }}>{navLabel(c)}</button>)}
-              </div>}
-            </div>;
-          })}
-        </nav>
-        <div className="spacer" />
+        {navMode === 'all' ? (() => {
+          const byId = (id) => NAV.find(n => n.id === id);
+          const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
+          const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
+          const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
+          const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
+          const adminOpen = navMenu === 'admin';
+          const adminActive = adminItems.some(c => navActive(c.id));
+          return (
+            <>
+              <nav className="navflat" ref={navflatRef}>
+                {mainItems.map(n => (
+                  <div className="navgroup" key={n.id}>
+                    <button className={navActive(n.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(n.id); }}>{navLabel(n)}</button>
+                  </div>
+                ))}
+              </nav>
+              {showAdmin && (
+                <div className="navgroup navflat-admin" onMouseEnter={() => openNav('admin')} onMouseLeave={closeNavSoon}>
+                  <button className={adminActive ? 'active' : ''} aria-expanded={adminOpen} onClick={() => setNavMenu(adminOpen ? null : 'admin')}>Admin<CaretIcon /></button>
+                  {adminOpen && <div className="navgroup-menu navgroup-menu-right fade-in">
+                    {adminItems.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(c.id); }}>{navLabel(c)}</button>)}
+                  </div>}
+                </div>
+              )}
+              <div className="spacer" />
+            </>
+          );
+        })() : (
+          <>
+            <nav className="navgroups">
+              {NAV_GROUPS.map(g => {
+                if (!g.children) {
+                  if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
+                  return <div className="navgroup" key={g.id}>
+                    <button className={navActive(g.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(g.view || g.id); }}>{g.label}</button>
+                  </div>;
+                }
+                const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+                if (!kids.length) return null;
+                const groupActive = kids.some(c => navActive(c.id));
+                const open = navMenu === g.id;
+                return <div className="navgroup" key={g.id} onMouseEnter={() => openNav(g.id)} onMouseLeave={closeNavSoon}>
+                  <button className={groupActive ? 'active' : ''} aria-expanded={open} onClick={() => setNavMenu(open ? null : g.id)}>{g.label}<CaretIcon /></button>
+                  {open && <div className="navgroup-menu fade-in">
+                    {kids.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(c.id); }}>{navLabel(c)}</button>)}
+                  </div>}
+                </div>;
+              })}
+            </nav>
+            <div className="spacer" />
+          </>
+        )}
         <button className="btn btn-quiet mobile-menu-btn" style={{ padding: 9, display: 'none' }} onClick={() => setMenuOpen(m => !m)} title="Menu"><Icon name="list" /></button>
         {(() => {
           const akids = ASSISTANTS.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
@@ -360,16 +523,49 @@ function Portal({ me, access, onLogout, t, setTweak }) {
           <Icon name="bell" />
           {notifN > 0 && <span style={{ position: 'absolute', top: 5, right: 6, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 99, background: 'var(--warn)', color: '#3a2a00', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--surface)' }}>{notifN}</span>}
         </button>
-        <button className="userchip" onClick={() => go('me')} style={{ border: '1px solid var(--line)', cursor: 'pointer' }} title="My profile">
+        <button className="userchip" onClick={chipClick}
+          onPointerDown={chipDown} onPointerMove={chipMove} onPointerUp={chipUp} onPointerLeave={chipUp}
+          onContextMenu={canSwitchView ? (e) => e.preventDefault() : undefined}
+          style={{ border: '1px solid var(--line)', cursor: 'pointer', position: 'relative', WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}
+          title={canSwitchView ? 'My profile · hold to switch view' : 'My profile'}>
           <div className="meta"><b>{me.name}</b><span>{access.label}</span></div>
           <PhotoAvatar emp={me} size={34} />
+          {canSwitchView && viewOverride && <span title="Previewing another view" style={{ position: 'absolute', top: -4, right: -4, width: 12, height: 12, borderRadius: 99, background: 'var(--accent)', border: '2px solid var(--surface)' }} />}
         </button>
         <button className="btn btn-quiet" style={{ padding: 9 }} onClick={onLogout} title="Sign out"><Icon name="arrowRight" /></button>
       </header>
 
       {menuOpen && (
         <div className="mobile-nav fade-in">
-          {NAV_GROUPS.map(g => {
+          {navMode === 'all' ? (() => {
+            const byId = (id) => NAV.find(n => n.id === id);
+            const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
+            const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
+            const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
+            const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
+            const adminOpen = mobileGroup === 'admin';
+            const adminActive = adminItems.some(c => navActive(c.id));
+            return (
+              <>
+                {mainItems.map(n => (
+                  <button key={n.id} className={'mnav-top' + (navActive(n.id) ? ' active' : '')} onClick={() => go(n.id)}>{navLabel(n)}</button>
+                ))}
+                {showAdmin && (
+                  <div className="mnav-acc">
+                    <button className={'mnav-top' + (adminActive ? ' active' : '')} aria-expanded={adminOpen} onClick={() => setMobileGroup(adminOpen ? null : 'admin')}>
+                      <span>Admin</span>
+                      <Icon name="chevron" className="mnav-chev" style={{ transform: adminOpen ? 'rotate(90deg)' : 'none' }} />
+                    </button>
+                    {adminOpen && (
+                      <div className="mnav-children">
+                        {adminItems.map(c => <button key={c.id} className={navActive(c.id) ? 'active' : ''} onClick={() => go(c.id)}>{navLabel(c)}</button>)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })() : NAV_GROUPS.map(g => {
             if (!g.children) {
               if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
               return <button key={g.id} className={'mnav-top' + (navActive(g.id) ? ' active' : '')} onClick={() => go(g.view || g.id)}>{g.label}</button>;
@@ -433,10 +629,18 @@ function Portal({ me, access, onLogout, t, setTweak }) {
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
       {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
-      {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} />}
+      {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
+      {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
-      <main className="main">{renderView()}</main>
+      <main className="main">{(modulesAllReady || view === 'dashboard') ? renderView() : (
+        <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, color: 'var(--ink-3)' }}>
+            <span className="spin" style={{ width: 26, height: 26, border: '3px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%' }} />
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>Loading…</div>
+          </div>
+        </div>
+      )}</main>
 
       {/* Floating bubble is Help (the assistants launcher moved into the topbar). Always available. */}
       <div className="assistant-fab">
@@ -479,6 +683,9 @@ function App() {
   const [me, setMe] = useState(null);          // set only AFTER the scoped roster is loaded
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [rosterError, setRosterError] = useState('');
+  // Admin-only "preview as" override. null = the signed-in user's real access. Seeded from
+  // any login-screen dev pick so that choice carries in and stays switchable in-app.
+  const [viewOverride, setViewOverride] = useState(() => { try { return window.__PD_DEV_VIEW || null; } catch (e) { return null; } });
 
   useEffect(() => {
     const r = document.documentElement;
@@ -511,6 +718,9 @@ function App() {
       const email = (window.__PD_SIGNIN_EMAIL || '').toLowerCase();
       const meEmp = (typeof findByEmail === 'function') ? findByEmail(email) : null;
       if (!meEmp) throw new Error('No roster account found for ' + email);
+      // Gate: don't enter the authenticated app until the deferred view modules are ready.
+      // The login spinner stays up (loadingRoster is still true) during this wait.
+      if (window.__PD_MODULES_READY) await window.__PD_MODULES_READY;
       saveSession(meEmp);
       setMe(meEmp);
     } catch (e) {
@@ -527,7 +737,7 @@ function App() {
   };
 
   const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; };
-  const previewAs = (emp) => { saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
+  const previewAs = async (emp) => { if (window.__PD_MODULES_READY) await window.__PD_MODULES_READY; saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
 
   // DEV bridge — inert in production. A dev-only module (dev-bypass.js), when present,
   // registers itself here so it can enter the app WITHOUT Google sign-in (sandbox screen
@@ -546,7 +756,7 @@ function App() {
           if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
         }
         const demo = opts.emp || (typeof findByEmail === 'function' && findByEmail('mgrant@puredental.com')) || (window.EMPLOYEES || [])[0];
-        if (demo) { saveSession(demo); setMe(demo); return true; }
+        if (demo) { if (window.__PD_MODULES_READY) await window.__PD_MODULES_READY; saveSession(demo); setMe(demo); return true; }
       } catch (e) { /* fall back to the login screen */ }
       return false;
     };
@@ -556,8 +766,20 @@ function App() {
   if (!me) {
     return <Login onSignedIn={onSignedIn} loading={loadingRoster} error={rosterError} />;
   }
+  // Real access (no override) gates who may use the view switcher. Then apply the
+  // override (if any) to derive the access the app actually renders with.
+  window.__PD_DEV_VIEW = '';
+  const realAccess = deriveAccess(me);
+  window.__PD_DEV_VIEW = viewOverride || '';
   const access = deriveAccess(me);
-  return <Portal key={me.id} me={me} access={access} onLogout={logout} t={t} setTweak={setTweak} />;
+  return <Portal key={me.id} me={me} access={access} realAccess={realAccess} viewOverride={viewOverride} setViewOverride={setViewOverride} onLogout={logout} t={t} setTweak={setTweak} />;
 }
 
+// Tiered boot (see index.html + deferred-loader.js):
+//   Tier 2 (__PD_MODULES_READY):     dashboard + appearance — entry gates on this.
+//   Tier 3 (__PD_MODULES_ALL_READY): the rest — streams in behind the dashboard; views
+//                                    that need it show a brief spinner until it resolves.
+const __pdLoad = (typeof window.__PD_LOAD_DEFERRED === 'function') ? window.__PD_LOAD_DEFERRED : (() => Promise.resolve());
+window.__PD_MODULES_READY = __pdLoad(window.__PD_DEFERRED_PRIMARY || []);
+window.__PD_MODULES_ALL_READY = window.__PD_MODULES_READY.then(() => __pdLoad(window.__PD_DEFERRED_REST || []));
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);

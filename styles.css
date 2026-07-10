@@ -339,6 +339,21 @@ button { font-family: inherit; cursor: pointer; }
 .navgroup-menu button.active { background: var(--accent-soft); color: var(--accent-strong); }
 .nav-backdrop { position: fixed; inset: 0; z-index: 64; background: transparent; }
 
+/* flat "all pages" nav (app.jsx navMode='all') — a single horizontally scrollable bar.
+   Shares .navgroup button styling; the bar itself scrolls, the Admin dropdown sits
+   outside the scroll region so its menu isn't clipped. */
+.navflat { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-behavior: smooth; }
+.navflat::-webkit-scrollbar { display: none; }
+.navflat .navgroup { flex: none; }
+/* edge fades appear only when there's more nav off-screen in that direction */
+.navflat.has-more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); }
+.navflat.has-more-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px); mask-image: linear-gradient(90deg, transparent, #000 34px); }
+.navflat.has-more-left.has-more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); }
+.navflat-admin { flex: none; display: flex; align-items: center; margin-left: 4px; }
+.navflat-admin::before { content: ""; height: 22px; width: 1px; background: var(--line); margin-right: 6px; }
+.navgroup-menu-right { left: auto; right: 0; }
+@media (max-width: 980px) { .navflat, .navflat-admin { display: none; } }
+
 /* floating help launcher */
 .assistant-fab { position: fixed; right: 22px; bottom: 22px; z-index: 58; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .assistant-fab-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); box-shadow: var(--shadow-md); cursor: pointer; display: grid; place-items: center; transition: transform .16s, background .16s, color .16s; }

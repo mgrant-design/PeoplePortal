@@ -3,7 +3,7 @@
    Persists per employee in localStorage now; the /api/settings (userSettings, Cosmos)
    wiring swaps in later for cross-device. applyAppearance() is also called on sign-in. */
 
-const APPEARANCE_DEFAULTS = { accentHue: 245, accentL: 0.56, accentSat: 1, tint: 'subtle', density: 'regular', dark: false, corners: 'rounded', font: 'modern', contrast: 'normal', textsize: 'm', motion: 'normal' };
+const APPEARANCE_DEFAULTS = { accentHue: 245, accentL: 0.56, accentSat: 1, tint: 'subtle', density: 'regular', dark: false, corners: 'rounded', font: 'modern', contrast: 'normal', textsize: 'm', motion: 'normal', navMode: 'all' };
 
 const ACCENTS = [
   ['Red', 25, 1.0, 0.56, 0.22], ['Orange', 70, 1.0, 0.68, 0.195], ['Yellow', 105, 1.0, 0.85, 0.18], ['Green', 145, 1.0, 0.56, 0.22],
@@ -114,7 +114,7 @@ function AppSeg({ label, value, options, onChange }) {
   );
 }
 
-function AppearanceMenu({ me, onClose }) {
+function AppearanceMenu({ me, onClose, onNav }) {
   const [p, setP] = useState(() => loadAppearance(me.id));
   const [advOpen, setAdvOpen] = useState(false);
   // Snarky nudge: fires after every 10 option-clicks in the panel OR every 5 color
@@ -201,6 +201,8 @@ function AppearanceMenu({ me, onClose }) {
             </button>
           ))}
         </div>
+
+        <AppSeg label="Navigation" value={p.navMode || 'all'} options={[['all', 'All pages'], ['grouped', 'Grouped tabs']]} onChange={v => { set('navMode', v); if (onNav) onNav(v); }} />
 
         <button onClick={() => setAdvOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: 'none', background: 'var(--surface-2)', color: 'var(--ink-2)', cursor: 'pointer', borderRadius: 10, padding: '9px 12px', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 14, fontFamily: 'var(--font-body)' }}>
           Advanced options <span style={{ transition: 'transform .16s', transform: advOpen ? 'rotate(180deg)' : 'none', display: 'inline-flex' }}><Icon name="chevron" style={{ width: 14, height: 14 }} /></span>

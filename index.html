@@ -43,47 +43,9 @@
   <script type="text/babel" src="hrseed.jsx"></script>
   <script type="text/babel" src="login.jsx"></script>
 
-  <script type="text/babel" src="hub.jsx"></script>
-  <script type="text/babel" src="paperwork.jsx"></script>
-  <script type="text/babel" src="credentials.jsx"></script>
-  <script type="text/babel" src="intake.jsx"></script>
-  <script type="text/babel" src="steps.jsx"></script>
-  <script type="text/babel" src="provisioning.jsx"></script>
-  <script type="text/babel" src="employee.jsx"></script>
-  <script type="text/babel" src="scheduler.jsx"></script>
-  <script type="text/babel" src="directory.jsx"></script>
-  <script type="text/babel" src="profile.jsx"></script>
-  <script type="text/babel" src="offboarding.jsx"></script>
-  <script type="text/babel" src="automation.jsx"></script>
-  <script type="text/babel" src="agent.jsx"></script>
-  <script type="text/babel" src="askhr-data.jsx"></script>
-  <script type="text/babel" src="askhr.jsx"></script>
-  <script type="text/babel" src="offices.jsx"></script>
-  <script type="text/babel" src="orgeditor.jsx"></script>
-  <script type="text/babel" src="reviews.jsx"></script>
-  <script type="text/babel" src="timeclock.jsx"></script>
-  <script type="text/babel" src="dashboard.jsx"></script>
-  <script type="text/babel" src="celebrate.jsx"></script>
-  <script type="text/babel" src="hradmin.jsx"></script>
-  <script type="text/babel" src="reportbuilder.jsx"></script>
-  <script type="text/babel" src="reportschedule.jsx"></script>
-  <script type="text/babel" src="scrubs-data.jsx"></script>
-  <script type="text/babel" src="scrubs.jsx"></script>
-  <script type="text/babel" src="help.jsx"></script>
-  <script type="text/babel" src="notifications.jsx"></script>
-  <script type="text/babel" src="walkthrough.jsx"></script>
-  <script type="text/babel" src="myschedule.jsx"></script>
-  <script type="text/babel" src="onboardingstatus.jsx"></script>
-  <script type="text/babel" src="applicants.jsx"></script>
-  <script type="text/babel" src="librarydata.jsx"></script>
-  <script type="text/babel" src="library.jsx"></script>
-  <script type="text/babel" src="editrecord.jsx"></script>
-  <script type="text/babel" src="feedback.jsx"></script>
-  <!-- AI transport for Riley/Harper — loaded AFTER all modules; PD_LLM is used only at
-       render time (when you open Riley/Harper), so it sits OUTSIDE the login-critical
-       boot sequence above. -->
+  <!-- AI transport config for Riley/Harper. The transport itself (llm.js) is only used
+       when you open an assistant, so it's deferred to Tier 3 — see __PD_DEFERRED_REST. -->
   <script>window.PD_AI = { transport: 'auto', endpoint: '/api/ai', model: null };</script>
-  <script src="llm.js"></script>
   <!-- DEV-ONLY login bypass. dev-bypass.js is .gitignored so it never deploys; this guard
        also avoids requesting it on the live host. Loads off-prod (or with ?dev=1). -->
   <script>
@@ -95,8 +57,31 @@
       if (!isProd || force) document.write('<script src="dev-bypass.js"><\/script>');
     })();
   </script>
-  <script type="text/babel" src="appearance.jsx"></script>
   <script src="sounds.js"></script>
+
+  <!-- GATED, TIERED DEFER — nothing below blocks the login paint. app.jsx renders login,
+       then loads these via deferred-loader.js. TIER 2 (primary) is just what the first
+       post-login screen needs; entry gates on it (window.__PD_MODULES_READY). TIER 3 (rest)
+       streams in behind the dashboard; views needing it show a brief spinner until
+       window.__PD_MODULES_ALL_READY. Keep *-data files immediately before the view that reads them. -->
+  <script src="deferred-loader.js"></script>
+  <script>
+    // Tier 2: paint the dashboard fast. appearance.jsx is here so the saved theme + nav
+    // preference apply at entry (no flash / no reverting to defaults).
+    window.__PD_DEFERRED_PRIMARY = ['appearance.jsx', 'dashboard.jsx'];
+    // Tier 3: everything else, loaded after the dashboard is up.
+    window.__PD_DEFERRED_REST = [
+      'hub.jsx', 'paperwork.jsx', 'credentials.jsx', 'intake.jsx', 'steps.jsx', 'provisioning.jsx',
+      'employee.jsx', 'scheduler.jsx', 'directory.jsx', 'profile.jsx', 'offboarding.jsx',
+      'automation.jsx', 'agent.jsx', 'llm.js', 'askhr-data.jsx', 'askhr.jsx', 'offices.jsx', 'orgeditor.jsx',
+      'reviews.jsx', 'timeclock.jsx', 'celebrate.jsx', 'hradmin.jsx',
+      'reportbuilder.jsx', 'reportschedule.jsx', 'scrubs-data.jsx', 'scrubs.jsx', 'help.jsx',
+      'notifications.jsx', 'walkthrough.jsx', 'myschedule.jsx', 'onboardingstatus.jsx',
+      'applicants.jsx', 'librarydata.jsx', 'library.jsx', 'editrecord.jsx', 'feedback.jsx',
+    ];
+  </script>
+  <!-- app.jsx is the last CRITICAL module: it paints login, starts the deferred loader,
+       and awaits it before showing the authenticated app. -->
   <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>
