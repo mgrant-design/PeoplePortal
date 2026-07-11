@@ -32,6 +32,8 @@
 
   /* Neutrals — hue + chroma driven by the tint controls; ink keeps low fixed
      chroma so text stays legible at any tint. */
+  /* Neutrals — hue + chroma driven by the tint controls; ink keeps low fixed
+     chroma so text stays legible at any tint. */
   --bg:        oklch(calc(0.985 - var(--paper-l)) calc(0.006 * var(--tint-mult)) var(--neutral-hue));
   --surface:   oklch(calc(1 - var(--paper-l)) calc(0.003 * var(--tint-mult)) var(--neutral-hue));
   --surface-2: oklch(calc(0.975 - var(--paper-l)) calc(0.007 * var(--tint-mult)) var(--neutral-hue));
@@ -117,9 +119,9 @@
    must stay LIGHT (--ink already flips light, covering the non-tinted case). These generic
    accent rules also cover yellow, and are placed last so they win on specificity ties. */
 [data-theme="dark"][data-tint="unprofessional"] .navgroup > button:not(.active),
-[data-theme="dark"][data-tint="unprofessional"] .mobile-nav button:not(.active) { color: oklch(0.82 var(--accent-chroma) var(--accent-hue)); }
+[data-theme="dark"][data-tint="unprofessional"] .mobile-nav button:not(.active) { color: oklch(0.82 var(--accent-c-text, var(--accent-chroma)) var(--accent-hue)); }
 [data-theme="dark"] .navgroup > button.active,
-[data-theme="dark"] .mobile-nav button.active { color: oklch(0.86 var(--accent-chroma) var(--accent-hue)); }
+[data-theme="dark"] .mobile-nav button.active { color: oklch(0.86 var(--accent-c-text, var(--accent-chroma)) var(--accent-hue)); }
 
 [data-corners="sharp"] { --r-sm: 1px; --r-md: 2px; --r-lg: 4px; --r-xl: 6px; --r-pill: 6px; }
 [data-corners="cut"] { --r-sm: 0; --r-md: 0; --r-lg: 0; --r-xl: 0; --r-pill: 5px; }

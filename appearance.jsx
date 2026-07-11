@@ -22,6 +22,38 @@ const FONTS = [
   ['noir', 'Manufacturing Consent', 'Jim Nightshade', 'Noir'],
 ];
 
+/* ---- gamut-true color helper (keeps the Unprofessional wash monochromatic) ----
+   The wash asks for far more chroma than sRGB can show at these lightnesses, so the browser
+   gamut-maps it and can shift the HUE — a blue wash lands on teal, a dark-orange wash lands
+   on red. That's what breaks the "everything is one color" cohesion. maxChroma() finds the
+   most chroma a given lightness+hue can actually hold, so we can request the richest colour
+   that is still TRUE to the hue (no stray teal/red). ~20 cubes per call — cheap. */
+function oklchToRgb(L, C, Hdeg) {
+  const h = Hdeg * Math.PI / 180, a = C * Math.cos(h), b = C * Math.sin(h);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+  ];
+}
+function inGamut(L, C, H) { const e = 0.001; return oklchToRgb(L, C, H).every(v => v >= -e && v <= 1 + e); }
+function maxChroma(L, H) { let lo = 0, hi = 0.4; for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; if (inGamut(L, mid, H)) lo = mid; else hi = mid; } return lo; }
+/* oklch() string at the requested chroma, but never past what stays true to the hue. */
+function trueOk(L, H, reqC) { return `oklch(${L} ${Math.min(reqC, maxChroma(L, H)).toFixed(3)} ${H})`; }
+/* The lightness that can hold `targetC` chroma for this hue — searched from hiL toward loL
+   (light: pick the LIGHTEST such L; dark: pass preferDark to pick the DARKEST). This is how we
+   homogenise saturation across hues: each hue sits at whatever lightness lets it reach the SAME
+   chroma, so a narrow-gamut hue (blue, teal) ends up as colour-drenched as a wide one (green). */
+function lForC(H, targetC, hiL, loL, preferDark) {
+  if (preferDark) { for (let L = loL; L <= hiL; L += 0.01) if (maxChroma(L, H) >= targetC) return +L.toFixed(3); return hiL; }
+  for (let L = hiL; L >= loL; L -= 0.01) if (maxChroma(L, H) >= targetC) return +L.toFixed(3);
+  return loL;
+}
+
 function loadAppearance(empId) {
   try { const s = localStorage.getItem('pd_appearance_' + empId); if (s) return { ...APPEARANCE_DEFAULTS, ...JSON.parse(s) }; } catch (e) {}
   return { ...APPEARANCE_DEFAULTS };
@@ -54,7 +86,11 @@ function applyAppearance(p) {
   // The full-screen neutral wash is Unprofessional's alone now. Tinted no longer washes
   // the page/text — it expresses itself via card + linework accents in styles.css.
   const washed = heavy;
-  r.style.setProperty('--accent-hue', a.accentHue);
+  // In Unprofessional ONLY, nudge a few hues (warmer orange, forest green, cooler indigo)
+  // without touching the global accent identity that Subtle/Tinted use. Keyed by swatch hue.
+  const WASH_HUE = { 70: 52, 145: 138, 287: 298 };
+  const washHue = (washed && !a.dark && WASH_HUE[a.accentHue] != null) ? WASH_HUE[a.accentHue] : a.accentHue;
+  r.style.setProperty('--accent-hue', washHue);
   const aS = a.accentSat || 1;
   const acc = (typeof ACCENTS !== 'undefined') ? ACCENTS.find(c => c[1] === a.accentHue) : null;
   const mono = !!(acc && acc[4] === 'mono');
@@ -79,10 +115,72 @@ function applyAppearance(p) {
   // When a light/near-white accent is used in light mode, switch to outline contrast mode.
   r.setAttribute('data-accent-tone', (!a.dark && accL >= 0.88) ? 'light' : 'normal');
   r.setAttribute('data-accent', acc ? String(acc[0]).toLowerCase() : 'custom');
-  r.style.setProperty('--neutral-hue', (washed && !mono) ? a.accentHue : 240);
+  r.style.setProperty('--neutral-hue', (washed && !mono) ? washHue : 240);
   const levelMult = heavy ? (a.dark ? 9 : 14) : 1;
   r.style.setProperty('--tint-mult', (washed && !mono) ? (levelMult * aS * cmul) : 1);
   r.style.setProperty('--ink-tint', mono ? 0 : (heavy ? (a.dark ? 0.035 : 0.05) : 0));
+  // Unprofessional wash, kept MONOCHROMATIC: we honor the designed lightnesses + chroma
+  // budget, but clamp every surface to the richest colour that is still TRUE to the hue,
+  // so nothing strays into a neighbour (blue→teal, dark-orange→red). Same rule in light &
+  // dark, every accent incl. pink — that's what makes the whole UI read as one colour.
+  if (washed && !mono) {
+    const H = washHue;
+    const D = a.dark;
+    if (D) {
+      // DARK theme, Unprofessional: the tuned dark wash. Designed dark lightnesses, chroma
+      // clamped so it stays TRUE to the hue. Most intense tint in dark.
+      const tm = levelMult * aS * cmul;
+      // Warm hues (orange/yellow) can't hold colour at deep-dark lightness — they collapse to
+      // brown/red ("orange looks like the red swatch"). Lift ONLY those so orange reads as amber;
+      // every other hue — including teal — stays exactly as designed (deep & untouched).
+      const warmLift = (H >= 45 && H <= 115) ? 0.17 : 0;
+      const S = (name, L, reqC) => r.style.setProperty(name, trueOk(L + warmLift, H, reqC));
+      S('--bg',        0.185, 0.006 * tm);
+      S('--surface',   0.235, 0.006 * tm);
+      S('--surface-2', 0.275, 0.008 * tm);
+      S('--line',      0.340, Math.min(0.05, 0.012 * tm));
+      S('--line-soft', 0.300, Math.min(0.04, 0.010 * tm));
+      S('--accent-soft',   0.360, 0.07);
+      S('--accent-softer', 0.290, 0.05);
+      // nav labels: a soft, LESS-saturated tint of the base hue (in-theme contrast, like the
+      // rest of the wash) — NOT the max-chroma neon that made green read as lime.
+      r.style.setProperty('--accent-c-text', Math.min(maxChroma(0.84, H), 0.05).toFixed(3));
+      r.style.removeProperty('--ink-2'); r.style.removeProperty('--ink-3');
+    } else {
+      // LIGHT theme, Unprofessional — the MOST intense tint. Wide-gamut hues (orange/yellow/
+      // green/teal) get their natural light+saturated wash and are LEFT ALONE. Only the hues that
+      // wash out to near-white at these light lightnesses (red/blue/indigo/pink — they hold
+      // <0.09 chroma up here) get rescued: ride a little darker until the colour reaches a
+      // proper saturation, matching the good ones — never dark enough to read as "dark mode".
+      const p = Math.min(1, Math.max(0, (aS - 0.4) / 2.2));
+      const weak = maxChroma(0.85, H) < 0.09;
+      const T = (name, l0, l1, fillTop, weakTarget) => {
+        let L = l0 + (l1 - l0) * p;
+        let C = maxChroma(L, H) * (0.12 + (fillTop - 0.12) * p);
+        if (weak) {
+          const target = weakTarget * p;
+          if (C < target) { L = lForC(H, target, L, l1 - 0.18, false); C = Math.min(target, maxChroma(L, H)); }
+        }
+        r.style.setProperty(name, `oklch(${L.toFixed(3)} ${C.toFixed(3)} ${H})`);
+      };
+      //        name             l0     l1    fill  weak-hue rescue target
+      T('--bg',        0.970, 0.660, 0.97, 0.150);   // page
+      T('--surface',   0.980, 0.850, 0.90, 0.110);   // cards
+      T('--surface-2', 0.965, 0.730, 0.95, 0.120);   // topbar / chips
+      T('--line',      0.880, 0.560, 1.00, 0.150);
+      T('--line-soft', 0.920, 0.680, 0.85, 0.110);
+      T('--accent-soft',   0.900, 0.780, 0.95, 0.130);
+      T('--accent-softer', 0.940, 0.860, 0.80, 0.090);
+      r.style.setProperty('--accent-c-text', maxChroma(0.46, H).toFixed(3));
+      // Secondary GREY text deepens in-theme as the wash darkens, so meta/label text keeps its
+      // contrast on the colour-drenched cards & bar instead of washing out — a deeper tint of
+      // the base hue, never a fresh grey.
+      r.style.setProperty('--ink-2', `oklch(${(0.46 - 0.10 * p).toFixed(3)} 0.045 ${H})`);
+      r.style.setProperty('--ink-3', `oklch(${(0.60 - 0.16 * p).toFixed(3)} 0.040 ${H})`);
+    }
+  } else {
+    ['--bg', '--surface', '--surface-2', '--line', '--line-soft', '--accent-c-text', '--ink-2', '--ink-3'].forEach(t => r.style.removeProperty(t));
+  }
   let paperL = 0;
   if (mono && a.tint === 'tinted') paperL = a.dark ? 0.02 : 0.035;
   else if (mono && a.tint === 'unprofessional') paperL = a.dark ? 0.045 : 0.07;
