@@ -704,7 +704,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n))} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}

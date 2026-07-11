@@ -66,6 +66,22 @@ module.exports = async function (context, req) {
     /* ---------- WRITE: send a notice ---------- */
     let input = req.body;
     if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
+
+    // mark one of MY notices read (recipient only — the doc lives in my own partition, so a
+    // point-read scoped to my email can only find notices actually addressed to me).
+    if (input && input.action === 'read') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
+      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
+      const doc = strip(dr.body);
+      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
+      const next = { ...doc, read: true };
+      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
+      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'update failed', status: wr.status }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, notice: strip(next) }) };
+      return;
+    }
+
     const toEmail = ((input && input.toEmail) || '').toLowerCase();
     if (!toEmail || !(input.title || input.body)) {
       context.res = { status: 400, headers, body: JSON.stringify({ error: 'toEmail and a title or body are required' }) }; return;

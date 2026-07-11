@@ -295,6 +295,17 @@ async function sendNotice(body) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('send failed (' + res.status + ')')); }
   return res.json();
 }
+/* Persist that I've read one of my notices (recipient-only, server-checked). */
+async function markNoticeRead(id) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify({ action: 'read', id }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('read update failed (' + res.status + ')')); }
+  return res.json();
+}
 /* Open the live SignalR connection so notices pushed to me arrive instantly. Returns the
    connection (call .stop() to close) or null when unavailable — no client library, not
    signed in, or no /api (sandbox). Safe to call always: on null the 5-min poll still covers
@@ -321,5 +332,5 @@ Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
-  fetchNotices, sendNotice, connectNotifications,
+  fetchNotices, sendNotice, markNoticeRead, connectNotifications,
 });
