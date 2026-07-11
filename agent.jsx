@@ -122,9 +122,17 @@ function Toggle2({ on, onClick }) {
   );
 }
 
-function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
-  const [channels, setChannels] = useState(() => AGENT_CHANNELS.map(c => ({ ...c })));
-  const toggle = (id) => setChannels(cs => cs.map(c => c.id === id ? { ...c, on: !c.on } : c));
+/* save-status pill for the console header — mirrors the org editor's OeSaveStatus */
+function AgentSaveStatus({ status }) {
+  if (status === 'saving') return <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Saving…</span>;
+  if (status === 'saved') return <span className="mono" style={{ fontSize: 12, color: 'var(--accent-strong)' }}><Icon name="check" style={{ width: 13, height: 13, verticalAlign: '-2px' }} /> Saved for everyone</span>;
+  if (status === 'conflict') return <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Changed elsewhere — reload</span>;
+  if (status === 'error') return <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>Saved locally</span>;
+  return null;
+}
+
+function AgentConsole({ onBack, onAddHire, knowledge, routing, onKnowledge, onRouting, channels = [], onChannels = () => {}, canEdit = false, status = 'idle' }) {
+  const toggle = (id) => { if (!canEdit) return; onChannels(channels.map(c => c.id === id ? { ...c, on: !c.on } : c)); };
   const [kEdit, setKEdit] = useState(null);   // index | 'new' | null
   const [kDraft, setKDraft] = useState({ topic: '', answer: '' });
   const [rEdit, setREdit] = useState(null);
@@ -154,15 +162,25 @@ function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
   return (
     <div className="fade-in">
       {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to automations</button>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
         <AgentBadge size={48} />
-        <div>
-          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Onboarding Agent</h1>
-          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 4 }}>“Riley” · a friendly, professional concierge for every new hire</p>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Agent Automations</h1>
+          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 4 }}>Here you can see Riley's planned or executed automation tasks.</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <AgentSaveStatus status={status} />
+          {onAddHire && <button className="btn btn-primary" onClick={onAddHire}><Icon name="plus" /> Add new hire</button>}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 'var(--gap)', alignItems: 'start' }}>
+      {!canEdit && (
+        <div className="card" style={{ padding: '11px 15px', marginBottom: 'var(--gap)', background: 'var(--surface-2)', fontSize: 12.5, color: 'var(--ink-2)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Icon name="lock" style={{ width: 14, height: 14, color: 'var(--ink-3)', flex: 'none' }} /> View only — an administrator can edit Riley’s responses, routing, and channels.
+        </div>
+      )}
+
+      <div className="agent-grid">
         {/* channels */}
         <div className="card" style={{ padding: 'var(--pad)' }}>
           <h3 style={{ fontSize: 16, marginBottom: 4 }}>Channels</h3>
@@ -185,7 +203,7 @@ function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
         <div className="card" style={{ padding: 'var(--pad)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ fontSize: 16 }}>Knowledge base</h3>
-            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => startK('new')}><Icon name="plus" /> Add</button>
+            {canEdit && <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => startK('new')}><Icon name="plus" /> Add</button>}
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>What the agent answers directly. Edit anytime — changes apply to calls, texts, email, and the employee chat.</p>
           {kEdit === 'new' && <KForm draft={kDraft} setDraft={setKDraft} onSave={saveK} onCancel={() => setKEdit(null)} inp={inp} />}
@@ -197,8 +215,8 @@ function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Icon name={k.icon} style={{ width: 15, height: 15, color: 'var(--accent)', flex: 'none' }} />
                   <span style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{k.topic}</span>
-                  <button onClick={() => startK(i)} title="Edit" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="pen" style={{ width: 14, height: 14 }} /></button>
-                  <button onClick={() => delK(i)} title="Delete" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="trash" style={{ width: 14, height: 14 }} /></button>
+                  {canEdit && <button onClick={() => startK(i)} title="Edit" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="pen" style={{ width: 14, height: 14 }} /></button>}
+                  {canEdit && <button onClick={() => delK(i)} title="Delete" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="trash" style={{ width: 14, height: 14 }} /></button>}
                 </div>
                 {k.answer && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6, lineHeight: 1.45 }}>{k.answer}</p>}
               </div>
@@ -210,7 +228,7 @@ function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
         <div className="card" style={{ padding: 'var(--pad)', gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ fontSize: 16 }}>Routing rules</h3>
-            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => startR('new')}><Icon name="plus" /> Add rule</button>
+            {canEdit && <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => startR('new')}><Icon name="plus" /> Add rule</button>}
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>When a question needs a human, the agent routes it to the right person and shares context in Google Chat.</p>
           {rEdit === 'new' && <RForm draft={rDraft} setDraft={setRDraft} onSave={saveR} onCancel={() => setREdit(null)} inp={inp} />}
@@ -227,8 +245,8 @@ function AgentConsole({ onBack, knowledge, routing, onKnowledge, onRouting }) {
                   <div><div style={{ fontWeight: 600 }}>{r.to}</div><div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.role}</div></div>
                   <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>{r.via}</div>
                   <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                    <button onClick={() => startR(i)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="pen" style={{ width: 14, height: 14 }} /></button>
-                    <button onClick={() => delR(i)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="trash" style={{ width: 14, height: 14 }} /></button>
+                    {canEdit && <button onClick={() => startR(i)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="pen" style={{ width: 14, height: 14 }} /></button>}
+                    {canEdit && <button onClick={() => delR(i)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4 }}><Icon name="trash" style={{ width: 14, height: 14 }} /></button>}
                   </div>
                 </div>
               ))}

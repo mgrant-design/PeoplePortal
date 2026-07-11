@@ -1,7 +1,8 @@
 /* appearance.jsx — per-employee look & feel, opened by the SECRET double-click on the
    top-bar tooth. Accent color, monochrome tint, light/dark, density, corners.
-   Persists per employee in localStorage now; the /api/settings (userSettings, Cosmos)
-   wiring swaps in later for cross-device. applyAppearance() is also called on sign-in. */
+   Persists per employee to Cosmos via /api/settings (userSettings), with localStorage
+   as an instant cache; hydrateAppearance() re-applies from Cosmos on sign-in for
+   cross-device. applyAppearance() is also called on sign-in. */
 
 const APPEARANCE_DEFAULTS = { accentHue: 245, accentL: 0.56, accentSat: 1, tint: 'subtle', density: 'regular', dark: false, corners: 'rounded', font: 'modern', contrast: 'normal', textsize: 'm', motion: 'normal', navMode: 'all' };
 

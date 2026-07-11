@@ -69,7 +69,7 @@ const NAV = [
   { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
   { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
   { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
-  { id: 'automations', label: 'Automations', show: a => a.caps.hire, flag: 'automations' },
+  { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
@@ -103,7 +103,7 @@ const NAV_GROUPS = [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
     { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
     { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
-    { id: 'automations', label: 'Automations', show: a => a.caps.hire, flag: 'automations' },
+    { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
     { id: 'feedback', label: 'Roadmap', show: () => true },
@@ -241,10 +241,13 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
-  const [knowledge, setKnowledge] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_knowledge')) || AGENT_KNOWLEDGE; } catch (e) { return AGENT_KNOWLEDGE; } });
-  const [routing, setRouting] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_routing')) || AGENT_ROUTING; } catch (e) { return AGENT_ROUTING; } });
-  const saveKnowledge = (k) => { setKnowledge(k); try { localStorage.setItem('pd_knowledge', JSON.stringify(k)); } catch (e) {} };
-  const saveRouting = (r) => { setRouting(r); try { localStorage.setItem('pd_routing', JSON.stringify(r)); } catch (e) {} };
+  // Riley's config (knowledge base, routing rules, channels) now persists to Cosmos via
+  // /api/agentconfig — admin edits in the Agent Dashboard change Riley for everyone. Seeds
+  // from the riley-data.jsx constants and hydrates from the server on mount. (See agentconfig.jsx.)
+  const agentCfg = (typeof useAgentConfig === 'function') ? useAgentConfig() : { knowledge: (typeof AGENT_KNOWLEDGE !== 'undefined' ? AGENT_KNOWLEDGE : []), routing: (typeof AGENT_ROUTING !== 'undefined' ? AGENT_ROUTING : []), channels: [], status: 'idle', saveKnowledge: () => {}, saveRouting: () => {}, saveChannels: () => {} };
+  const { knowledge, routing } = agentCfg;
+  const saveKnowledge = agentCfg.saveKnowledge;
+  const saveRouting = agentCfg.saveRouting;
   const [reviewQ, setReviewQ] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_review_questions')) || REVIEW_QUESTIONS; } catch (e) { return REVIEW_QUESTIONS; } });
   const saveReviewQ = (q) => { setReviewQ(q); try { localStorage.setItem('pd_review_questions', JSON.stringify(q)); } catch (e) {} };
   const reviewList = access.caps.viewAll ? EMPLOYEES.filter(e => e.status === 'Active') : access.caps.viewTeam ? scopedEmployees(me, access).filter(e => e.id !== me.id && e.status === 'Active') : [me];
@@ -381,7 +384,10 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   const renderView = () => {
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
-    switch (view) {
+    // The Agent Automations section (console + runs + add-hire) is Admin-only. autodetail is
+    // NOT gated — it's the post-hire pipeline the ATS and manager pre-hire flows land on.
+    const view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole'].includes(view)) ? 'dashboard' : view;
+    switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />;
       case 'people': return <Directory employees={EMPLOYEES} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
       case 'emprecord': return <EmployeeRecord emp={selectedEmp || me} access={access} me={me} canRelations={access.caps.viewAll || (access.caps.viewTeam && scopedIds.has((selectedEmp || me).id))} onBack={() => go('people')} />;
@@ -396,11 +402,11 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offboarding': return <Offboarding me={me} access={access} viewOnly={!access.caps.offboard && access.caps.offboardView} onOpenEmp={openEmp} />;
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
-      case 'automations': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('agentconsole')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
+      case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} onAddHire={() => go('autoruns')} />;
       case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} />;
-      case 'agentconsole': return <AgentConsole onBack={() => go('automations')} knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} />;
-      case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('automations')} apiMode={flagOn('provisionApi')} />;
-      case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go('automations')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('agentconsole')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />; }
+      case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
+      case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
+      case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />; }
       case 'reports': return <Reports access={access} scope={access.caps.viewAll ? EMPLOYEES : scoped} paychexOn={flagOn('paychex')} me={me} flash={flash} />;
       case 'onboardingstatus': return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
@@ -429,11 +435,16 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // map hub's task ids to onboarding sub-views (TASKS uses id 'profile' for intake step)
   const hubGo = (id) => go(id === 'profile' ? 'profilestep' : id);
 
-  const navLabel = (n) => (n.id === 'onboarding' && access.caps.onboardStatus) ? 'Onboarding status' : n.label;
+  const navLabel = (n) => (n.id === 'onboarding' && access.caps.onboardStatus) ? 'Onboarding' : n.label;
+  // Alphabetize nav items by their displayed label; optionally pin one id (Dashboard) first.
+  const sortNav = (items, pin) => [...items].sort((a, b) => {
+    if (pin) { if (a.id === pin) return -1; if (b.id === pin) return 1; }
+    return navLabel(a).localeCompare(navLabel(b));
+  });
   const navActive = (id) => {
     if (id === 'onboarding') return ONBOARD_VIEWS.includes(view) || view === 'profilestep' || view === 'onboardingstatus' || view === 'prehire';
     if (id === 'people') return view === 'people' || view === 'emprecord';
-    if (id === 'automations') return ['automations', 'addhire', 'autodetail', 'agentconsole'].includes(view);
+    if (id === 'automations') return ['automations', 'autoruns', 'addhire', 'autodetail', 'agentconsole'].includes(view);
     return view === id;
   };
   // Which grouped category contains the current view — used to auto-open it in the mobile
@@ -454,8 +465,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         {navMode === 'all' ? (() => {
           const byId = (id) => NAV.find(n => n.id === id);
           const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-          const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
-          const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
+          const mainItems = sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard');
+          const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
           const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
           const adminOpen = navMenu === 'admin';
           const adminActive = adminItems.some(c => navActive(c.id));
@@ -482,14 +493,14 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         })() : (
           <>
             <nav className="navgroups">
-              {NAV_GROUPS.map(g => {
+              {sortNav(NAV_GROUPS, 'dashboard').map(g => {
                 if (!g.children) {
                   if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
                   return <div className="navgroup" key={g.id}>
                     <button className={navActive(g.id) ? 'active' : ''} onClick={() => { setNavMenu(null); go(g.view || g.id); }}>{g.label}</button>
                   </div>;
                 }
-                const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+                const kids = sortNav(g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag))));
                 if (!kids.length) return null;
                 const groupActive = kids.some(c => navActive(c.id));
                 const open = navMenu === g.id;
@@ -540,8 +551,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
           {navMode === 'all' ? (() => {
             const byId = (id) => NAV.find(n => n.id === id);
             const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-            const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
-            const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
+            const mainItems = sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard');
+            const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
             const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
             const adminOpen = mobileGroup === 'admin';
             const adminActive = adminItems.some(c => navActive(c.id));
@@ -565,12 +576,12 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
                 )}
               </>
             );
-          })() : NAV_GROUPS.map(g => {
+          })() : sortNav(NAV_GROUPS, 'dashboard').map(g => {
             if (!g.children) {
               if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
               return <button key={g.id} className={'mnav-top' + (navActive(g.id) ? ' active' : '')} onClick={() => go(g.view || g.id)}>{g.label}</button>;
             }
-            const kids = g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag)));
+            const kids = sortNav(g.children.filter(c => c.show(access) && (!c.flag || flagOn(c.flag))));
             if (!kids.length) return null;
             const open = mobileGroup === g.id;
             const groupActive = kids.some(c => navActive(c.id));

@@ -194,11 +194,11 @@ function Automations({ automations, onOpen, onAdd, onConsole }) {
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Onboarding automations</h1>
+          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>New hires</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>The agent handles outreach, data collection, credential checks, and account creation for every new hire.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost" onClick={onConsole}><Icon name="sparkle" /> Agent console</button>
+          {onConsole && <button className="btn btn-ghost" onClick={onConsole}><Icon name="sparkle" /> Agent console</button>}
           <button className="btn btn-primary btn-lg" onClick={onAdd}><Icon name="plus" /> Add new hire</button>
         </div>
       </div>

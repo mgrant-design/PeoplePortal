@@ -327,6 +327,10 @@ button { font-family: inherit; cursor: pointer; }
 /* grouped top nav (app.jsx NAV_GROUPS) */
 .navgroups { display: flex; align-items: center; gap: 2px; }
 @media (max-width: 980px) { .navgroups { display: none; } }
+
+/* Agent Automations console — two boxes that stretch to fill, stacking on narrow screens */
+.agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); align-items: start; }
+@media (max-width: 760px) { .agent-grid { grid-template-columns: 1fr; } }
 .navgroup { position: relative; }
 .navgroup > button { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: var(--ink); font-size: 15px; font-weight: 500; padding: 8px 13px; border-radius: var(--r-pill); transition: all .16s; white-space: nowrap; cursor: pointer; font-family: var(--font-body); }
 .navgroup > button:hover { background: var(--surface-2); color: var(--ink); }

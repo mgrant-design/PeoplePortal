@@ -20,7 +20,7 @@ function OnboardingStatus({ me, access, automations, onPrehire, onOpenAuto }) {
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Onboarding status</h1>
+          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Onboarding</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{access.caps.viewAll ? 'All new hires in progress' : `New hires at ${me.loc}`} · {list.length} active</p>
         </div>
         {canPrehire && <button className="btn btn-primary" onClick={onPrehire}><Icon name="plus" /> Submit a new hire</button>}
