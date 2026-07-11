@@ -47,7 +47,7 @@ const ZEN_LINES = [
   { face: '(っ ˶ˆ ᵕ ˆ˶ )っ ♡', msg: 'phew, all done' },
 ];
 
-function ZenEmpty({ isMgr, onRequest }) {
+function ZenEmpty({ isMgr, onRequest, onCompose }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * ZEN_LINES.length));
   const [show, setShow] = useState(true);
   useEffect(() => {
@@ -75,9 +75,14 @@ function ZenEmpty({ isMgr, onRequest }) {
         <div style={{ fontSize: 30, letterSpacing: '.03em', color: soft, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{cur.face}</div>
         <div style={{ fontSize: 13, marginTop: 13, color: soft, fontWeight: 500, letterSpacing: '.01em' }}>{cur.msg}</div>
       </div>
-      {!isMgr && (
-        <button onClick={onRequest} style={{ marginTop: 24, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>request time off</button>
-      )}
+      <div style={{ marginTop: 24, display: 'flex', gap: 18, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {onCompose && (
+          <button onClick={onCompose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>send a message</button>
+        )}
+        {!isMgr && (
+          <button onClick={onRequest} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>request time off</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -123,8 +128,36 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
   );
 }
 
-function NotificationsPanel({ me, access, onClose, flash }) {
+function MessageComposer({ me, access, onSend, onCancel }) {
+  const people = (typeof window !== 'undefined' && window.EMPLOYEES ? window.EMPLOYEES : []).filter(e => e && e.status === 'Active' && e.id !== me.id && (access.caps.viewAll || e.loc === me.loc) && e.workEmail);
+  const [to, setTo] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [urgent, setUrgent] = useState(false);
+  const inp = { width: '100%', padding: '9px 11px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 12, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
+      <label style={{ display: 'block', marginBottom: 9 }}><div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>To</div>
+        <select value={to} onChange={e => setTo(e.target.value)} style={{ ...inp, appearance: 'auto' }}>
+          <option value="">Select a person…</option>
+          {people.map(p => <option key={p.id} value={p.workEmail}>{p.name}{p.loc ? ' · ' + p.loc : ''}</option>)}
+        </select></label>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Subject" style={{ ...inp, marginBottom: 9 }} />
+      <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} placeholder="Message" style={{ ...inp, resize: 'vertical' }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13, cursor: 'pointer' }}>
+        <input type="checkbox" checked={urgent} onChange={e => setUrgent(e.target.checked)} /> Mark urgent
+      </label>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+        <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!to || (!title.trim() && !body.trim())} onClick={() => onSend({ toEmail: to, title, body, urgent })}><Icon name="check" /> Send</button>
+      </div>
+    </div>
+  );
+}
+
+function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead }) {
   const [reqs, setReqs] = useState(loadTimeoff);
+  const [composing, setComposing] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
   const [adding, setAdding] = useState(false);
   const [sndChoice, setSndChoice] = useState(() => (window.PDSound ? window.PDSound.getChoice(me.id) : 1));
@@ -138,7 +171,7 @@ function NotificationsPanel({ me, access, onClose, flash }) {
   const locs = Object.keys(openByOffice);
   const myScope = scopedRequests(reqs, me, access);
   const actionable = myScope.filter(r => (isHR && r.status === 'hr_review') || (isMgr && r.status === 'mgr_review'));
-  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0;
+  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0 && notices.length === 0;
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
 
@@ -205,8 +238,31 @@ function NotificationsPanel({ me, access, onClose, flash }) {
           <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: fullyEmpty && !adding ? 'flex' : 'block' }}>
-          {fullyEmpty && !adding ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} /> : <>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: fullyEmpty && !adding && !composing ? 'flex' : 'block' }}>
+          {fullyEmpty && !adding && !composing ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} onCompose={() => setComposing(true)} /> : <>
+          {/* direct messages (person → person) — anyone can compose to someone in their scope */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Icon name="mail" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
+              <h3 style={{ fontSize: 14, flex: 1 }}>Messages</h3>
+              <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => setComposing(c => !c)}><Icon name="plus" /> New</button>
+            </div>
+            {composing && <MessageComposer me={me} access={access} onCancel={() => setComposing(false)} onSend={(body) => { setComposing(false); Promise.resolve(onSend && onSend(body)).then(() => flash && flash('Message sent.')).catch(err => flash && flash((err && err.message) || 'Send failed.')); }} />}
+            {notices.length === 0 && !composing && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No messages.</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {notices.map(n => (
+                <div key={n.id} className="card" onClick={() => !n.read && onMarkRead && onMarkRead(n.id)} style={{ padding: 12, cursor: n.read ? 'default' : 'pointer', borderColor: n.read ? 'var(--line)' : 'var(--accent)', background: n.read ? 'var(--surface)' : 'var(--accent-softer)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{n.title || '(no subject)'}</div>
+                    {n.urgent && <span className="badge badge-todo">Urgent</span>}
+                    {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none' }} />}
+                  </div>
+                  {n.body && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6 }}>{n.body}</p>}
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>from {n.fromName || n.fromEmail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
           {/* open shifts — managers/HR */}
           {isMgr && (
             <div style={{ marginBottom: 24 }}>
@@ -289,4 +345,28 @@ function NotificationsPanel({ me, access, onClose, flash }) {
   );
 }
 
-Object.assign(window, { NotificationsPanel, notifCount, approvedTimeoff });
+/* Signatures of the notifications that count as "done TO you" — the ones that should ding
+   when they newly appear. Deliberately excludes anything the user causes themselves, so a
+   ding is always "someone/something acted on you," never "you did a thing":
+     • Employee  → their own request was DECIDED (approved / denied / insufficient). These can
+                  never be self-triggered (you can't approve yourself), so no false dings.
+                  (mgr_review is skipped on purpose: an unpaid request the employee submits
+                   themselves starts there, which would be a self-ding.)
+     • Manager   → a request in scope is newly awaiting their approval (mgr_review).
+     • HR/admin  → a request in scope is newly awaiting a balance check (hr_review).
+   Signature is id:status, so a request moving between stages reads as a new notification
+   for whoever it just landed on. Used by app.jsx to diff poll-over-poll and ding the new. */
+function myNotifSignatures(reqs, me, access) {
+  const scoped = scopedRequests(reqs || [], me, access);
+  const isMgr = access.caps.viewAll || access.caps.viewTeam;
+  const isHR = access.flags.isHR || access.caps.viewAll;
+  const out = [];
+  scoped.forEach(r => {
+    if (!isMgr && r.empId === me.id && (r.status === 'approved' || r.status === 'denied' || r.status === 'insufficient')) out.push(r.id + ':' + r.status);
+    if (isMgr && r.status === 'mgr_review') out.push(r.id + ':' + r.status);
+    if (isHR && r.status === 'hr_review') out.push(r.id + ':' + r.status);
+  });
+  return out;
+}
+
+Object.assign(window, { NotificationsPanel, notifCount, approvedTimeoff, myNotifSignatures });

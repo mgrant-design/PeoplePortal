@@ -61,6 +61,9 @@
     })();
   </script>
   <script src="sounds.js"></script>
+  <!-- SignalR browser client — lets a logged-in tab hold a live connection so notices
+       sent to this person arrive (and ding) instantly instead of on the next poll. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 
   <!-- GATED, TIERED DEFER — nothing below blocks the login paint. app.jsx renders login,
        then loads these via deferred-loader.js. TIER 2 (primary) is just what the first

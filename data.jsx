@@ -261,6 +261,7 @@ async function saveCoverage(body) {
 /* ---- time-off persistence API (talks to the /api/timeoff Function) ---- */
 async function fetchTimeoff() {
   const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/timeoff', { headers: { 'X-Google-Token': token } });
   if (!res.ok) throw new Error('timeoff read failed (' + res.status + ')');
   const data = await res.json();
   return data.requests || [];
@@ -276,8 +277,49 @@ async function timeoffAction(body) {
   return res.json();
 }
 
+/* ---- direct notices (person → person) + live push (talks to /api/notify + /api/negotiate) ---- */
+async function fetchNotices() {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/notify', { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('notices read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.notices || [];
+}
+async function sendNotice(body) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('send failed (' + res.status + ')')); }
+  return res.json();
+}
+/* Open the live SignalR connection so notices pushed to me arrive instantly. Returns the
+   connection (call .stop() to close) or null when unavailable — no client library, not
+   signed in, or no /api (sandbox). Safe to call always: on null the 5-min poll still covers
+   everything, just not instantly. */
+async function connectNotifications(email, onNotice) {
+  if (typeof window === 'undefined' || !window.signalR || !email) return null;
+  const token = window.PD_GOOGLE_TOKEN || '';
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/negotiate?userId=' + encodeURIComponent(email), { headers: { 'X-Google-Token': token } });
+    if (!res.ok) return null;
+    const info = await res.json();
+    const conn = new window.signalR.HubConnectionBuilder()
+      .withUrl(info.url, { accessTokenFactory: () => info.accessToken })
+      .withAutomaticReconnect()
+      .build();
+    conn.on('notify', (notice) => { try { onNotice && onNotice(notice); } catch (e) {} });
+    await conn.start();
+    return conn;
+  } catch (e) { return null; }
+}
+
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
+  fetchNotices, sendNotice, connectNotifications,
 });

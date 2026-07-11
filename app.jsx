@@ -232,12 +232,77 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const chipClick = () => { if (chipHold.current.fired) { chipHold.current.fired = false; return; } go('me'); };
   const [navMode, setNavMode] = useState(() => { try { return (loadAppearance(me.id).navMode) || 'all'; } catch (e) { return 'all'; } });
   const [notifReqs, setNotifReqs] = useState([]);
-  const refreshNotifs = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {}); };
+  const [notices, setNotices] = useState([]);
+  const refreshNotifs = () => {
+    if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {});
+    if (typeof fetchNotices === 'function') fetchNotices().then(setNotices).catch(() => {});
+  };
   useEffect(() => { refreshNotifs(); }, [me.id]);
+  // Poll every 5 min so new notifications surface (and ding) without a manual reload, PLUS
+  // an immediate re-poll whenever the tab regains focus — which also resets the interval, so
+  // the next scheduled poll is a fresh 5 min after the catch-up. Polling never pauses (a
+  // hidden tab is exactly when an audible ding matters most). This is the pull baseline;
+  // true immediate manager→employee pings are a separate push layer (SignalR), TBD.
+  useEffect(() => {
+    let timer = null;
+    const start = () => { if (timer) clearInterval(timer); timer = setInterval(refreshNotifs, 300000); };
+    const onFocus = () => { refreshNotifs(); start(); };  // catch up now, then restart the 5-min clock
+    start();
+    window.addEventListener('focus', onFocus);
+    return () => { if (timer) clearInterval(timer); window.removeEventListener('focus', onFocus); };
+  }, [me.id]);
+  // Ding on genuinely-NEW "done to you" notifications. A per-user seen-set (persisted) is
+  // seeded silently on first load so pre-existing items never ding; thereafter each poll
+  // dings once per newly-appeared item, staggered into a little cascade. PDSound.ding
+  // self-checks mute, and we refresh the seen-set even when muted so unmuting never dumps a
+  // backlog. Fires only when real requests flow (silent in the API-less sandbox).
+  const seenNotifRef = React.useRef(null);
+  useEffect(() => {
+    const key = 'pd_seen_notifs_' + me.id;
+    const sigs = [
+      ...(typeof myNotifSignatures === 'function' ? myNotifSignatures(notifReqs, me, access) : []),
+      ...notices.map(n => 'notice:' + n.id),   // a direct notice is terminal — one ding when it first appears
+    ];
+    let seen = seenNotifRef.current;
+    if (seen === null) {
+      let stored = null;
+      try { stored = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+      if (Array.isArray(stored)) {
+        seen = new Set(stored);           // returning session — ding anything new since last time
+      } else {
+        seenNotifRef.current = new Set(sigs);   // first ever load — seed silently, no dings
+        try { localStorage.setItem(key, JSON.stringify(sigs)); } catch (e) {}
+        return;
+      }
+    }
+    const fresh = sigs.filter(s => !seen.has(s));
+    if (fresh.length && window.PDSound && typeof window.PDSound.ding === 'function') {
+      fresh.forEach((_, i) => setTimeout(() => window.PDSound.ding(me.id), i * 140));
+    }
+    const next = new Set(sigs);           // keep only still-present sigs (bounds the set)
+    seenNotifRef.current = next;
+    try { localStorage.setItem(key, JSON.stringify([...next])); } catch (e) {}
+  }, [notifReqs, notices]);
+  // Live push: hold a SignalR connection so a notice sent to me arrives & dings the instant
+  // it's sent, not on the next 5-min poll. We mark the pushed item seen first so the diff
+  // effect above never re-dings it. Null connection (sandbox / offline) just means the poll
+  // is the only path — still works, just not instant.
+  useEffect(() => {
+    if (typeof connectNotifications !== 'function' || !me.workEmail) return;
+    let conn = null, stopped = false;
+    const onNotice = (n) => {
+      if (!n || !n.id) return;
+      if (seenNotifRef.current instanceof Set) seenNotifRef.current.add('notice:' + n.id);
+      setNotices(list => list.some(x => x.id === n.id) ? list : [n, ...list]);
+      if (window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
+    };
+    connectNotifications(me.workEmail, onNotice).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
+    return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };
+  }, [me.id]);
   // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
-  const notifN = (typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0;
+  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read).length;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
@@ -639,7 +704,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n))} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}

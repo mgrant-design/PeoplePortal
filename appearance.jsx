@@ -111,6 +111,10 @@ function applyAppearance(p) {
   }
   // Readable foreground + an edge for light accent fills (Chalk, Yellow): dark text, faint border.
   r.style.setProperty('--on-accent', accL > 0.7 ? 'oklch(0.24 0 0)' : '#fff');
+  // Raw saturation (0.4–2.6) exposed for tinted-light: --accent-chroma clamps at each
+  // hue's in-gamut ceiling, so it stops responding at high slider values. Tinted's cards
+  // multiply by this instead, so dragging up keeps adding tint past the chroma clamp.
+  r.style.setProperty('--accent-sat', (a.accentSat || 1).toFixed(3));
   r.style.setProperty('--accent-edge', accL > 0.82 ? 'var(--line)' : 'transparent');
   // When a light/near-white accent is used in light mode, switch to outline contrast mode.
   r.setAttribute('data-accent-tone', (!a.dark && accL >= 0.88) ? 'light' : 'normal');

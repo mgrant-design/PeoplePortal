@@ -88,10 +88,34 @@
    theme. The card stays brighter+hued while the page keeps its neutral tone, so the accent
    border + shadow do the separating. */
 [data-tint="tinted"] {
-  --surface:   oklch(0.99  calc(var(--accent-chroma) * 0.13) var(--accent-hue));
-  --surface-2: oklch(0.965 calc(var(--accent-chroma) * 0.20) var(--accent-hue));
-  --line:      oklch(0.85  calc(var(--accent-chroma) * 0.50) var(--accent-hue));
-  --line-soft: oklch(0.91  calc(var(--accent-chroma) * 0.34) var(--accent-hue));
+  /* PAGE: held at (roughly) the OLD card level and deliberately NOT slider-driven — it
+     rides only the clamped --accent-chroma, so the background barely shifts as you drag.
+     That near-static, white-ish page is what keeps Tinted from becoming Unprofessional. */
+  --surface:   oklch(0.99  calc(var(--accent-chroma) * 0.20) var(--accent-hue));
+  /* CARDS + LINEWORK: these carry the "oomph". They multiply by --accent-sat so they keep
+     gaining tint past the chroma clamp, each capped by a tinted ceiling that sits well
+     below Unprofessional's full wash. Cards also sit a touch darker than the page so they
+     read as dyed panels. */
+  --surface-2: oklch(calc(0.955 - 0.021 * (var(--accent-sat) * var(--accent-sat) - 1)) min(0.160, calc(var(--accent-chroma) * 0.28 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
+  --line:      oklch(0.85  min(0.230, calc(var(--accent-chroma) * 0.55 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
+  --line-soft: oklch(0.91  min(0.150, calc(var(--accent-chroma) * 0.40 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
+}
+/* Tinted (light only): the icon chips (--accent-soft squares behind card icons) climb WITH
+   the slider too, but land BETWEEN the card behind them and full saturation — a bit past
+   halfway at max, so each square reads richer than its card without going fully saturated.
+   Anchored at sat=1 to the shared default (0.92 L / 0.075 C), so nothing shifts until you
+   drag up. Mono keeps its inline achromatic override. */
+html:not([data-theme="dark"])[data-tint="tinted"] {
+  --accent-soft: oklch(calc(0.92 - 0.030 * (var(--accent-sat) * var(--accent-sat) - 1)) min(0.190, calc(0.075 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
+}
+/* Yellow is the outlier: it sits very light (L .85), so at max its chip converges with the
+   icon on top (--accent-strong ≈ L .76) and its topbar converges with the tooth tile
+   (--accent). Yellow-only, light-tinted-only: hold the chip lighter + less saturated than
+   its icon, and the topbar paler than the tooth tile — the cap nudged down just for yellow.
+   sat=1 stays identical to the general rule, so defaults don't move. */
+html:not([data-theme="dark"])[data-tint="tinted"][data-accent="yellow"] {
+  --surface-2:   oklch(calc(0.955 - 0.012 * (var(--accent-sat) * var(--accent-sat) - 1)) min(0.105, calc(var(--accent-chroma) * 0.28 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
+  --accent-soft: oklch(calc(0.92  - 0.015 * (var(--accent-sat) * var(--accent-sat) - 1)) min(0.100, calc(0.075 * var(--accent-sat) * var(--accent-sat))) var(--accent-hue));
 }
 [data-theme="dark"][data-tint="tinted"] {
   --surface:   oklch(0.255 calc(var(--accent-chroma) * 0.20) var(--accent-hue));
@@ -210,8 +234,11 @@
 [data-accent-tone="light"] .navgroup > button.active,
 [data-accent-tone="light"] .mobile-nav button.active { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
 [data-accent-tone="light"] .badge-prog { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-/* Yellow's tile is light — keep the logo tooth white on it (black tooth is fine in white/outline mode). */
-[data-accent="yellow"] .brand .mark { color: #fff; }
+/* A white tooth suits a dental brand — keep the header tooth WHITE on every colored
+   tile (pink, yellow, etc., whose lightness would otherwise flip it to ink). The only
+   exception is the genuine near-white "outline" theme (data-accent-tone=light, handled
+   above), where an ink tooth on its white tile is correct. */
+html:not([data-accent-tone="light"]) .brand .mark { color: #fff; }
 
 /* ---- Visual style variants (tweak: data-style) ----
    Warm/cool is driven by --neutral-hue (set in applyAppearance) so it works in
