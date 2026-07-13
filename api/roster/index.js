@@ -1,6 +1,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
+const { loadAccessControl } = require('../_shared/cosmos');
 
 function getAuthHeader(verb, resourceType, resourceId, date, key) {
   const text = `${verb.toLowerCase()}\n${resourceType.toLowerCase()}\n${resourceId}\n${date.toLowerCase()}\n\n`;
@@ -126,6 +127,16 @@ module.exports = async function (context, req) {
       if (appRes.status === 200) {
         const sup = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
         if (sup) ref = { offices: sup.offices||[], departments: sup.departments||[], titles: sup.titles||[], managers: sup.managers||[], users: sup.users||[], offboarding: sup.offboarding||[] };
+      }
+    } catch (e) {}
+
+    // Fold the dedicated accessControl store into the users list (authoritative for
+    // permission grants) so server scoping and the client both see final permissions.
+    try {
+      const acc = await loadAccessControl();
+      if (acc.length) {
+        const idx = {}; ref.users.forEach((u, i) => { if (u && u.email) idx[u.email.toLowerCase()] = i; });
+        acc.forEach(a => { if (!a || !a.email) return; const k = a.email.toLowerCase(); if (idx[k] != null) ref.users[idx[k]] = { ...ref.users[idx[k]], ...a }; else ref.users.push(a); });
       }
     } catch (e) {}
 

@@ -119,11 +119,47 @@ const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['canPrint', 'Pri
 const SAVE_LABEL = { saving: 'Saving…', saved: 'Saved', error: 'Save failed — retry', conflict: 'Someone else saved — reload' };
 
 function AdminUsers({ me, flags, flagDefs, onFlag }) {
-  // users persist to Cosmos (appState/roster-support) via /api/orgconfig — same hook as Offices.
-  const [rows, saveUsers, saveStatus, setRows] = useOrgSection('users');
+  // Permissions live in the dedicated accessControl store (/api/accesscontrol), one
+  // doc per person keyed by email. Rows = every active employee, overlaid with their
+  // current overrides; saving writes each person you changed to that store.
+  const baseRows = useMemo(() => (window.EMPLOYEES || [])
+    .filter(e => e.status === 'Active')
+    .map(e => ({ first: e.first, last: e.last, email: (e.workEmail || e.email || '') }))
+    .filter(r => r.email)
+    .sort((a, b) => (a.last || '').localeCompare(b.last || '')), []);
+  const [rows, setRows] = useState(baseRows);
+  const [saveStatus, setStatus] = useState('idle');
   const [dirty, setDirty] = useState(false);
-  const toggle = (i, col) => { setDirty(true); setRows(rs => rs.map((r, j) => j === i ? { ...r, [col]: !r[col] } : r)); };
-  const save = () => { saveUsers(rows); setDirty(false); };
+  const changed = useRef(new Set());
+
+  useEffect(() => {
+    if (typeof fetchAccessControl !== 'function') return;
+    let cancelled = false;
+    fetchAccessControl().then(overrides => {
+      if (cancelled) return;
+      const byEmail = {}; (overrides || []).forEach(o => { if (o.email) byEmail[o.email.toLowerCase()] = o; });
+      setRows(rs => rs.map(r => ({ ...r, ...(byEmail[r.email.toLowerCase()] || {}) })));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggle = (i, col) => {
+    setDirty(true);
+    setRows(rs => rs.map((r, j) => { if (j !== i) return r; changed.current.add(r.email.toLowerCase()); return { ...r, [col]: !r[col] }; }));
+  };
+  const save = async () => {
+    if (typeof saveAccessOverride !== 'function') { setStatus('error'); return; }
+    setStatus('saving');
+    try {
+      const toSave = rows.filter(r => changed.current.has(r.email.toLowerCase()));
+      for (const r of toSave) {
+        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete });
+      }
+      changed.current.clear();
+      setStatus('saved'); setDirty(false);
+      setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 1600);
+    } catch (e) { setStatus('error'); }
+  };
   const [tab, setTab] = useState('Permissions');
   const TABS = flagDefs ? ['Permissions', 'Feature rollout'] : ['Permissions'];
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];

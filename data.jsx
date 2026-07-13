@@ -295,6 +295,28 @@ async function provisionAccounts(body) {
   return data;
 }
 
+/* ---- access control (talks to the /api/accesscontrol Function) ----
+   Per-person permission overrides live in their own Cosmos container, one doc per
+   person keyed by email. GET lists them; POST upserts one person's flags. */
+async function fetchAccessControl() {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/accesscontrol', { headers: { 'X-Google-Token': token } });
+  if (!res.ok) throw new Error('access-control read failed (' + res.status + ')');
+  const data = await res.json();
+  return data.overrides || [];
+}
+async function saveAccessOverride(body) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/accesscontrol', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('save failed (' + res.status + ')'));
+  return data;
+}
+
 /* ---- direct notices (person → person) + live push (talks to /api/notify + /api/negotiate) ---- */
 async function fetchNotices() {
   const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
@@ -350,5 +372,5 @@ Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
-  fetchNotices, sendNotice, markNoticeRead, connectNotifications, provisionAccounts,
+  fetchNotices, sendNotice, markNoticeRead, connectNotifications, provisionAccounts, fetchAccessControl, saveAccessOverride,
 });

@@ -11,6 +11,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
+const { loadAccessControl, applyAccessControl } = require('../_shared/cosmos');
 
 function authHeader(verb, resType, resId, date, key) {
   const text = `${verb.toLowerCase()}\n${resType.toLowerCase()}\n${resId}\n${date.toLowerCase()}\n\n`;
@@ -95,6 +96,7 @@ module.exports = async function (context, req) {
     const me = employees.find(e => (e.workEmail || '').toLowerCase() === identity.email);
     if (!me) throw new Error('No roster account for ' + identity.email);
     const usersByEmail = {}; (ref.users || []).forEach(u => { if (u.email) usersByEmail[u.email.toLowerCase()] = u; });
+    try { applyAccessControl(usersByEmail, await loadAccessControl()); } catch (e) {}
     const managerEmails = new Set((ref.managers || []).map(m => (m.email || '').toLowerCase()).filter(Boolean));
     return { me, employees, access: perms(me, usersByEmail, managerEmails, employees), office: me.loc || me.location || 'Unassigned' };
   }
