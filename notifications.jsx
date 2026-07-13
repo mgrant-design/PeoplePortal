@@ -1,11 +1,10 @@
 /* notifications.jsx — manager notifications: open shifts by location + time-off
    requests (approve / deny / route). Employees submit requests. Persists to localStorage. */
 
-function loadTimeoff() {
-  try { const s = localStorage.getItem('pd_timeoff'); if (s) return JSON.parse(s); } catch (e) {}
-  return [];   // no demo time-off — fills with real requests once staff submit them
-}
-function saveTimeoff(t) { try { localStorage.setItem('pd_timeoff', JSON.stringify(t)); } catch (e) {} }
+/* NO local fallback. Time-off lives in Cosmos (/api/timeoff). These stubs remain only
+   so older callers don't break; they hold nothing. */
+function loadTimeoff() { return []; }
+function saveTimeoff(t) {}
 function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
 const TO_STATUS = { hr_review: ['badge-prog', 'With HR · balance check'], mgr_review: ['badge-warn', 'With manager'], approved: ['badge-ok', 'Approved'], denied: ['badge-todo', 'Denied'], insufficient: ['badge-todo', 'Not enough balance'] };
 
@@ -156,7 +155,7 @@ function MessageComposer({ me, access, onSend, onCancel }) {
 }
 
 function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead }) {
-  const [reqs, setReqs] = useState(loadTimeoff);
+  const [reqs, setReqs] = useState([]);
   const [composing, setComposing] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
   const [adding, setAdding] = useState(false);
@@ -175,8 +174,8 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
 
-  // Load requests from Cosmos; fall back to localStorage outside production (sandbox).
-  const reload = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setReqs).catch(() => {}); };
+  // Load requests from Cosmos. No local fallback: if there's no backend the list stays empty.
+  const reload = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setReqs).catch(e => flash && flash('Could not load time-off: ' + ((e && e.message) || 'no backend'))); };
   useEffect(() => { reload(); }, []);
 
   // Open shifts come from published schedules (the builder's open-shifts lane).
@@ -200,13 +199,13 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
     return () => { cancelled = true; };
   }, [isMgr]);
 
-  // Each action hits the API then reloads; on failure (sandbox) it falls back to localStorage.
-  const localStatus = (id, status, extra) => { const next = reqs.map(r => r.id === id ? { ...r, status, ...(extra || {}) } : r); setReqs(next); saveTimeoff(next); };
-  const act = (r, action, okMsg, localName, localExtra) => {
-    if (typeof timeoffAction !== 'function') { localStatus(r.id, localName, localExtra); flash && flash(okMsg); return; }
+  // Each action goes to Cosmos. No local fallback — if the backend isn't there or the
+  // call fails, it surfaces the error and changes nothing.
+  const act = (r, action, okMsg) => {
+    if (typeof timeoffAction !== 'function') { flash && flash('No backend — time-off action unavailable.'); return; }
     timeoffAction({ action, id: r.id, office: r.office || r.loc })
       .then(() => { reload(); flash && flash(okMsg); })
-      .catch(() => { localStatus(r.id, localName, localExtra); flash && flash(okMsg); });
+      .catch(e => flash && flash((e && e.message) || 'Action failed.'));
   };
   const hrConfirm = (r) => act(r, 'hr_confirm', `Balance confirmed — moved to ${r.name.split(' ')[0]}’s manager.`, 'mgr_review', { hrConfirmed: true });
   const hrInsufficient = (r) => act(r, 'hr_insufficient', 'Marked as not enough balance.', 'insufficient');
@@ -215,10 +214,10 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   const submit = (r) => {
     setAdding(false);
     const msg = r.paid ? 'Request submitted — pending HR balance check.' : 'Request submitted — pending manager approval.';
-    if (typeof timeoffAction !== 'function') { const next = [r, ...reqs]; setReqs(next); saveTimeoff(next); flash && flash(msg); return; }
+    if (typeof timeoffAction !== 'function') { flash && flash('No backend — request not submitted.'); return; }
     timeoffAction({ action: 'submit', type: r.type, hours: r.hours, start: r.start, end: r.end, reason: r.reason })
       .then(() => { reload(); flash && flash(msg); })
-      .catch(() => { const next = [r, ...reqs]; setReqs(next); saveTimeoff(next); flash && flash(msg); });
+      .catch(e => flash && flash((e && e.message) || 'Submit failed.'));
   };
 
   return (

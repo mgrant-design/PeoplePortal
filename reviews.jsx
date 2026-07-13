@@ -1,8 +1,10 @@
 /* reviews.jsx — performance reviews. HR/exec upload questions; employee self-review +
    manager review; results gated by role. Persists to localStorage (pd_reviews). */
 
-function loadReviews() { try { return JSON.parse(localStorage.getItem('pd_reviews')) || {}; } catch (e) { return {}; } }
-function persistReviews(r) { try { localStorage.setItem('pd_reviews', JSON.stringify(r)); } catch (e) {} }
+/* NO BACKEND. Reviews have no /api endpoint yet — nothing is persisted. In-memory
+   only: results live for the session and are gone on reload. No localStorage. */
+function loadReviews() { return {}; }
+function persistReviews(r) {}
 function blankSide() { return { ratings: {}, comments: {}, overall: '', done: false }; }
 function reviewStatus(rec) {
   if (!rec) return 'Not started';

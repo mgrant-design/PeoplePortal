@@ -321,22 +321,22 @@ function Reports({ access, scope, paychexOn, me, flash }) {
 /* ---------- Report requests (mirror of feature requests, scoped to reporting) ---------- */
 const RR_STATUSES = ['Submitted', 'Under review', 'Planned', 'Built', 'Declined'];
 const RR_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'Built': 'badge-ok', 'Declined': 'badge-todo' };
-const RR_SEED = [];
-function loadRR() { try { const s = JSON.parse(localStorage.getItem('pd_report_requests')); return s && s.length ? s : RR_SEED; } catch (e) { return RR_SEED; } }
-function persistRR(x) { try { localStorage.setItem('pd_report_requests', JSON.stringify(x)); } catch (e) {} }
+/* NO BACKEND. Report requests have no /api endpoint yet — in-memory only, gone on reload. */
+function loadRR() { return []; }
+function persistRR(x) {}
 
 function ReportRequests({ me, access, flash }) {
   const [items, setItems] = useState(loadRR);
-  const [votes, setVotes] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_rr_votes')) || {}; } catch (e) { return {}; } });
+  const [votes, setVotes] = useState({});
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', desc: '', freq: 'Monthly' });
   const isAdmin = access.caps.manageUsers || access.caps.viewAll;
   const save = (x) => { setItems(x); persistRR(x); };
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
 
-  const submit = () => { if (!draft.title.trim()) return; const it = { id: 'rr' + Date.now(), title: draft.title.trim(), desc: draft.desc.trim(), freq: draft.freq, by: me ? me.name : 'You', status: 'Submitted', votes: 1, ts: Date.now() }; save([it, ...items]); const nv = { ...votes, [it.id]: 1 }; setVotes(nv); try { localStorage.setItem('pd_rr_votes', JSON.stringify(nv)); } catch (e) {} setAdding(false); setDraft({ title: '', desc: '', freq: 'Monthly' }); flash && flash('Report request submitted.'); };
+  const submit = () => { if (!draft.title.trim()) return; const it = { id: 'rr' + Date.now(), title: draft.title.trim(), desc: draft.desc.trim(), freq: draft.freq, by: me ? me.name : 'You', status: 'Submitted', votes: 1, ts: Date.now() }; save([it, ...items]); setVotes(v => ({ ...v, [it.id]: 1 })); setAdding(false); setDraft({ title: '', desc: '', freq: 'Monthly' }); flash && flash('Report request submitted.'); };
   const setStatus = (id, status) => save(items.map(i => i.id === id ? { ...i, status } : i));
-  const vote = (id) => { if (votes[id]) return; const nv = { ...votes, [id]: 1 }; setVotes(nv); try { localStorage.setItem('pd_rr_votes', JSON.stringify(nv)); } catch (e) {} save(items.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i)); };
+  const vote = (id) => { if (votes[id]) return; setVotes({ ...votes, [id]: 1 }); save(items.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i)); };
   const sorted = items.slice().sort((a, b) => (b.votes || 0) - (a.votes || 0));
 
   return (

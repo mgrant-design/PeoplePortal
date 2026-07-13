@@ -23,9 +23,11 @@ function tardiness(punches) {
 function paychexSeed(empId, loc) { return []; }
 
 /* ===================== Employee relations store ===================== */
-const REL_KEY = 'pd_relations_v1';
-function loadRelations() { try { return JSON.parse(localStorage.getItem(REL_KEY)) || {}; } catch (e) { return {}; } }
-function persistRelations(r) { try { localStorage.setItem(REL_KEY, JSON.stringify(r)); } catch (e) {} }
+/* NO BACKEND. Employee-relations events have no /api endpoint yet — in-memory only,
+   gone on reload. No localStorage. */
+let _relations = {};
+function loadRelations() { return _relations; }
+function persistRelations(r) { _relations = r || {}; }
 function getRelations(empId) { return (loadRelations()[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date)); }
 function addRelationEvent(empId, ev) {
   const all = loadRelations();
@@ -37,14 +39,11 @@ function addRelationEvent(empId, ev) {
 
 /* ===================== Onboarding automations store ===================== */
 const AUTO_KEY = 'pd_automations';
-function loadAutomations() {
-  try {
-    const raw = localStorage.getItem(AUTO_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return [];   // no fake new-hires — empty until a real hire enters onboarding
-}
-function persistAutomations(list) { try { localStorage.setItem(AUTO_KEY, JSON.stringify(list)); } catch (e) {} }
+/* NO BACKEND. Onboarding automations have no /api endpoint yet — in-memory only,
+   gone on reload. No localStorage, no fake new-hires. */
+let _automations = [];
+function loadAutomations() { return _automations; }
+function persistAutomations(list) { _automations = list || []; }
 
 /* Empty seed exports retained so any module importing them doesn't break. */
 const RELATIONS_SEED = {};

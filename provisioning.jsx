@@ -71,14 +71,27 @@ function AccountsStep({ me, role, credentialsDone, onBack, onComplete, onReady, 
   const [phase, setPhase] = useState('pre'); // pre | provisioning | ready
   const [states, setStates] = useState({});  // appId -> queued|creating|ready
 
-  const startProvision = () => {
+  const startProvision = async () => {
+    // No fallback. This only succeeds on a real /api/provision call that reaches
+    // Denticon. No token / no endpoint / a rejected call → it fails and shows the
+    // error. It never fakes progress or a "created" state.
     setPhase('provisioning');
-    const init = {}; provisionable.forEach(a => init[a.id] = 'queued'); setStates(init);
-    provisionable.forEach((a, i) => {
-      setTimeout(() => setStates(s => ({ ...s, [a.id]: 'creating' })), 500 + i * 900);
-      setTimeout(() => setStates(s => ({ ...s, [a.id]: 'ready' })), 500 + i * 900 + 850);
-    });
-    setTimeout(() => { setPhase('ready'); onReady && onReady(); }, 500 + provisionable.length * 900 + 950);
+    const init = {}; provisionable.forEach(a => init[a.id] = 'creating'); setStates(init);
+    try {
+      const out = await provisionAccounts({ role: role.id, apps: provisionable.map(a => a.id) });
+      const byId = {}; (out.results || []).forEach(r => { byId[r.app] = r; });
+      // Anything the server didn't actually create/skip is a failure — surface it.
+      const failed = provisionable.filter(a => { const r = byId[a.id]; return !r || (r.status !== 'created' && r.status !== 'skipped'); });
+      if (failed.length) {
+        const why = failed.map(a => `${a.name}: ${(byId[a.id] && byId[a.id].error) || 'no result'}`).join('; ');
+        throw new Error(why);
+      }
+      setStates(s => { const n = { ...s }; provisionable.forEach(a => n[a.id] = 'ready'); return n; });
+      setPhase('ready'); onReady && onReady();
+    } catch (e) {
+      setPhase('pre');
+      alert('Provisioning failed: ' + (e.message || 'unknown error'));
+    }
   };
 
   const lockedCount = apps.length - provisionable.length;

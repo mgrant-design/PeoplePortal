@@ -1,12 +1,10 @@
 /* editrecord.jsx — editable employee data. Self-edit (employee) + full edit (admin/hr/manager).
    Persists overrides to localStorage; in production these PATCH back to Paychex. */
 
-function loadEmpOverrides() { try { return JSON.parse(localStorage.getItem('pd_emp_overrides')) || {}; } catch (e) { return {}; } }
-function saveEmpOverride(id, patch) {
-  const all = loadEmpOverrides(); all[id] = { ...(all[id] || {}), ...patch };
-  try { localStorage.setItem('pd_emp_overrides', JSON.stringify(all)); } catch (e) {}
-  return all[id];
-}
+/* NO BACKEND. Employee-record edits have no /api endpoint yet (production would PATCH
+   the roster / Paychex) — nothing is persisted. In-memory only, gone on reload. */
+function loadEmpOverrides() { return {}; }
+function saveEmpOverride(id, patch) { return { ...patch }; }
 function mergeEmp(emp) { const o = loadEmpOverrides()[emp.id]; return o ? { ...emp, ...o } : emp; }
 
 const SELF_FIELDS = [

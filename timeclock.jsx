@@ -2,10 +2,12 @@
    (aligned to Paychex company settings), with live timer, breaks, timesheets,
    manager/HR approval, and export to Paychex. Persists to localStorage. */
 
-function loadPunches() { try { return JSON.parse(localStorage.getItem('pd_punches')) || {}; } catch (e) { return {}; } }
-function persistPunches(p) { try { localStorage.setItem('pd_punches', JSON.stringify(p)); } catch (e) {} }
-function loadActive() { try { return JSON.parse(localStorage.getItem('pd_active_punch')) || {}; } catch (e) { return {}; } }
-function persistActive(a) { try { localStorage.setItem('pd_active_punch', JSON.stringify(a)); } catch (e) {} }
+/* NO BACKEND. Time-clock punches have no /api endpoint yet — nothing is persisted.
+   In-memory only: clock-ins live for the session and are gone on reload. No localStorage. */
+function loadPunches() { return {}; }
+function persistPunches(p) {}
+function loadActive() { return {}; }
+function persistActive(a) {}
 
 const PP_LABEL = 'Jun 22 – Jul 5, 2026';
 function fmtClock(ms) { const d = new Date(ms); let h = d.getHours(), m = d.getMinutes(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}`; }

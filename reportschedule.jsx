@@ -10,8 +10,10 @@ const RS_FORMATS = ['CSV', 'Excel', 'PDF'];
 const RS_DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const RS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function loadSchedules() { try { return JSON.parse(localStorage.getItem(RS_KEY)) || RS_SEED; } catch (e) { return RS_SEED; } }
-function persistSchedules(x) { try { localStorage.setItem(RS_KEY, JSON.stringify(x)); } catch (e) {} }
+/* NO BACKEND. Scheduled reports have no /api endpoint yet — in-memory only, gone on reload. */
+let _reportSchedules = [];
+function loadSchedules() { return _reportSchedules; }
+function persistSchedules(x) { _reportSchedules = x || []; }
 
 /* compute the next delivery Date from a schedule's recurrence, after `from`. */
 function nextRun(s, from) {

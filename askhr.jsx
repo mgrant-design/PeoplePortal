@@ -115,13 +115,12 @@ function hrFallbackAnswer(q) {
 function HRAdvisorChat({ me }) {
   const KEY = 'pd_askhr_chat_' + me.id;
   const greeting = { who: 'hr', text: `Hi ${me.first} — I'm ${HR_ADVISOR.short}, your ${HR_ADVISOR.title}. Ask me anything about employee relations, discipline, leaves, wage & hour, or compliance across our NY and NJ offices. I'll give you the practical answer and tell you what to document.\n\n_General HR guidance, not legal advice._` };
-  const [msgs, setMsgs] = useState(() => { try { const s = JSON.parse(localStorage.getItem(KEY)); return (s && s.length) ? s : [greeting]; } catch (e) { return [greeting]; } });
+  const [msgs, setMsgs] = useState([greeting]);   // NO BACKEND — chat not persisted
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [hbId, setHbId] = useState(null);
   const feedRef = useRef(null);
   useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [msgs, busy]);
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(msgs.slice(-30))); } catch (e) {} }, [msgs]);
 
   const ask = async (text) => {
     const query = (text || q).trim(); if (!query || busy) return;
@@ -141,7 +140,7 @@ function HRAdvisorChat({ me }) {
     setBusy(false);
   };
 
-  const reset = () => { setMsgs([greeting]); try { localStorage.removeItem(KEY); } catch (e) {} };
+  const reset = () => setMsgs([greeting]);
 
   return (
     <>
@@ -201,7 +200,8 @@ function HRAdvisorChat({ me }) {
 
 /* ---------- Guides & templates ---------- */
 const GUIDES_KEY = 'pd_hr_forms_v1';
-function loadCustomForms() { try { return JSON.parse(localStorage.getItem(GUIDES_KEY)) || []; } catch (e) { return []; } }
+/* NO BACKEND. Uploaded guides/templates have no /api endpoint yet — in-memory only, gone on reload. */
+function loadCustomForms() { return []; }
 function extKind(name) {
   const e = (name.split('.').pop() || '').toUpperCase();
   return ['PDF', 'DOC', 'DOCX', 'XLS', 'XLSX', 'PNG', 'JPG', 'JPEG'].includes(e) ? e : 'File';
@@ -217,7 +217,7 @@ function GuidesTab({ flash }) {
   const cats = useMemo(() => ['All', ...Array.from(new Set(all.map(g => g.cat)))], [all]);
   const list = all.filter(g => cat === 'All' || g.cat === cat);
 
-  const persist = (next) => { setCustom(next); try { localStorage.setItem(GUIDES_KEY, JSON.stringify(next)); } catch (e) { flash && flash('Storage full — file too large to save'); } };
+  const persist = (next) => { setCustom(next); };   // NO BACKEND — uploads not persisted
 
   const onFiles = (files) => {
     const arr = Array.from(files || []); if (!arr.length) return;

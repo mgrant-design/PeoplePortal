@@ -5,11 +5,12 @@ const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Com
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
 const FB_CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
 
-const FB_SEED = [];
-
-function loadFB() { try { const s = JSON.parse(localStorage.getItem('pd_feedback')); return s && s.length ? s : FB_SEED; } catch (e) { return FB_SEED; } }
-function persistFB(x) { try { localStorage.setItem('pd_feedback', JSON.stringify(x)); } catch (e) {} }
-function loadVotes() { try { return JSON.parse(localStorage.getItem('pd_fb_votes')) || {}; } catch (e) { return {}; } }
+/* NO BACKEND. Feature requests have no /api endpoint yet, so nothing is persisted.
+   In-memory only: submissions and votes live for the session and are gone on reload.
+   No localStorage, no seed data. */
+function loadFB() { return []; }
+function persistFB(x) {}
+function loadVotes() { return {}; }
 
 const ROADMAP_COLS = [['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
 
@@ -24,11 +25,11 @@ function Feedback({ me, access, flash }) {
   const isAdmin = access.caps.manageUsers;
   const save = (x) => { setItems(x); persistFB(x); };
 
-  const submit = () => { if (!draft.title.trim()) return; const it = { id: 'fr' + Date.now(), title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, by: me.name, status: 'Submitted', votes: 1, eta: '', ts: Date.now() }; save([it, ...items]); setVotes(v => { const n = { ...v, [it.id]: 1 }; try { localStorage.setItem('pd_fb_votes', JSON.stringify(n)); } catch (e) {} return n; }); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); };
+  const submit = () => { if (!draft.title.trim()) return; const it = { id: 'fr' + Date.now(), title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, by: me.name, status: 'Submitted', votes: 1, eta: '', ts: Date.now() }; save([it, ...items]); setVotes(v => ({ ...v, [it.id]: 1 })); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); };
   const addPlanned = () => { if (!plan.title.trim()) return; const it = { id: 'fr' + Date.now(), title: plan.title.trim(), desc: plan.desc.trim(), cat: plan.cat, by: 'Product', status: 'Planned', votes: 0, eta: plan.eta, ts: Date.now(), planned: true }; save([it, ...items]); setPlanning(false); setPlan({ title: '', desc: '', cat: 'Scheduling', eta: '' }); flash && flash('Planned feature added to the roadmap.'); };
   const setStatus = (id, status) => save(items.map(i => i.id === id ? { ...i, status } : i));
   const setEta = (id, eta) => save(items.map(i => i.id === id ? { ...i, eta } : i));
-  const vote = (id) => { if (votes[id]) return; const n = { ...votes, [id]: 1 }; setVotes(n); try { localStorage.setItem('pd_fb_votes', JSON.stringify(n)); } catch (e) {} save(items.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i)); };
+  const vote = (id) => { if (votes[id]) return; setVotes({ ...votes, [id]: 1 }); save(items.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i)); };
 
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   const sorted = items.slice().sort((a, b) => (b.votes || 0) - (a.votes || 0));

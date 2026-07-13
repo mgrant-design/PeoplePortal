@@ -2,10 +2,14 @@
    required/recommended, due dates + reminders, assign per team/individual, toggle required.
    Plus clerical & clinical orientation timelines. Persists to localStorage. */
 
-function loadLib() { try { const s = JSON.parse(localStorage.getItem('pd_library')); return s && s.length ? s : seedLibrary(); } catch (e) { return seedLibrary(); } }
-function persistLib(c) { try { localStorage.setItem('pd_library', JSON.stringify(c)); } catch (e) {} }
-function loadLibDone() { try { return JSON.parse(localStorage.getItem('pd_library_done')) || {}; } catch (e) { return {}; } }
-function persistLibDone(d) { try { localStorage.setItem('pd_library_done', JSON.stringify(d)); } catch (e) {} }
+/* NO BACKEND. Learning library has no /api endpoint yet and no seed catalog — nothing
+   is persisted. In-memory only: catalog + completion live for the session, gone on reload. */
+let _lib = [];
+let _libDone = {};
+function loadLib() { return _lib; }
+function persistLib(c) { _lib = c || []; }
+function loadLibDone() { return _libDone; }
+function persistLibDone(d) { _libDone = d || {}; }
 
 const TYPE_ICON = { video: 'bolt', doc: 'doc', link: 'link', article: 'doc', webinar: 'calendar', course: 'book' };
 const TYPE_LABEL = { video: 'Video', doc: 'Doc', link: 'Link', article: 'Article', webinar: 'Webinar', course: 'Course' };
@@ -80,8 +84,8 @@ function LibForm({ draft, setDraft, cats, onAddCat, onSave, onCancel }) {
 function OrientationTimeline({ which, onBack }) {
   const data = which === 'clinical' ? CLINICAL_TIMELINE : CLERICAL_TIMELINE;
   const key = 'pd_orient_' + which;
-  const [done, setDone] = useState(() => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { return {}; } });
-  const toggle = (id) => { const n = { ...done, [id]: !done[id] }; setDone(n); try { localStorage.setItem(key, JSON.stringify(n)); } catch (e) {} };
+  const [done, setDone] = useState({});   // NO BACKEND — orientation progress not persisted
+  const toggle = (id) => setDone(d => ({ ...d, [id]: !d[id] }));
   const total = data.reduce((a, w) => a + w.items.length, 0);
   const completed = Object.values(done).filter(Boolean).length;
   const pct = Math.round(completed / total * 100);

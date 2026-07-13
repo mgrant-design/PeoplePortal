@@ -355,7 +355,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* grouped top nav (app.jsx NAV_GROUPS) */
 .navgroups { display: flex; align-items: center; gap: 2px; }
-@media (max-width: 980px) { .navgroups { display: none; } }
+@media (max-width: 800px) { .navgroups { display: none; } }
 
 /* Agent Automations console — two boxes that stretch to fill, stacking on narrow screens */
 .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); align-items: start; }
@@ -385,7 +385,7 @@ button { font-family: inherit; cursor: pointer; }
 .navflat-admin { flex: none; display: flex; align-items: center; margin-left: 4px; }
 .navflat-admin::before { content: ""; height: 22px; width: 1px; background: var(--line); margin-right: 6px; }
 .navgroup-menu-right { left: auto; right: 0; }
-@media (max-width: 980px) { .navflat, .navflat-admin { display: none; } }
+@media (max-width: 800px) { .navflat, .navflat-admin { display: none; } }
 
 /* floating help launcher */
 .assistant-fab { position: fixed; right: 22px; bottom: 22px; z-index: 58; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
@@ -467,7 +467,7 @@ button { font-family: inherit; cursor: pointer; }
 .riley-dot:nth-child(3) { animation-delay: .3s; }
 @media (prefers-reduced-motion: reduce) { .riley-dot { animation: none; } }
 
-@media (min-width: 981px) and (max-width: 1760px) {
+@media (min-width: 801px) and (max-width: 1760px) {
   .navgroup > button { padding: 8px 11px; font-size: 13.5px; }
 }
 @media (max-width: 760px) {
@@ -490,7 +490,7 @@ button { font-family: inherit; cursor: pointer; }
 .mnav-children button { text-align: left; border: none; background: none; color: var(--ink-2); font-size: 15px; font-weight: 500; padding: 11px 12px; border-radius: var(--r-md); font-family: var(--font-body); cursor: pointer; width: 100%; }
 .mnav-children button:hover { background: var(--surface-2); }
 .mnav-children button.active { background: var(--accent-soft); color: var(--accent-strong); }
-@media (max-width: 980px) {
+@media (max-width: 800px) {
   .desktop-nav { display: none; }
   .mobile-menu-btn { display: inline-flex !important; }
   .mobile-nav { display: flex; }

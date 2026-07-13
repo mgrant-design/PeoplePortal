@@ -52,10 +52,14 @@ const ALLOWANCE = {
 };
 
 /* ---- persistence ---- */
-const loadCart = () => { try { return JSON.parse(localStorage.getItem('pd_scrubs_cart_v2')) || []; } catch (e) { return []; } };
-const saveCart = (c) => { try { localStorage.setItem('pd_scrubs_cart_v2', JSON.stringify(c)); } catch (e) {} };
-const loadOrders = () => { try { return JSON.parse(localStorage.getItem('pd_scrubs_orders_v2')); } catch (e) { return null; } };
-const saveOrders = (o) => { try { localStorage.setItem('pd_scrubs_orders_v2', JSON.stringify(o)); } catch (e) {} };
+/* NO BACKEND. Scrub cart + orders have no /api endpoint yet — in-memory only, gone
+   on reload. No localStorage, no seed orders. */
+let _scrubCart = [];
+let _scrubOrders = [];
+const loadCart = () => _scrubCart;
+const saveCart = (c) => { _scrubCart = c || []; };
+const loadOrders = () => _scrubOrders;
+const saveOrders = (o) => { _scrubOrders = o || []; };
 
 const money = (n) => '$' + (n || 0).toFixed(2);
 function pDate(s) { if (!s) return null; s = String(s).trim(); if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); } const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) { let y = +m[3]; if (y < 100) y += 2000; return new Date(y, +m[1] - 1, +m[2]); } return null; }
