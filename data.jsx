@@ -277,24 +277,6 @@ async function timeoffAction(body) {
   return res.json();
 }
 
-/* ---- account provisioning API (talks to the /api/provision Function) ----
-   Round one creates real Denticon accounts. Sends the caller's role + the app ids to
-   create; the server resolves the subject (the signed-in employee) from the roster and
-   returns one result per app: { app, status: 'created'|'skipped'|'error', login, ... }.
-   Outside production (sandbox) there is no /api, so this rejects and the caller falls
-   back to the scripted walk-through. */
-async function provisionAccounts(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/provision', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('provisioning failed (' + res.status + ')'));
-  return data;
-}
-
 /* ---- access control (talks to the /api/accesscontrol Function) ----
    Per-person permission overrides live in their own Cosmos container, one doc per
    person keyed by email. GET lists them; POST upserts one person's flags. */
@@ -372,5 +354,5 @@ Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
-  fetchNotices, sendNotice, markNoticeRead, connectNotifications, provisionAccounts, fetchAccessControl, saveAccessOverride,
+  fetchNotices, sendNotice, markNoticeRead, connectNotifications, fetchAccessControl, saveAccessOverride,
 });
