@@ -770,6 +770,16 @@ function App() {
     r.style.setProperty('--accent-hue', t.accentHue);
   }, [t.style, t.density, t.accentHue]);
 
+  // The Tweaks visual-style effect above force-sets --accent-hue from the tweak default on
+  // mount, which would stomp a returning user's saved accent on the LOGIN screen (pre-sign-in,
+  // before hydrateAppearance runs). Re-assert this device's last appearance AFTER it, but only
+  // while logged out — once signed in, the me.id hydrate effect below owns the theme.
+  useEffect(() => {
+    if (!me && typeof applyAppearance === 'function' && typeof loadLastAppearance === 'function') {
+      applyAppearance(loadLastAppearance());
+    }
+  }, [me]);
+
   useEffect(() => { if (typeof setLang === 'function') setLang(t.lang || 'en'); }, [t.lang]);
   useEffect(() => { window.__rileyVoice = t.rileyVoice !== false; window.__lang = t.lang || 'en'; }, [t.rileyVoice, t.lang]);
 

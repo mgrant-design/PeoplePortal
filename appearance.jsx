@@ -58,7 +58,20 @@ function loadAppearance(empId) {
   try { const s = localStorage.getItem('pd_appearance_' + empId); if (s) return { ...APPEARANCE_DEFAULTS, ...JSON.parse(s) }; } catch (e) {}
   return { ...APPEARANCE_DEFAULTS };
 }
-function saveAppearance(empId, p) { try { localStorage.setItem('pd_appearance_' + empId, JSON.stringify(p)); } catch (e) {} }
+// Device-local "last theme used on this machine", written alongside every per-employee save
+// (including the Cosmos hydrate). Read at boot so the LOGIN screen + favicon + bookmark paint
+// in the returning user's theme before sign-in — when we don't yet know who they are. On a
+// shared device this shows the previous person's theme until the next sign-in hydrates theirs.
+function saveAppearance(empId, p) {
+  try {
+    localStorage.setItem('pd_appearance_' + empId, JSON.stringify(p));
+    localStorage.setItem('pd_appearance_last', JSON.stringify(p));
+  } catch (e) {}
+}
+function loadLastAppearance() {
+  try { const s = localStorage.getItem('pd_appearance_last'); if (s) return { ...APPEARANCE_DEFAULTS, ...JSON.parse(s) }; } catch (e) {}
+  return { ...APPEARANCE_DEFAULTS };
+}
 
 /* Cosmos sync (api/settings → userSettings). localStorage stays as an instant cache. */
 async function fetchSettings() {
@@ -101,7 +114,13 @@ function updateFavicon() {
   const light = r.getAttribute('data-accent-tone') === 'light';
   const c1 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent');
   const c2 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent-strong');
-  const toothC = light ? _pdResolveColor('--ink') : _pdResolveColor('--on-accent');
+  // HARD RULE (dental practice: the tooth is white): the favicon tooth is WHITE for EVERY
+  // theme. The one and only exception is the near-white "white" theme (Mono accent dragged
+  // light → data-accent-tone="light"), where the tile itself is near-white so a white tooth
+  // would vanish — there, and only there, the tooth is ink. Deliberately NOT keyed on
+  // --on-accent (which goes dark for light-ish accents like pink/yellow and caused the
+  // black-tooth bug); keyed on the same light-accent-tone the nav mark uses, so they agree.
+  const toothC = light ? _pdResolveColor('--ink') : '#fff';
   const stroke = light ? _pdResolveColor('--ink') : '';
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">' +
@@ -368,4 +387,10 @@ function AppearanceMenu({ me, onClose, onNav }) {
   );
 }
 
-Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, applyAppearance, AppearanceMenu, fetchSettings, pushSettings, hydrateAppearance, updateFavicon });
+Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, loadLastAppearance, applyAppearance, AppearanceMenu, fetchSettings, pushSettings, hydrateAppearance, updateFavicon });
+
+// Boot: paint the last theme used on this device before the login screen renders, so the
+// login UI, favicon and bookmark all reflect the returning user's choice. app.jsx loads after
+// this module, so this runs before login paints (no flash). On sign-in, hydrateAppearance()
+// overrides with the account's own Cosmos theme.
+try { applyAppearance(loadLastAppearance()); } catch (e) {}

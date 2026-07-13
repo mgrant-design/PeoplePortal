@@ -54,6 +54,10 @@
   <script type="text/babel" src="agentconfig.jsx"></script>
   <script type="text/babel" src="hrseed.jsx"></script>
   <script type="text/babel" src="login.jsx"></script>
+  <!-- Appearance is critical (not deferred) so the LAST theme used on this device paints the
+       login screen + favicon before login renders — no default-blue flash, and the bookmark
+       icon caches the user's color. It exports applyAppearance/hydrateAppearance for the rest. -->
+  <script type="text/babel" src="appearance.jsx"></script>
 
   <!-- AI transport config for Riley/Harper. The transport itself (llm.js) is only used
        when you open an assistant, so it's deferred to Tier 3 — see __PD_DEFERRED_REST. -->
@@ -81,9 +85,9 @@
        window.__PD_MODULES_ALL_READY. Keep *-data files immediately before the view that reads them. -->
   <script src="deferred-loader.js"></script>
   <script>
-    // Tier 2: paint the dashboard fast. appearance.jsx is here so the saved theme + nav
-    // preference apply at entry (no flash / no reverting to defaults).
-    window.__PD_DEFERRED_PRIMARY = ['appearance.jsx', 'dashboard.jsx'];
+    // Tier 2: paint the dashboard fast. (appearance.jsx is now a critical module loaded above,
+    // so the saved theme + nav preference apply at entry and also theme the login screen.)
+    window.__PD_DEFERRED_PRIMARY = ['dashboard.jsx'];
     // Tier 3: everything else, loaded after the dashboard is up.
     window.__PD_DEFERRED_REST = [
       'hub.jsx', 'paperwork.jsx', 'credentials.jsx', 'intake.jsx', 'steps.jsx', 'provisioning.jsx',
