@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pure Dental — People Portal</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Favicon: the brand tooth on an accent tile. This static default (brand blue) paints
+       instantly so the tab never shows the browser default; appearance.jsx's applyAppearance()
+       recolors #pd-favicon to the signed-in user's accent (live on change + on sign-in). -->
+  <script>
+    (function () {
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3f82b4"/><stop offset="1" stop-color="#316a97"/></linearGradient></defs><rect x="0.75" y="0.75" width="32.5" height="32.5" rx="9.5" fill="url(#g)"/><g transform="translate(7.5 7.5) scale(0.95)" fill="#fff"><path d="M8 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></g></svg>';
+      var l = document.createElement('link');
+      l.id = 'pd-favicon'; l.rel = 'icon'; l.type = 'image/svg+xml';
+      l.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+      document.head.appendChild(l);
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>

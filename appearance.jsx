@@ -79,6 +79,50 @@ function hydrateAppearance(empId) {
   fetchSettings().then(s => { if (s) { const merged = { ...APPEARANCE_DEFAULTS, ...s }; saveAppearance(empId, merged); applyAppearance(merged); } }).catch(() => {});
 }
 
+// Resolve a CSS custom property (which may be oklch/var/calc) to a concrete rgb() string
+// by letting the browser compute it on a throwaway node — so the favicon uses the exact
+// color the theme renders, no OKLCH re-derivation needed.
+function _pdResolveColor(varName) {
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;opacity:0;pointer-events:none;color:var(' + varName + ')';
+  document.documentElement.appendChild(probe);
+  const c = getComputedStyle(probe).color;
+  probe.remove();
+  return c || '#3f82b4';
+}
+// Redraw the tab favicon as the brand tooth on the user's accent tile — a faithful copy of
+// the top-bar .brand .mark (gradient accent tile + white tooth; in light-accent mode a white
+// tile with an ink tooth + hairline border). Called at the end of applyAppearance, so it
+// tracks every live color change AND the sign-in hydrate (cache + Cosmos).
+function updateFavicon() {
+  const r = document.documentElement;
+  const tooth = (window.ICON && window.ICON.tooth) || '';
+  if (!tooth) return;
+  const light = r.getAttribute('data-accent-tone') === 'light';
+  const c1 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent');
+  const c2 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent-strong');
+  const toothC = light ? _pdResolveColor('--ink') : _pdResolveColor('--on-accent');
+  const stroke = light ? _pdResolveColor('--ink') : '';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">' +
+      '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0" stop-color="' + c1 + '"/><stop offset="1" stop-color="' + c2 + '"/>' +
+      '</linearGradient></defs>' +
+      '<rect x="0.75" y="0.75" width="32.5" height="32.5" rx="9.5" fill="url(#g)"' +
+        (stroke ? ' stroke="' + stroke + '" stroke-width="1.5"' : '') + '/>' +
+      '<g transform="translate(7.5 7.5) scale(0.95)" fill="' + toothC + '"><path d="' + tooth + '"/></g>' +
+    '</svg>';
+  let link = document.getElementById('pd-favicon');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'pd-favicon';
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/svg+xml';
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
 function applyAppearance(p) {
   const r = document.documentElement;
   const a = { ...APPEARANCE_DEFAULTS, ...(p || {}) };
@@ -200,6 +244,7 @@ function applyAppearance(p) {
   r.setAttribute('data-textsize', a.textsize || 'm');
   r.setAttribute('data-motion', a.motion || 'normal');
   if (a.dark) r.setAttribute('data-theme', 'dark'); else r.removeAttribute('data-theme');
+  updateFavicon();
 }
 
 function AppSeg({ label, value, options, onChange }) {
@@ -323,4 +368,4 @@ function AppearanceMenu({ me, onClose, onNav }) {
   );
 }
 
-Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, applyAppearance, AppearanceMenu, fetchSettings, pushSettings, hydrateAppearance });
+Object.assign(window, { APPEARANCE_DEFAULTS, loadAppearance, saveAppearance, applyAppearance, AppearanceMenu, fetchSettings, pushSettings, hydrateAppearance, updateFavicon });
