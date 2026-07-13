@@ -114,14 +114,17 @@ function updateFavicon() {
   const light = r.getAttribute('data-accent-tone') === 'light';
   const c1 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent');
   const c2 = light ? _pdResolveColor('--surface') : _pdResolveColor('--accent-strong');
-  // HARD RULE (dental practice: the tooth is white): the favicon tooth is WHITE for EVERY
-  // theme. The one and only exception is the near-white "white" theme (Mono accent dragged
-  // light → data-accent-tone="light"), where the tile itself is near-white so a white tooth
-  // would vanish — there, and only there, the tooth is ink. Deliberately NOT keyed on
-  // --on-accent (which goes dark for light-ish accents like pink/yellow and caused the
-  // black-tooth bug); keyed on the same light-accent-tone the nav mark uses, so they agree.
-  const toothC = light ? _pdResolveColor('--ink') : '#fff';
-  const stroke = light ? _pdResolveColor('--ink') : '';
+  // THE WHITE THEME = the Mono accent dragged near-white. Its tile is near-white in BOTH
+  // light and dark mode, so the tooth must be dark to be visible. data-accent-tone="light"
+  // only catches it in light mode (it bakes in !dark), so also detect it directly via the
+  // mono accent at high lightness — mode-agnostic. This is the accent, NOT the Light/Dark
+  // toggle: colored accents (incl. light-ish yellow) are never "mono", so they stay white.
+  const whiteTheme = light || (r.getAttribute('data-accent') === 'mono' && parseFloat(r.style.getPropertyValue('--accent-l')) >= 0.88);
+  // HARD RULE (dental practice: the tooth is white): white tooth for EVERY theme, the sole
+  // exception being the white theme above. Use a FIXED dark ink (not --ink, which flips to a
+  // light color in dark mode and would go invisible on the white tile).
+  const toothC = whiteTheme ? 'oklch(0.24 0 0)' : '#fff';
+  const stroke = whiteTheme ? 'oklch(0.82 0 0)' : '';
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">' +
       '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
