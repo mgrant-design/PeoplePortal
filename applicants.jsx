@@ -125,7 +125,7 @@ function AttachPicker({ driveOn, onPick, onClose }) {
           <div style={{ textAlign: 'center', padding: '24px 16px' }}>
             <div style={{ width: 46, height: 46, borderRadius: 'var(--r-md)', margin: '0 auto 12px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center' }}><Icon name="link" style={{ width: 22, height: 22 }} /></div>
             <h3 style={{ fontSize: 15.5 }}>Google Drive isn’t connected yet</h3>
-            <p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 6, lineHeight: 1.5, maxWidth: 360, marginInline: 'auto' }}>Once an admin connects Google Drive in <b>Admin → Feature rollout</b>, you can search {tab === 'shared' ? 'Shared Drives' : 'My Drive'} for job descriptions, offer templates and forms. For now, upload from this device.</p>
+            <p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 6, lineHeight: 1.5, maxWidth: 360, marginInline: 'auto' }}>Once an admin connects Google Drive in <b>Admin → Modules</b>, you can search {tab === 'shared' ? 'Shared Drives' : 'My Drive'} for job descriptions, offer templates and forms. For now, upload from this device.</p>
             <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={() => setTab('device')}><Icon name="upload" /> Upload from device</button>
           </div>
         ) : (
@@ -264,7 +264,7 @@ function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
       const base = blankDraft(offices);
       base.fileName = file.name;
       base._file = file;
-      if (!parseOn || !window.PD_RESUME) { setDrafts(ds => [...ds, base]); return; }
+      if (!window.PD_RESUME) { setDrafts(ds => [...ds, base]); return; }
       base.parsing = true;
       setDrafts(ds => [...ds, base]);
       window.PD_RESUME.parseFile(file).then(res => {
@@ -295,7 +295,7 @@ function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
             <div style={{ border: `1.5px dashed ${drag ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 'var(--r-md)', padding: '26px 18px', textAlign: 'center', background: drag ? 'var(--accent-soft)' : 'var(--surface-2)', transition: '.15s' }}>
               <Icon name="upload" style={{ width: 26, height: 26, color: 'var(--accent)', margin: '0 auto 10px', display: 'block' }} />
               <div style={{ fontWeight: 600, fontSize: 14.5 }}>Drop résumé PDFs here to build the pool</div>
-              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, maxWidth: 460, marginInline: 'auto', lineHeight: 1.5 }}>{parseOn ? 'We pull first & last name, email, cell phone and address from each PDF — you set the role & department. Drop several at once.' : 'Parsing is off — files attach and you enter details manually. Drop several at once.'}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, maxWidth: 460, marginInline: 'auto', lineHeight: 1.5 }}>We pull first & last name, email, cell phone and address from each PDF — you set the role & department. Drop several at once.</div>
             </div>
           </label>
         )}

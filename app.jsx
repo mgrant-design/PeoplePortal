@@ -42,7 +42,7 @@ const FLAG_DEFS = [
   { id: 'resumeParse', label: 'Résumé parsing & import — auto-extract applicant details from uploaded résumés', group: 'Integrations', note: 'Off = enter applicants manually (résumés still attach). Turn on once the parsing service is connected.' },
   { id: 'gdrive', label: 'Google Drive — browse & attach documents from My Drive and Shared Drives', group: 'Integrations', note: 'Off = attach by local upload only. Turn on once Google Drive is connected to search Drive & Shared Drives for offer letters, job descriptions and forms.' },
 ];
-const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: false, gdrive: false };
+const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true, gdrive: false };
 const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', automations: 'automations', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
 
 function ComingSoon({ label }) {
@@ -82,8 +82,8 @@ const NAV = [
 /* Flat "all pages" nav (the default). Everyday pages render as a single horizontally
    scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
    appears for management-level access (supervisor and up). Built from the same NAV ids. */
-const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'scheduler', 'people', 'myschedule', 'timeclock', 'library', 'scrubs', 'reviews', 'feedback'];
-const FLAT_ADMIN_IDS = ['reports', 'automations', 'offboarding', 'offices', 'organization', 'admin'];
+const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'people', 'timeclock', 'scheduler', 'myschedule', 'library', 'reviews', 'reports', 'offboarding', 'scrubs', 'feedback'];
+const FLAT_ADMIN_IDS = ['admin', 'organization', 'offices', 'automations'];
 
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
@@ -467,7 +467,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offboarding': return <Offboarding me={me} access={access} viewOnly={!access.caps.offboard && access.caps.offboardView} onOpenEmp={openEmp} />;
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
-      case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} onAddHire={() => go('autoruns')} />;
+      case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
       case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} />;
       case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
@@ -541,8 +541,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         {navMode === 'all' ? (() => {
           const byId = (id) => NAV.find(n => n.id === id);
           const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-          const mainItems = reorderNav(sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard'));
-          const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
+          const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
+          const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
           const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
           const adminOpen = navMenu === 'admin';
           const adminActive = adminItems.some(c => navActive(c.id));
@@ -627,8 +627,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
           {navMode === 'all' ? (() => {
             const byId = (id) => NAV.find(n => n.id === id);
             const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-            const mainItems = reorderNav(sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard'));
-            const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
+            const mainItems = FLAT_MAIN_IDS.map(byId).filter(visible);
+            const adminItems = FLAT_ADMIN_IDS.map(byId).filter(visible);
             const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
             const adminOpen = mobileGroup === 'admin';
             const adminActive = adminItems.some(c => navActive(c.id));
