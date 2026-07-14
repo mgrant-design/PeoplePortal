@@ -82,6 +82,20 @@ module.exports = async function (context, req) {
       return;
     }
 
+    // delete one of MY notices (recipient only — point-delete scoped to my partition, same
+    // ownership check as marking read).
+    if (input && input.action === 'delete') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
+      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
+      const doc = strip(dr.body);
+      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
+      const del = await cosmos({ verb: 'DELETE', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
+      if (del.status !== 200 && del.status !== 204) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true }) };
+      return;
+    }
+
     const toEmail = ((input && input.toEmail) || '').toLowerCase();
     if (!toEmail || !(input.title || input.body)) {
       context.res = { status: 400, headers, body: JSON.stringify({ error: 'toEmail and a title or body are required' }) }; return;

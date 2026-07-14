@@ -154,7 +154,7 @@ function MessageComposer({ me, access, onSend, onCancel }) {
   );
 }
 
-function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead }) {
+function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete }) {
   const [reqs, setReqs] = useState([]);
   const [composing, setComposing] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
@@ -255,6 +255,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
                     <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{n.title || '(no subject)'}</div>
                     {n.urgent && <span className="badge badge-todo">Urgent</span>}
                     {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none' }} />}
+                    <button onClick={(e) => { e.stopPropagation(); onDelete && onDelete(n.id); }} aria-label="Delete notification" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 2, flex: 'none' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
                   </div>
                   {n.body && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6 }}>{n.body}</p>}
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>from {n.fromName || n.fromEmail}</div>

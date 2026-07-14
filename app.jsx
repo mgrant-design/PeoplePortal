@@ -235,9 +235,10 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const [navMode, setNavMode] = useState(() => { try { return (loadAppearance(me.id).navMode) || 'all'; } catch (e) { return 'all'; } });
   const [notifReqs, setNotifReqs] = useState([]);
   const [notices, setNotices] = useState([]);
+  const notifsLoadedRef = React.useRef(false);
   const refreshNotifs = () => {
     if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {});
-    if (typeof fetchNotices === 'function') fetchNotices().then(setNotices).catch(() => {});
+    if (typeof fetchNotices === 'function') fetchNotices().then(list => { notifsLoadedRef.current = true; setNotices(list); }).catch(() => {});
   };
   useEffect(() => { refreshNotifs(); }, [me.id]);
   // Poll every 5 min so new notifications surface (and ding) without a manual reload, PLUS
@@ -260,6 +261,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // backlog. Fires only when real requests flow (silent in the API-less sandbox).
   const seenNotifRef = React.useRef(null);
   useEffect(() => {
+    if (!notifsLoadedRef.current) return;  // skip pre-fetch runs (empty state) so we never persist a false-empty seen-set
     const key = 'pd_seen_notifs_' + me.id;
     const sigs = [
       ...(typeof myNotifSignatures === 'function' ? myNotifSignatures(notifReqs, me, access) : []),
@@ -718,7 +720,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.filter(n => n.id !== id)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
