@@ -118,7 +118,7 @@ const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['canPrint', 'Pri
 
 const SAVE_LABEL = { saving: 'Saving…', saved: 'Saved', error: 'Save failed — retry', conflict: 'Someone else saved — reload' };
 
-function AdminUsers({ me, flags, flagDefs, onFlag }) {
+function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
   // Permissions live in the dedicated accessControl store (/api/accesscontrol), one
   // doc per person keyed by email. Rows = every active employee, overlaid with their
   // current overrides; saving writes each person you changed to that store.
@@ -160,19 +160,14 @@ function AdminUsers({ me, flags, flagDefs, onFlag }) {
       setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 1600);
     } catch (e) { setStatus('error'); }
   };
-  const [tab, setTab] = useState('Permissions');
-  const TABS = flagDefs ? ['Permissions', 'Feature rollout'] : ['Permissions'];
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];
 
   return (
     <div className="fade-in">
-      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>Admin</h1>
-      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 16 }}>Access, permissions, and phased feature rollout.</p>
-      <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)' }}>
-        {TABS.map(tb => <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>)}
-      </div>
+      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>{page === 'modules' ? 'Modules' : 'Security'}</h1>
+      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 16 }}>{page === 'modules' ? 'Phased feature rollout — turn modules on or off.' : 'User access and permissions.'}</p>
 
-      {tab === 'Feature rollout' && flagDefs && (
+      {page === 'modules' && flagDefs && (
         <div>
           <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginBottom: 16 }}>Turn modules on or off to phase your rollout. Disabled features disappear from everyone’s navigation until you switch them on.</p>
           {groups.map(g => (
@@ -196,7 +191,7 @@ function AdminUsers({ me, flags, flagDefs, onFlag }) {
         </div>
       )}
 
-      {tab === 'Permissions' && (
+      {page === 'security' && (
       <div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>

@@ -73,7 +73,8 @@ const NAV = [
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
-  { id: 'admin', label: 'Admin', show: a => a.caps.manageUsers },
+  { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
+  { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
   { id: 'feedback', label: 'Roadmap', show: () => true },
   { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
   { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
@@ -83,7 +84,7 @@ const NAV = [
    scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
    appears for management-level access (supervisor and up). Built from the same NAV ids. */
 const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'people', 'timeclock', 'scheduler', 'myschedule', 'library', 'reviews', 'reports', 'offboarding', 'scrubs', 'feedback'];
-const FLAT_ADMIN_IDS = ['admin', 'organization', 'offices', 'automations'];
+const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'automations'];
 
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
@@ -111,7 +112,8 @@ const NAV_GROUPS = [
   { id: 'g_settings', label: 'Settings', children: [
     { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
     { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
-    { id: 'admin', label: 'Admin', show: a => a.caps.manageUsers },
+    { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
+    { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
   ] },
 ];
 /* Assistants live in a floating launcher, not the nav bar. */
@@ -475,7 +477,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'reports': return <Reports access={access} scope={access.caps.viewAll ? EMPLOYEES : scoped} paychexOn={flagOn('paychex')} me={me} flash={flash} />;
       case 'onboardingstatus': return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
-      case 'admin': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} />;
+      case 'security': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
+      case 'modules': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
       case 'scheduler': return <Scheduler onBack={() => go('dashboard')} />;
       case 'myschedule': return <MySchedule me={me} />;
       // ---- onboarding sub-flow ----
