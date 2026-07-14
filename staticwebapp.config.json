@@ -11,5 +11,9 @@
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/*.{jsx,js,css,json,png,jpg,jpeg,svg,gif,woff,woff2,ico}"]
-  }
+  },
+  "routes": [
+    { "route": "/*.js", "headers": { "Cache-Control": "no-cache, must-revalidate" } },
+    { "route": "/*.jsx", "headers": { "Cache-Control": "no-cache, must-revalidate" } }
+  ]
 }
