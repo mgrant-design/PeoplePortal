@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pure Dental — People Portal</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Favicon: the brand tooth on an accent tile. This static default (brand blue) paints
+       instantly so the tab never shows the browser default; appearance.jsx's applyAppearance()
+       recolors #pd-favicon to the signed-in user's accent (live on change + on sign-in). -->
+  <script>
+    (function () {
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3f82b4"/><stop offset="1" stop-color="#316a97"/></linearGradient></defs><rect x="0.75" y="0.75" width="32.5" height="32.5" rx="9.5" fill="url(#g)"/><g transform="translate(7.5 7.5) scale(0.95)" fill="#fff"><path d="M8 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/></g></svg>';
+      var l = document.createElement('link');
+      l.id = 'pd-favicon'; l.rel = 'icon'; l.type = 'image/svg+xml';
+      l.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+      document.head.appendChild(l);
+    })();
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <template id="__bundler_thumbnail" data-bg-color="#0e7c88">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(420,220) scale(18)" fill="#ffffff">
+        <path d="M7 2.2c-2.2 0-3.7 1.7-3.7 4 0 1.4.4 2.6.6 4 .3 1.9.2 4 .9 6.2.3 1 .8 1.9 1.6 1.9 1 0 1.1-1.2 1.3-2.4.2-1.1.4-2.3 1.3-2.3s1.1 1.2 1.3 2.3c.2 1.2.3 2.4 1.3 2.4.8 0 1.3-.9 1.6-1.9.7-2.2.6-4.3.9-6.2.2-1.4.6-2.6.6-4 0-2.3-1.5-4-3.7-4-1 0-1.8.4-2 .4s-1-.4-2-.4Z"/>
+      </g>
+    </svg>
+  </template>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="i18n.jsx"></script>
+  <script type="text/babel" src="shell.jsx"></script>
+  <script type="text/babel" src="secure.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="riley-data.jsx"></script>
+
+  <!-- Google sign-in. Paste the OAuth Client ID from Google Cloud Console (Internal consent
+       screen → domain-locked to puredental.com) and add this site to Authorized JS origins.
+       Blank = sign-in shows a "not configured" notice. -->
+  <script>window.PD_AUTH = { googleClientId: '754040134895-71g5l7sv85t5ihl8hp75a2fb8jvpdqqu.apps.googleusercontent.com' };</script>
+  <script type="text/babel" src="rbac.jsx"></script>
+  <!-- Client persistence for shared org-config (offices/departments/titles/managers/users/
+       offboarding) → /api/orgconfig (Cosmos appState). Depends on window.HR from rbac.jsx. -->
+  <script type="text/babel" src="orgconfig.jsx"></script>
+  <!-- Client persistence for Riley's editable config (knowledge base / routing / channels)
+       → /api/agentconfig (Cosmos appState/riley-config). Seeds from riley-data.jsx. -->
+  <script type="text/babel" src="agentconfig.jsx"></script>
+  <script type="text/babel" src="hrseed.jsx"></script>
+  <script type="text/babel" src="login.jsx"></script>
+  <!-- Appearance is critical (not deferred) so the LAST theme used on this device paints the
+       login screen + favicon before login renders — no default-blue flash, and the bookmark
+       icon caches the user's color. It exports applyAppearance/hydrateAppearance for the rest. -->
+  <script type="text/babel" src="appearance.jsx"></script>
+
+  <!-- AI transport config for Riley/Harper. The transport itself (llm.js) is only used
+       when you open an assistant, so it's deferred to Tier 3 — see __PD_DEFERRED_REST. -->
+  <script>window.PD_AI = { transport: 'auto', endpoint: '/api/ai', model: null };</script>
+  <!-- DEV-ONLY login bypass. dev-bypass.js is .gitignored so it never deploys; this guard
+       also avoids requesting it on the live host. Loads off-prod (or with ?dev=1). -->
+  <script>
+    (function () {
+      var h = location.hostname;
+      var isProd = /azurestaticapps\.net$/.test(h);   // add your custom prod domain here too
+      var force = false;
+      try { force = new URLSearchParams(location.search).has('dev'); } catch (e) {}
+      if (!isProd || force) document.write('<script src="dev-bypass.js"><\/script>');
+    })();
+  </script>
+  <script src="sounds.js"></script>
+  <!-- SignalR browser client — lets a logged-in tab hold a live connection so notices
+       sent to this person arrive (and ding) instantly instead of on the next poll. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+
+  <!-- GATED, TIERED DEFER — nothing below blocks the login paint. app.jsx renders login,
+       then loads these via deferred-loader.js. TIER 2 (primary) is just what the first
+       post-login screen needs; entry gates on it (window.__PD_MODULES_READY). TIER 3 (rest)
+       streams in behind the dashboard; views needing it show a brief spinner until
+       window.__PD_MODULES_ALL_READY. Keep *-data files immediately before the view that reads them. -->
+  <script src="deferred-loader.js"></script>
+  <script>
+    // Tier 2: paint the dashboard fast. (appearance.jsx is now a critical module loaded above,
+    // so the saved theme + nav preference apply at entry and also theme the login screen.)
+    window.__PD_DEFERRED_PRIMARY = ['dashboard.jsx'];
+    // Tier 3: everything else, loaded after the dashboard is up.
+    window.__PD_DEFERRED_REST = [
+      'hub.jsx', 'paperwork.jsx', 'credentials.jsx', 'intake.jsx', 'steps.jsx', 'provisioning.jsx',
+      'employee.jsx', 'scheduler.jsx', 'directory.jsx', 'profile.jsx', 'offboarding.jsx',
+      'automation.jsx', 'agent.jsx', 'llm.js', 'askhr-data.jsx', 'askhr.jsx', 'offices.jsx', 'orgeditor.jsx',
+      'reviews.jsx', 'timeclock.jsx', 'celebrate.jsx', 'hradmin.jsx',
+      'reportbuilder.jsx', 'reportschedule.jsx', 'scrubs-data.jsx', 'scrubs.jsx', 'help.jsx',
+      'notifications.jsx', 'walkthrough.jsx', 'myschedule.jsx', 'onboardingstatus.jsx',
+      'pdfparse.js', 'applicants.jsx', 'librarydata.jsx', 'library.jsx', 'editrecord.jsx', 'feedback.jsx',
+    ];
+  </script>
+  <!-- app.jsx is the last CRITICAL module: it paints login, starts the deferred loader,
+       and awaits it before showing the authenticated app. -->
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
