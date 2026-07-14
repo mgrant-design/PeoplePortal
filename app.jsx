@@ -82,8 +82,8 @@ const NAV = [
 /* Flat "all pages" nav (the default). Everyday pages render as a single horizontally
    scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
    appears for management-level access (supervisor and up). Built from the same NAV ids. */
-const FLAT_MAIN_IDS = ['dashboard', 'onboarding', 'people', 'myschedule', 'timeclock', 'library', 'scrubs', 'reviews', 'feedback'];
-const FLAT_ADMIN_IDS = ['applicants', 'scheduler', 'reports', 'automations', 'offboarding', 'offices', 'organization', 'admin'];
+const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'scheduler', 'people', 'myschedule', 'timeclock', 'library', 'scrubs', 'reviews', 'feedback'];
+const FLAT_ADMIN_IDS = ['reports', 'automations', 'offboarding', 'offices', 'organization', 'admin'];
 
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */

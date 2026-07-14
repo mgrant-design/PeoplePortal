@@ -16,6 +16,13 @@ const ATS_STAGES = [
 const ATS_IDX = {}; ATS_STAGES.forEach((s, i) => ATS_IDX[s.id] = i);
 const ATS_SOURCES = ['Indeed', 'LinkedIn', 'Referral', 'Careers page', 'ZipRecruiter', 'Walk-in', 'Other'];
 const ATS_DEPTS = ['Front Desk', 'Clinical Team', 'Insurance', 'Operations', 'Management'];
+const ATS_DISPOSITIONS = [
+  { id: 'never_called', label: 'Never called', badge: 'badge-todo' },
+  { id: 'on_file', label: 'On file', badge: 'badge-prog' },
+];
+const dispDef = (id) => ATS_DISPOSITIONS.find(d => d.id === id);
+const dispLabel = (id) => (dispDef(id) || {}).label || '';
+const dispBadge = (id) => (dispDef(id) || {}).badge || 'badge-todo';
 
 function atsRoleKey({ provider, role, dept }) {
   if (/hygien|\bRDH\b/i.test(role || '')) return 'hygienist';
@@ -497,7 +504,7 @@ function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, on
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSendOffer, onSignOffer, onHire, onReject, flash }) {
+function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSendOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
   const [note, setNote] = useState('');
   const [showFull, setShowFull] = useState(false);
@@ -549,6 +556,16 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
                 {i < ATS_STAGES.length - 1 && <div style={{ flex: 1, height: 2, background: i < idx ? 'var(--ok)' : 'var(--line)', marginTop: 12 }} />}
               </React.Fragment>
             ))}
+          </div>
+        )}
+
+        {!rejected && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Status</span>
+            {ATS_DISPOSITIONS.map(d => {
+              const on = a.disposition === d.id;
+              return <button key={d.id} onClick={() => onDisposition(a.id, d.id)} className={on ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 12.5, padding: '6px 12px' }}>{on && <Icon name="check" style={{ width: 13, height: 13 }} />} {d.label}</button>;
+            })}
           </div>
         )}
 
@@ -690,7 +707,10 @@ function ApplicantCard({ a, onOpen }) {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="pin" style={{ width: 11, height: 11 }} /> {a.office}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {a.disposition && <span className={`badge ${dispBadge(a.disposition)}`} style={{ fontSize: 9, flex: 'none' }}>{dispLabel(a.disposition)}</span>}
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="pin" style={{ width: 11, height: 11 }} /> {a.office}</span>
+        </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           {a.offer && a.offer.status === 'sent' && <Icon name="mail" style={{ width: 12, height: 12, color: 'var(--accent)' }} title="Offer sent" />}
           {a.offer && a.offer.status === 'signed' && <Icon name="check" style={{ width: 12, height: 12, color: 'var(--ok)' }} title="Offer signed" />}
@@ -757,6 +777,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
     if (flash) flash('Offer signed — onboarding team notified, onboarding started');
   };
   const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
+  const setDisposition = (id, d) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, disposition: r.disposition === d ? '' : d }); };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
     const today = new Date().toISOString().slice(0, 10);
@@ -859,7 +880,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSendOffer={sendOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSendOffer={sendOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
     </div>
   );
 }
