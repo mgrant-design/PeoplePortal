@@ -43,7 +43,7 @@ function authHeader(verb, resType, resId, date, key) {
    partitionKey — the partition value (sent as the x-ms-documentdb-partitionkey header)
    upsert       — true to allow POST to update an existing doc with the same id
    ifMatch      — an _etag for optimistic concurrency (refuses the write if the doc changed) */
-function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, endpoint = ENDPOINT, key = KEY }) {
+function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, continuation, endpoint = ENDPOINT, key = KEY }) {
   return new Promise((resolve, reject) => {
     const date = new Date().toUTCString();
     const url = new URL(path, endpoint);
@@ -58,17 +58,32 @@ function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, endpoi
     if (partitionKey !== undefined) headers['x-ms-documentdb-partitionkey'] = JSON.stringify([partitionKey]);
     if (upsert) headers['x-ms-documentdb-is-upsert'] = 'true';
     if (ifMatch) headers['If-Match'] = ifMatch;
+    if (continuation) headers['x-ms-continuation'] = continuation;
     if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
 
     const rq = https.request({ hostname: url.hostname, path: url.pathname + (url.search || ''), method: verb, headers }, (res) => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => { let p = {}; try { p = data ? JSON.parse(data) : {}; } catch (e) { return reject(new Error('parse: ' + data)); } resolve({ status: res.statusCode, body: p }); });
+      res.on('end', () => { let p = {}; try { p = data ? JSON.parse(data) : {}; } catch (e) { return reject(new Error('parse: ' + data)); } resolve({ status: res.statusCode, body: p, continuation: res.headers['x-ms-continuation'] }); });
     });
     rq.on('error', reject);
     if (payload) rq.write(payload);
     rq.end();
   });
+}
+
+/* List every document in a container, following continuation tokens. A plain feed GET
+   only returns one page — without this, a container past the page limit would silently
+   drop documents (e.g. an employee added after the roster grows past ~100 docs). */
+async function listAll(resId) {
+  let docs = [], continuation;
+  do {
+    const res = await cosmos({ verb: 'GET', resId, path: `/${resId}/docs`, continuation });
+    if (res.status !== 200) throw new Error('list failed: ' + res.status);
+    docs = docs.concat(res.body.Documents || []);
+    continuation = res.continuation;
+  } while (continuation);
+  return docs;
 }
 
 /* Read the dedicated accessControl container: per-person permission overrides
@@ -77,10 +92,7 @@ function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, endpoi
    permissions are edited independently of HR/roster data. Missing container → []. */
 async function loadAccessControl() {
   try {
-    const coll = collPath('accessControl');
-    const res = await cosmos({ verb: 'GET', resId: coll, path: `/${coll}/docs` });
-    if (res.status !== 200) return [];
-    return (res.body.Documents || []).map(strip);
+    return (await listAll(collPath('accessControl'))).map(strip);
   } catch (e) { return []; }
 }
 
@@ -94,14 +106,13 @@ function applyAccessControl(usersByEmail, accessDocs) {
    titles/managers/users/offboarding). Most write endpoints need these to resolve the
    caller and check permissions, so this saves repeating the two reads everywhere. */
 async function loadRosterAndSupport() {
-  const rosterRes = await cosmos({ verb: 'GET', resId: collPath('roster'), path: `/${collPath('roster')}/docs` });
-  if (rosterRes.status !== 200) throw new Error('roster read failed: ' + rosterRes.status);
-  const employees = (rosterRes.body.Documents || []).map(strip);
+  const employees = (await listAll(collPath('roster'))).map(strip);
 
   let support = null;
   try {
-    const appRes = await cosmos({ verb: 'GET', resId: collPath('appState'), path: `/${collPath('appState')}/docs` });
-    if (appRes.status === 200) support = (appRes.body.Documents || []).find(d => d.id === 'roster-support') || null;
+    const appDocs = await listAll(collPath('appState'));
+    const doc = appDocs.find(d => d.id === 'roster-support');
+    if (doc) support = strip(doc);
   } catch (e) { /* support is optional */ }
 
   // Fold the dedicated accessControl store into support.users so every caller of this
@@ -117,4 +128,4 @@ async function loadRosterAndSupport() {
   return { employees, support };
 }
 
-module.exports = { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport, loadAccessControl, applyAccessControl, DB };
+module.exports = { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport, loadAccessControl, applyAccessControl, DB };

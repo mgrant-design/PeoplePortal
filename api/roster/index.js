@@ -9,24 +9,37 @@ function getAuthHeader(verb, resourceType, resourceId, date, key) {
   return encodeURIComponent(`type=master&ver=1.0&sig=${sig}`);
 }
 
-function cosmosGet(endpoint, key, resourceId) {
+function cosmosGet(endpoint, key, resourceId, continuation) {
   return new Promise((resolve, reject) => {
     const date = new Date().toUTCString();
     const auth = getAuthHeader('get', 'docs', resourceId, date, key);
     const url = new URL('/' + resourceId + '/docs', endpoint);
-    const options = {
-      hostname: url.hostname, path: url.pathname, method: 'GET',
-      headers: {
-        'Authorization': auth, 'x-ms-date': date, 'x-ms-version': '2018-12-31',
-        'Accept': 'application/json', 'Content-Type': 'application/json',
-      }
+    const headers = {
+      'Authorization': auth, 'x-ms-date': date, 'x-ms-version': '2018-12-31',
+      'Accept': 'application/json', 'Content-Type': 'application/json',
     };
+    if (continuation) headers['x-ms-continuation'] = continuation;
+    const options = { hostname: url.hostname, path: url.pathname, method: 'GET', headers };
     const req = https.request(options, (res) => {
       let data = ''; res.on('data', c => data += c);
-      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data) }); } catch (e) { reject(new Error('parse: ' + data)); } });
+      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data), continuation: res.headers['x-ms-continuation'] }); } catch (e) { reject(new Error('parse: ' + data)); } });
     });
     req.on('error', reject); req.end();
   });
+}
+
+/* A plain feed GET only returns ONE PAGE of documents. Without following the
+   continuation token, any container past the page limit silently drops the rest —
+   e.g. an employee added after the roster grew past ~100 docs would never be found. */
+async function cosmosGetAll(endpoint, key, resourceId) {
+  let docs = [], continuation;
+  do {
+    const res = await cosmosGet(endpoint, key, resourceId, continuation);
+    if (res.status !== 200) return res;
+    docs = docs.concat(res.body.Documents || []);
+    continuation = res.continuation;
+  } while (continuation);
+  return { status: 200, body: { Documents: docs } };
 }
 
 // ---- scoping logic, ported from rbac.jsx (deriveAccess + scopedEmployees) ----
@@ -116,14 +129,14 @@ module.exports = async function (context, req) {
   const strip = ({ _rid, _self, _etag, _attachments, _ts, ...rest }) => rest;
 
   try {
-    const rosterRes = await cosmosGet(endpoint, key, `dbs/${db}/colls/roster`);
+    const rosterRes = await cosmosGetAll(endpoint, key, `dbs/${db}/colls/roster`);
     if (rosterRes.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'roster read failed', status: rosterRes.status }) }; return; }
     const allEmployees = (rosterRes.body.Documents || []).map(strip);
 
     // reference data (optional)
     let ref = { offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
     try {
-      const appRes = await cosmosGet(endpoint, key, `dbs/${db}/colls/appState`);
+      const appRes = await cosmosGetAll(endpoint, key, `dbs/${db}/colls/appState`);
       if (appRes.status === 200) {
         const sup = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
         if (sup) ref = { offices: sup.offices||[], departments: sup.departments||[], titles: sup.titles||[], managers: sup.managers||[], users: sup.users||[], offboarding: sup.offboarding||[] };

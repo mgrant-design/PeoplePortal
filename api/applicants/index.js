@@ -12,7 +12,7 @@
    Supervisor). Team-level callers only see and write applicants at their own office. */
 
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
+const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 
@@ -80,9 +80,9 @@ module.exports = async function (context, req) {
 
     /* ---------- READ ---------- */
     if (req.method === 'GET') {
-      const res = await cosmos({ verb: 'GET', resId: coll, path: `/${coll}/docs` });
-      if (res.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', status: res.status, detail: res.body }) }; return; }
-      let docs = (res.body.Documents || []).map(strip);
+      let docs;
+      try { docs = (await listAll(coll)).map(strip); }
+      catch (e) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', detail: e.message }) }; return; }
       if (!access.viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
       context.res = { status: 200, headers, body: JSON.stringify({ applicants: docs }) };
       return;
