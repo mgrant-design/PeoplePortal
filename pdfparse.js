@@ -117,13 +117,8 @@ window.PD_RESUME = (function () {
     }
 
     // Address: anchor on a "City, ST 12345" line, prepend a street line above it.
-    // Matched per-line (not against the joined text) so the city capture can't
-    // cross a \n and swallow unrelated preceding lines when they contain commas.
     var address = '';
-    var csz = null;
-    for (var li = 0; li < lines.length && !csz; li++) {
-      csz = lines[li].match(/([A-Za-z][A-Za-z.\s'\-]+),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?/);
-    }
+    var csz = text.match(/([A-Za-z][A-Za-z.\s'\-]+),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?/);
     if (csz) {
       var idx = lines.findIndex(function (l) { return l.indexOf(csz[0]) >= 0; });
       var street = '';
