@@ -502,6 +502,17 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   const navLabel = (n) => (n.id === 'onboarding' && access.caps.onboardStatus) ? 'Onboarding' : n.label;
   // Alphabetize nav items by their displayed label; optionally pin one id (Dashboard) first.
+  // Relocate just the two explicitly-placed items, leaving the rest alphabetical:
+  // Applicants right after Dashboard, Scheduling right before Directory.
+  const reorderNav = (items) => {
+    const arr = items.slice();
+    const pull = (id) => { const i = arr.findIndex(x => x.id === id); return i >= 0 ? arr.splice(i, 1)[0] : null; };
+    const applicants = pull('applicants');
+    const scheduler = pull('scheduler');
+    if (applicants) { const di = arr.findIndex(x => x.id === 'dashboard'); arr.splice(di + 1, 0, applicants); }
+    if (scheduler) { const pi = arr.findIndex(x => x.id === 'people'); if (pi >= 0) arr.splice(pi, 0, scheduler); else arr.push(scheduler); }
+    return arr;
+  };
   const sortNav = (items, pin) => [...items].sort((a, b) => {
     if (pin) { if (a.id === pin) return -1; if (b.id === pin) return 1; }
     return navLabel(a).localeCompare(navLabel(b));
@@ -530,7 +541,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         {navMode === 'all' ? (() => {
           const byId = (id) => NAV.find(n => n.id === id);
           const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-          const mainItems = sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard');
+          const mainItems = reorderNav(sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard'));
           const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
           const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
           const adminOpen = navMenu === 'admin';
@@ -616,7 +627,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
           {navMode === 'all' ? (() => {
             const byId = (id) => NAV.find(n => n.id === id);
             const visible = (n) => n && n.show(access) && (!n.flag || flagOn(n.flag));
-            const mainItems = sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard');
+            const mainItems = reorderNav(sortNav(FLAT_MAIN_IDS.map(byId).filter(visible), 'dashboard'));
             const adminItems = sortNav(FLAT_ADMIN_IDS.map(byId).filter(visible));
             const showAdmin = (access.caps.viewTeam || access.caps.viewAll) && adminItems.length > 0;
             const adminOpen = mobileGroup === 'admin';
