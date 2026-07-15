@@ -90,15 +90,15 @@ const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'autom
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
 const NAV_GROUPS = [
   { id: 'dashboard', label: 'Home', view: 'dashboard', show: () => true },
-  { id: 'g_people', label: 'People', children: [
-    { id: 'people', label: 'Directory', show: () => true },
-    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
-  ] },
   { id: 'g_mywork', label: 'My Work', children: [
     { id: 'myschedule', label: 'My schedule', show: () => true, flag: 'scheduler' },
     { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
     { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
     { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
+  ] },
+  { id: 'g_people', label: 'People', children: [
+    { id: 'people', label: 'Directory', show: () => true },
+    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
   ] },
   { id: 'g_manage', label: 'Manage', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
@@ -241,14 +241,14 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     if (typeof fetchNotices === 'function') fetchNotices().then(list => { notifsLoadedRef.current = true; setNotices(list); }).catch(() => {});
   };
   useEffect(() => { refreshNotifs(); }, [me.id]);
-  // Poll every 5 min so new notifications surface (and ding) without a manual reload, PLUS
+  // Poll every 10s so new notifications surface (and ding) without a manual reload, PLUS
   // an immediate re-poll whenever the tab regains focus — which also resets the interval, so
-  // the next scheduled poll is a fresh 5 min after the catch-up. Polling never pauses (a
+  // the next scheduled poll is a fresh 10s after the catch-up. Polling never pauses (a
   // hidden tab is exactly when an audible ding matters most). This is the pull baseline;
-  // true immediate manager→employee pings are a separate push layer (SignalR), TBD.
+  // true immediate pings also exist via a separate SignalR push layer below.
   useEffect(() => {
     let timer = null;
-    const start = () => { if (timer) clearInterval(timer); timer = setInterval(refreshNotifs, 300000); };
+    const start = () => { if (timer) clearInterval(timer); timer = setInterval(refreshNotifs, 10000); };
     const onFocus = () => { refreshNotifs(); start(); };  // catch up now, then restart the 5-min clock
     start();
     window.addEventListener('focus', onFocus);
@@ -574,7 +574,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         })() : (
           <>
             <nav className="navgroups">
-              {sortNav(NAV_GROUPS, 'dashboard').map(g => {
+              {NAV_GROUPS.map(g => {
                 if (!g.children) {
                   if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
                   return <div className="navgroup" key={g.id}>
@@ -657,7 +657,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
                 )}
               </>
             );
-          })() : sortNav(NAV_GROUPS, 'dashboard').map(g => {
+          })() : NAV_GROUPS.map(g => {
             if (!g.children) {
               if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
               return <button key={g.id} className={'mnav-top' + (navActive(g.id) ? ' active' : '')} onClick={() => go(g.view || g.id)}>{g.label}</button>;
