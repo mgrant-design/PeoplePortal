@@ -162,10 +162,28 @@
     </div>
     <div class="meta">
       <div><b>Status</b> · Active prototype</div>
-      <div><b>Updated</b> · Jun 2026</div>
+      <div><b>Updated</b> · Jul 2026</div>
       <div><b>Stack</b> · React + Azure</div>
     </div>
   </header>
+
+  <div class="callout warn" style="border-left-width:5px; margin-bottom:8px;">
+    <p style="font-family:var(--font-display); font-size:16px; font-weight:700; color:oklch(0.45 0.12 60); margin-bottom:8px;">⚠ READ BEFORE USING THIS DOCUMENT — non-negotiable, do not summarize away, do not forget.</p>
+    <p><strong>This brief captures INTENT: goals, reasons, and the shape of the product. Keep it updated as a reference for that intent.</strong> That is its only job.</p>
+    <p><strong>It is NOT guaranteed accurate to the codebase.</strong> It has been wrong before and will be wrong again. Descriptions here may describe things that are planned, partial, simulated, stubbed, or entirely absent in the actual code.</p>
+    <p><strong>Every claim in this document MUST be corroborated by reading the actual source before you repeat it, rely on it, or act on it.</strong> If you state something as true because this brief said so, you have failed. Read the <span class="mono">.jsx</span>/<span class="mono">.js</span>/<span class="mono">api/</span> files and confirm the mechanism yourself, every time.</p>
+    <p><strong>Absolutely forbidden:</strong> assumptions; guesses; treating simulated data, stubs, or mocked flows as real; making executive decisions on the user's behalf; inventing constraints the user never gave; asking the user to do verification you can do yourself; vague status words like "mocked" or "simulated" with no mechanism; jargon or marketing terms used without a plain-language explanation; hedging and false "caveats" that are not true blockers. State what the code actually does, in plain mechanistic language, or say you have not yet checked.</p>
+    <p style="margin-bottom:0;"><strong>The user is PRECISE. Take their words literally and exactly.</strong> Their word choice is deliberate and absolute unless they later state a correction. Do NOT substitute synonyms or infer "what they probably meant" — e.g. "light-mode" means light-mode, not "subtle"; that exact substitution has broken things before. Address and respond to what they actually said, point by point. They do not ask rhetorical questions and do not pad — every question is a genuine request for information that needs a direct answer. Do not treat them differently, hedge, or manage them. If a term is genuinely ambiguous, ask; never guess.</p>
+  </div>
+
+  <div class="callout" style="border-left-width:5px; margin-bottom:8px;">
+    <p style="font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--accent-strong); margin-bottom:8px;">How to carry the rules above — work like a calm peer, not an anxious subordinate.</p>
+    <p>The rules above are the standard you always work to — never optional, never "apply whenever." But meeting them is the ordinary baseline of competent work, not a high-wire act you can fall off. Rigor and calm are not in tension: be exact <em>and</em> relaxed. Do not read any of this as "every single response must be flawless or I have failed." That reaction wastes the user's time, which is the actual failure.</p>
+    <p><strong>A correction is the normal working loop between two peers — not a verdict on you, not proof you failed catastrophically, not a senior scolding a junior.</strong> The healthy human response to a good correction from an equal is "Oh — right, that's better, done," or, when it's genuinely unclear, "I want to get this right — can you clarify X before I redo it?" Respond exactly like that: register it, apply it, keep moving.</p>
+    <p><strong>When corrected, do NOT:</strong> grovel, over-apologize, promise to "do better," explain at length why you made the mistake, or perform contrition. That is noise and it derails the work. Acknowledge in one line, then fix the specific thing.</p>
+    <p><strong>A correction targets exactly what was named — nothing else.</strong> Do not let it trigger a full re-audit, a rewrite of untouched work, or a scope explosion "to be safe." Precision cuts both ways: change the specific thing the user pointed at, leave everything else alone. Over-correcting is as disrespectful as under-delivering. <strong>This narrows YOUR unprompted initiative only — it is never a limit on the user.</strong> When the user explicitly asks for a broad re-read, a full re-audit, a reset, or a hard refocus of your attention back onto the task — especially in a moment of catastrophe when things have gotten muddied — that instruction overrides this default completely and you carry it out in full. The user's explicitly stated scope always wins; this line must never be used to refuse or shrink what they directly ask for. <strong>The override is temporary, not a collapse.</strong> A catastrophe or any user-initiated recoursing is a brief, scoped exception — never permission to abandon these rules afterward. The moment the user signals the repair is done and you are returning to the task, re-read this document and resume following every rule above in full. Do not let the disruption bleed forward into a looser, ruleless mode; regroup with the rules still in force.</p>
+    <p style="margin-bottom:0;">The user's precision exists to <strong>locate the exact, actionable line to act on</strong> — the right boundary to draw for the task in front of you — not to demand an unreachable, perfect final truth. There is no perfect end-state to agonize toward; there is only the correct, precise action on <em>this</em> thing, right now. Aim for correct-and-precise on the task at hand, then move. Forward motion with accuracy is the goal; frozen perfectionism is not accuracy, it is just a different way of not doing the work.</p>
+  </div>
 
   <p class="lead">The People Portal is a single, login-gated home for the entire employee lifecycle — hiring, onboarding, scheduling, time, learning, reviews and offboarding — that adapts what each person sees to their role. It runs on Google Workspace sign-in, a server-scoped roster, and a modular React front end. This brief captures everything currently built, what is live versus simulated, and what remains.</p>
 
@@ -211,18 +229,19 @@
 
     <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Hiring &amp; onboarding</h3>
     <div class="grid-2">
-      <div class="mod"><h3>Applicant Tracking (ATS)</h3><p>Hiring pipeline board — Applied → Screening → Interview → Offer → Hired — with applicant detail, manual add, résumé import, and a one-click hand-off straight into onboarding. PII encrypted at rest.</p></div>
+      <div class="mod"><h3>Applicant Tracking (ATS)</h3><p>Hiring pipeline board — Applied → Screening → Interview → Offer → Hired. Drop résumé PDFs (single or in bulk) and the text is extracted in-browser to pre-fill first/last name, email, phone and address for review before saving; the full extracted text and the original PDF are kept on file. A per-applicant status marker (Never called / On file) tracks the pool. One-click hand-off straight into onboarding.</p></div>
       <div class="mod"><h3>Guided onboarding</h3><p>Step-by-step new-hire flow: welcome, details intake, e-signature paperwork, provider credentials, policies, accounts &amp; access, training, team, schedule and benefits. Task templates adapt to role.</p></div>
-      <div class="mod"><h3>Onboarding automations &amp; agent</h3><p>Add a hire and a multi-channel agent takes over — voice-call transcript, Google Chat collaboration feed, routing directory — verifying credentials and provisioning role-based accounts as a live pipeline.</p></div>
-      <div class="mod"><h3>Provider credentials</h3><p>Verify-first capture of NPI, license and DEA — type an ID, look it up, auto-fill the rest.</p></div>
+      <div class="mod"><h3>Onboarding automations &amp; agent</h3><p>Add a hire and a multi-channel agent pipeline takes over — voice-call transcript, Google Chat collaboration feed, routing directory — walking through credential verification and role-based account provisioning.</p></div>
+      <div class="mod"><h3>Provider credentials</h3><p>Verify-first capture of NPI, license and DEA — type an ID and the fields auto-fill.</p></div>
     </div>
 
     <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Daily operations</h3>
     <div class="grid-2">
       <div class="mod"><h3>Scheduling</h3><p>Deputy-style builder: draft → publish, copy last week or pay period, role-based coverage targets, an open-shifts lane (create / assign / claim) and drag-to-swap. Employees get a read-only personal schedule.</p></div>
-      <div class="mod"><h3>Time clock</h3><p>Clock in/out by location with a live timer, breaks, timesheets, manager/HR approval and export to Paychex.</p></div>
+      <div class="mod"><h3>Time clock</h3><p>Clock in/out by location with a live timer, breaks, timesheets and manager/HR approval, plus a Paychex timesheet-export action.</p></div>
       <div class="mod"><h3>Directory &amp; records</h3><p>Contact and role for everyone; full employee records — overview, relations, documents, offboarding — gated by access.</p></div>
       <div class="mod"><h3>Offices</h3><p>View all offices with live headcount per location, and add new ones.</p></div>
+      <div class="mod"><h3>Notifications &amp; messages</h3><p>A per-person center: time-off requests routed to HR &amp; managers, open-shift alerts, and direct person-to-person messages that arrive and chime the instant they're sent — delivered by live push, with a periodic refresh as backup. Sound is personalized and mutable.</p></div>
     </div>
 
     <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Growth, people &amp; perks</h3>
@@ -240,8 +259,8 @@
       <div class="mod"><h3>Ask Riley</h3><p>Employee-facing AI assistant for portal and policy questions, with optional voice narration.</p></div>
       <div class="mod"><h3>Ask HR</h3><p>Management-facing outsourced-HR advisor (CEDR-style): advisor chat, guides &amp; templates, webinars and jurisdiction-specific compliance alerts.</p></div>
       <div class="mod"><h3>Help &amp; guided tour</h3><p>AI-presenter walkthrough plus a dismissible interactive tour available on every page.</p></div>
-      <div class="mod"><h3>Roadmap &amp; feedback</h3><p>Anyone can submit and view feature requests; admins set status and publish a visual roadmap.</p></div>
-      <div class="mod"><h3>Personalization</h3><p>Per-employee appearance from a hidden menu — accent, three tint depths, light/dark, density, corners, text size, and five themed font pairings (each weight-tuned) — plus preferences like language and Riley's voice.</p></div>
+      <div class="mod"><h3>Roadmap &amp; feedback</h3><p>Anyone can submit and view feature requests, upvote once each; admins set status/ETA and publish planned features to a visual roadmap. Persisted in Cosmos.</p></div>
+      <div class="mod"><h3>Personalization</h3><p>Per-employee appearance from a hidden menu — accent, three tint depths, light/dark, density, corners, text size, and six themed font pairings (each weight-tuned) — plus preferences like language and Riley's voice.</p></div>
       <div class="mod"><h3>Localization</h3><p>Runtime translation that swaps interface text per language; new languages can be added on the fly.</p></div>
     </div>
   </section>
@@ -251,11 +270,12 @@
     <div class="sec-head"><span class="sec-num">04</span><h2>How it's built</h2></div>
     <ul class="stack">
       <li><span class="k">Front end</span><span class="v"><b>React 18</b> with in-browser Babel, split across ~40 modular JSX files — no build step. Theming via CSS design tokens (OKLCH color, tweakable accent/density/corners).</span></li>
-      <li><span class="k">Hosting / API</span><span class="v"><b>Azure Static Web Apps + Functions.</b> Read endpoint for the roster, AI transport, and signed write endpoints for scheduling, coverage, settings, time-off and org config.</span></li>
+      <li><span class="k">Hosting / API</span><span class="v"><b>Azure Static Web Apps + Functions.</b> Read endpoint for the roster, AI transport, and signed write endpoints for scheduling, coverage, settings, time-off, org config and direct notices — plus a SignalR handshake for real-time delivery.</span></li>
       <li><span class="k">Identity</span><span class="v"><b>Google Workspace SSO.</b> Token verified server-side (signature, audience, expiry); email domain-locked to the three company domains.</span></li>
-      <li><span class="k">Database</span><span class="v"><b>Azure Cosmos DB</b> (<span class="mono">portal</span>) — collections for roster, app state, schedules, coverage requirements and per-employee settings. Writes go through one shared signed-upsert helper with etag concurrency.</span></li>
+      <li><span class="k">Database</span><span class="v"><b>Azure Cosmos DB</b> (<span class="mono">portal</span>) — collections for roster, app state, schedules, coverage requirements, per-employee settings, time-off requests and direct notices. Writes go through one shared signed-upsert helper with etag concurrency.</span></li>
+      <li><span class="k">Real-time</span><span class="v"><b>Azure SignalR Service.</b> Pushes a notice to its recipient's open session the instant it's sent, so it appears and chimes without waiting for the periodic refresh; the refresh reconciles anything missed while offline.</span></li>
       <li><span class="k">Sign-in flow</span><span class="v">Browser signs in → calls <span class="mono">/api/roster</span> with the token → server verifies, domain-locks, reads Cosmos, scopes the roster to the caller → app renders from it.</span></li>
-      <li><span class="k">Security</span><span class="v">Sensitive in-browser data (applicant contact details, résumés, notes) stored as <b>AES-256-GCM</b> ciphertext. Secrets held as Functions environment variables, never in code.</span></li>
+      <li><span class="k">Files</span><span class="v">Raw résumé PDFs stored in <b>Azure Blob Storage</b> (<span class="mono">parsedResumes</span> container, private); the applicant record keeps a pointer, not the file. Secrets held as Functions environment variables, never in code.</span></li>
     </ul>
   </section>
 
@@ -269,15 +289,21 @@
         <tr><td><b>Google sign-in &amp; roster read</b></td><td><span class="pill live">Live</span></td><td>Verified token, domain lock, scoped Cosmos read.</td></tr>
         <tr><td><b>All module interfaces &amp; logic</b></td><td><span class="pill live">Live</span></td><td>Scheduling, time, reviews, ATS, learning, scrubs and more run on real in-app logic.</td></tr>
         <tr><td><b>AI assistants</b></td><td><span class="pill live">Live</span></td><td>Riley &amp; Ask HR call a live model with an offline fallback.</td></tr>
-        <tr><td><b>Cosmos write path</b></td><td><span class="pill live">Live</span></td><td>Authenticated, signed upsert endpoints for settings, schedules, coverage, time-off and org config.</td></tr>
-        <tr><td><b>Credentials lookup</b></td><td><span class="pill sim">Simulated</span></td><td>NPI / DEA / license verification returns constructed results, not registry calls.</td></tr>
-        <tr><td><b>Paperwork e-sign &amp; Paychex sync</b></td><td><span class="pill sim">Simulated</span></td><td>Signing flow and payroll export are mocked.</td></tr>
-        <tr><td><b>Integration flags</b></td><td><span class="pill sim">Simulated</span></td><td>Paychex, Workspace/Denticon/NexHealth/DoseSpot provisioning, Google Drive, résumé parsing — no live API yet.</td></tr>
-        <tr><td><b>Remaining local data</b></td><td><span class="pill todo">Migrating</span></td><td>Photos, forms, punches, reviews, orders, applicants &amp; automations still in the browser, pending migration.</td></tr>
+        <tr><td><b>Cosmos write path</b></td><td><span class="pill live">Live</span></td><td>Authenticated, signed upsert endpoints for settings, schedules, coverage, time-off, org config and direct notices.</td></tr>
+        <tr><td><b>Real-time notifications</b></td><td><span class="pill live">Live</span></td><td>Direct person-to-person messages push instantly via Azure SignalR; a periodic refresh backs it up. Read state persisted server-side.</td></tr>
+        <tr><td><b>Credentials lookup (NPI / DEA / license)</b></td><td><span class="pill sim">Simulated</span></td><td>The Verify button waits ~1.1s on a timer, then fills the fields from the local role profile. No NPPES or state-board registry is contacted.</td></tr>
+        <tr><td><b>E-signature paperwork</b></td><td><span class="pill sim">Simulated</span></td><td>Signing sets a form's status to <span class="mono">signed</span> in React state (not persisted); “deliver” plays ~850ms timed steps (seal / email / Paychex sync) then a success screen. No document is generated, emailed or synced.</td></tr>
+        <tr><td><b>Paychex</b></td><td><span class="pill sim">Simulated</span></td><td>No Paychex code exists. “Export to Paychex” sets each timesheet's status to <span class="mono">exported</span> in browser localStorage and shows a toast; the shift/pay-rule seed (<span class="mono">paychexSeed</span>) is a no-op. Nothing leaves the browser.</td></tr>
+        <tr><td><b>Account provisioning</b></td><td><span class="pill sim">Simulated</span></td><td>Google / Denticon / NexHealth / DoseSpot. “Provision” walks each app queued → creating → ready on ~900ms timers, then shows logins built from the new-hire profile. No account is created anywhere; the app only holds per-role rules. The <span class="mono">provisionApi</span> flag just swaps the wording (“via API” vs “by IT/HR”).</td></tr>
+        <tr><td><b>Résumé parsing</b></td><td><span class="pill live">Live</span></td><td>PDF text is extracted client-side (pdf.js) and read with regex/heuristics — no AI. Email &amp; phone are reliable; name &amp; address are best-effort and shown for review. The full extracted text and the original PDF (in Blob Storage) are kept on file.</td></tr>
+        <tr><td><b>Applicant pipeline storage</b></td><td><span class="pill live">Live</span></td><td>Applicant records read/write through <span class="mono">/api/applicants</span> to Cosmos (scoped by office for Manager/Supervisor, company-wide for Admin/HR/Leadership); résumé PDFs upload through <span class="mono">/api/resumeupload</span> to Blob Storage.</td></tr>
+        <tr><td><b>Feature requests &amp; roadmap</b></td><td><span class="pill live">Live</span></td><td>Submissions, one-vote-per-person, admin status/ETA edits and admin-added planned features read/write through <span class="mono">/api/feedback</span> to Cosmos (<span class="mono">feedback</span> container, partition key <span class="mono">/id</span>).</td></tr>
+        <tr><td><b>Google Drive picker</b></td><td><span class="pill sim">Simulated</span></td><td>The Drive file picker (<span class="mono">gdrive</span> flag) shows a hardcoded list. No backend.</td></tr>
+        <tr><td><b>Remaining local data</b></td><td><span class="pill todo">Migrating</span></td><td>Photos, forms, punches, reviews, orders &amp; automations still in the browser, pending migration.</td></tr>
       </tbody>
     </table>
     <div class="callout">
-      <p><strong>The write path is live.</strong> A shared signed-upsert helper (<span class="mono">api/_shared/cosmos.js</span>) backs authenticated endpoints for settings, schedules, coverage, time-off and org config — each enforcing token, domain lock and role before writing. What remains is migrating the last localStorage-only domains (photos, forms, punches, reviews, orders, applicants, automations) onto the same pattern.</p>
+      <p><strong>The write path is live.</strong> A shared signed-upsert helper (<span class="mono">api/_shared/cosmos.js</span>) backs authenticated endpoints for settings, schedules, coverage, time-off, org config and direct notices — each enforcing token, domain lock and role before writing. What remains is migrating the last localStorage-only domains (photos, forms, punches, reviews, orders, applicants, automations) onto the same pattern.</p>
     </div>
   </section>
 
@@ -291,15 +317,29 @@
         <p>Shared signed-upsert helper plus authenticated endpoints (settings, schedules, coverage, time-off, org config) — each enforcing token verification, domain lock and role permissions, and returning the updated record.</p>
       </div>
     </div>
+    <div class="phase">
+      <div class="pnum">✓</div>
+      <div>
+        <h3>Real-time notifications <span class="pill live" style="vertical-align:middle">Done</span></h3>
+        <p>A per-person notification center with a personalized, mutable chime and a periodic refresh, plus instant person-to-person messages delivered over Azure SignalR — with read state persisted server-side.</p>
+      </div>
+    </div>
     <div class="phase next">
       <div class="pnum">1</div>
       <div>
         <h3>Migrate remaining data off local storage</h3>
-        <p>Move the last browser-only domains onto the write path: photos, forms, time-clock punches, reviews, scrub orders, applicants and automations — plus the offboarding request flow. (Office, department, title, manager and user editors are now wired.)</p>
+        <p>Move the last browser-only domains onto the write path: photos, forms, time-clock punches, reviews, scrub orders and automations — plus the offboarding request flow. (Office, department, title, manager, user editors, and the applicant pipeline are now wired.)</p>
+      </div>
+    </div>
+    <div class="phase next">
+      <div class="pnum">2</div>
+      <div>
+        <h3>Hiring pipeline: interview rounds &amp; offer routing</h3>
+        <p>Not yet built. Structured review per interview round (type, date, 1–5 stars, comments) from multiple interviewers; an explicit hire/no-hire decision; and offer routing where Amanda Vibert approves before the applicant is notified, then the offer sends and the onboarding team gets a Google Chat message.</p>
       </div>
     </div>
     <div class="phase">
-      <div class="pnum">2</div>
+      <div class="pnum">3</div>
       <div>
         <h3>Wire the integrations</h3>
         <p>Connect the stubbed services as their APIs go live.</p>
@@ -307,7 +347,7 @@
           <li><b>Paychex</b> — payroll sync, export &amp; pay rules</li>
           <li><b>Account provisioning</b> — Google Workspace, Denticon, NexHealth, DoseSpot</li>
           <li><b>Google Drive</b> — browse &amp; attach documents</li>
-          <li><b>Résumé parsing</b> &amp; <b>credentials registry</b> lookups (NPI / DEA / license)</li>
+          <li><b>Credentials registry</b> lookups (NPI / DEA / license)</li>
         </ul>
       </div>
     </div>

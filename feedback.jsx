@@ -1,35 +1,61 @@
 /* feedback.jsx — Feature requests + visual roadmap.
-   Everyone can submit & view; admin sets status / approves / adds planned features. */
+   Everyone can submit & view; admin sets status / approves / adds planned features.
+   Persisted in Cosmos via /api/feedback (see data.jsx: fetchFeedback/feedbackAction). */
 
 const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
 const FB_CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
 
-/* NO BACKEND. Feature requests have no /api endpoint yet, so nothing is persisted.
-   In-memory only: submissions and votes live for the session and are gone on reload.
-   No localStorage, no seed data. */
-function loadFB() { return []; }
-function persistFB(x) {}
-function loadVotes() { return {}; }
-
 const ROADMAP_COLS = [['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
 
 function Feedback({ me, access, flash }) {
-  const [items, setItems] = useState(loadFB);
-  const [votes, setVotes] = useState(loadVotes);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(null);
+  const [myVotes, setMyVotes] = useState({});
   const [tab, setTab] = useState('Requests');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other' });
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const isAdmin = access.caps.manageUsers;
-  const save = (x) => { setItems(x); persistFB(x); };
+  const myEmail = (me.workEmail || me.email || '').toLowerCase();
 
-  const submit = () => { if (!draft.title.trim()) return; const it = { id: 'fr' + Date.now(), title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, by: me.name, status: 'Submitted', votes: 1, eta: '', ts: Date.now() }; save([it, ...items]); setVotes(v => ({ ...v, [it.id]: 1 })); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); };
-  const addPlanned = () => { if (!plan.title.trim()) return; const it = { id: 'fr' + Date.now(), title: plan.title.trim(), desc: plan.desc.trim(), cat: plan.cat, by: 'Product', status: 'Planned', votes: 0, eta: plan.eta, ts: Date.now(), planned: true }; save([it, ...items]); setPlanning(false); setPlan({ title: '', desc: '', cat: 'Scheduling', eta: '' }); flash && flash('Planned feature added to the roadmap.'); };
-  const setStatus = (id, status) => save(items.map(i => i.id === id ? { ...i, status } : i));
-  const setEta = (id, eta) => save(items.map(i => i.id === id ? { ...i, eta } : i));
-  const vote = (id) => { if (votes[id]) return; setVotes({ ...votes, [id]: 1 }); save(items.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i)); };
+  const load = () => {
+    setLoading(true);
+    (window.fetchFeedback ? window.fetchFeedback() : Promise.reject(new Error('offline')))
+      .then(list => { setItems(list); setLoadErr(null); })
+      .catch(e => setLoadErr(e.message || 'Could not load feature requests.'))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const submit = () => {
+    if (!draft.title.trim()) return;
+    window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat })
+      .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); })
+      .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'));
+  };
+  const addPlanned = () => {
+    if (!plan.title.trim()) return;
+    window.feedbackAction({ action: 'addPlanned', title: plan.title.trim(), desc: plan.desc.trim(), cat: plan.cat, eta: plan.eta })
+      .then(({ item }) => { setItems(list => [item, ...list]); setPlanning(false); setPlan({ title: '', desc: '', cat: 'Scheduling', eta: '' }); flash && flash('Planned feature added to the roadmap.'); })
+      .catch(e => flash && flash('Couldn’t add (' + e.message + ')'));
+  };
+  const setStatus = (id, status) => {
+    setItems(list => list.map(i => i.id === id ? { ...i, status } : i));
+    window.feedbackAction({ action: 'update', id, status }).catch(e => { flash && flash('Couldn’t update status (' + e.message + ')'); load(); });
+  };
+  const setEta = (id, eta) => {
+    setItems(list => list.map(i => i.id === id ? { ...i, eta } : i));
+    window.feedbackAction({ action: 'update', id, eta }).catch(e => { flash && flash('Couldn’t update ETA (' + e.message + ')'); load(); });
+  };
+  const vote = (id) => {
+    if (myVotes[id]) return;
+    setMyVotes(v => ({ ...v, [id]: 1 }));
+    setItems(list => list.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i));
+    window.feedbackAction({ action: 'vote', id }).catch(e => flash && flash('Couldn’t record vote (' + e.message + ')'));
+  };
 
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   const sorted = items.slice().sort((a, b) => (b.votes || 0) - (a.votes || 0));
@@ -67,10 +93,13 @@ function Feedback({ me, access, flash }) {
               </div>
             </div>
           )}
+          {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Loading…</div>}
+          {!loading && loadErr && <div className="card" style={{ padding: 'var(--pad)', color: 'var(--ink-2)', fontSize: 13.5 }}>{loadErr}</div>}
+          {!loading && !loadErr && sorted.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {sorted.map(it => (
+            {!loading && !loadErr && sorted.map(it => (
               <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <button onClick={() => vote(it.id)} disabled={!!votes[it.id]} style={{ flex: 'none', width: 50, padding: '8px 0', borderRadius: 'var(--r-md)', border: '1px solid', borderColor: votes[it.id] ? 'var(--accent)' : 'var(--line)', background: votes[it.id] ? 'var(--accent-soft)' : 'var(--surface)', color: votes[it.id] ? 'var(--accent-strong)' : 'var(--ink-2)', cursor: votes[it.id] ? 'default' : 'pointer', textAlign: 'center' }}>
+                <button onClick={() => vote(it.id)} disabled={!!myVotes[it.id]} style={{ flex: 'none', width: 50, padding: '8px 0', borderRadius: 'var(--r-md)', border: '1px solid', borderColor: myVotes[it.id] ? 'var(--accent)' : 'var(--line)', background: myVotes[it.id] ? 'var(--accent-soft)' : 'var(--surface)', color: myVotes[it.id] ? 'var(--accent-strong)' : 'var(--ink-2)', cursor: myVotes[it.id] ? 'default' : 'pointer', textAlign: 'center' }}>
                   <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(-90deg)' }} />
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{it.votes || 0}</div>
                 </button>
