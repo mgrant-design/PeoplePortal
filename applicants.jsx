@@ -696,7 +696,9 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
             <div style={{ flex: 1 }} />
             {a.stage === 'hired' ? (
               <span className="badge badge-ok"><Icon name="check" /> Hired · in onboarding</span>
-            ) : a.stage === 'offer' ? null : (
+            ) : a.stage === 'offer' ? (
+              isApprover ? <button className="btn btn-ghost" onClick={() => onHire(a)}>Hire Applicant</button> : null
+            ) : (
               <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].id)}>Advance to {ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].label} <Icon name="arrowRight" /></button>
             )}
           </>
