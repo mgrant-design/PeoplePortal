@@ -522,12 +522,20 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
+function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
   const [note, setNote] = useState('');
   const [showFull, setShowFull] = useState(false);
   const [myRating, setMyRating] = useState(myFb ? myFb.rating : 0);
   const [myComment, setMyComment] = useState(myFb ? myFb.comment : '');
+  const [editInfo, setEditInfo] = useState(false);
+  const [form, setForm] = useState(null);
+  const startEdit = () => {
+    const parts = (a.name || '').trim().split(' ');
+    setForm({ first: a.first || parts[0] || '', last: a.last || parts.slice(1).join(' ') || '', role: a.role || '', dept: a.dept || 'Front Desk', office: a.office || (offices || [])[0] || '', email: a.email || '', phone: a.phone || '', address: a.address || '', provider: !!a.provider });
+    setEditInfo(true);
+  };
+  const saveEdit = () => { const name = (form.first + ' ' + form.last).trim(); onEditInfo(a.id, { ...form, name }); setEditInfo(false); if (flash) flash('Applicant details updated'); };
   const idx = ATS_IDX[a.stage] != null ? ATS_IDX[a.stage] : 0;
   const rejected = a.stage === 'rejected';
   const skipIdx = (idx === ATS_IDX.interview && !a.wiRequired) ? ATS_IDX.offer : Math.min(ATS_STAGES.length - 1, idx + 1);
@@ -594,18 +602,44 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
           </label>
         )}
 
-        {/* contact */}
+        {/* contact / editable details */}
         <div style={{ borderRadius: 'var(--r-md)', background: 'var(--surface-2)', border: '1px solid var(--line)', padding: '14px var(--pad)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Contact</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>{editInfo ? 'Edit applicant details' : 'Contact'}</span>
+            <div style={{ flex: 1 }} />
+            {!editInfo && <button className="btn btn-quiet" style={{ fontSize: 12, padding: '4px 8px', color: 'var(--accent-strong)' }} onClick={startEdit}><Icon name="pen" style={{ width: 12, height: 12 }} /> Edit details</button>}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 16px', fontSize: 13 }}>
-            <span style={{ color: 'var(--ink-3)' }}>Email</span><a href={'mailto:' + a.email} style={{ color: 'var(--accent-strong)', fontWeight: 600 }}>{a.email}</a>
-            <span style={{ color: 'var(--ink-3)' }}>Phone</span><span style={{ fontWeight: 600 }}>{a.phone || '—'}</span>
-            {a.address && <><span style={{ color: 'var(--ink-3)' }}>Address</span><span>{a.address}</span></>}
-            <span style={{ color: 'var(--ink-3)' }}>Source</span><span>{a.source}{a.years ? ` · ${a.years} yr${a.years === 1 ? '' : 's'} exp.` : ''}</span>
-            <span style={{ color: 'var(--ink-3)' }}>Applied</span><span>{atsFmt(a.applied)}</span>
-          </div>
+          {editInfo ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <AF label="First name" req><input value={form.first} onChange={e => setForm(f => ({ ...f, first: e.target.value }))} style={atsFld} /></AF>
+                <AF label="Last name"><input value={form.last} onChange={e => setForm(f => ({ ...f, last: e.target.value }))} style={atsFld} /></AF>
+                <AF label="Email"><input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={atsFld} /></AF>
+                <AF label="Cell phone"><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} style={atsFld} /></AF>
+              </div>
+              <div style={{ marginTop: 12 }}><AF label="Address"><input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} style={atsFld} /></AF></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <AF label="Role / title" req><input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="e.g. Front Desk Coordinator" style={atsFld} /></AF>
+                <AF label="Department"><select value={form.dept} onChange={e => setForm(f => ({ ...f, dept: e.target.value }))} style={{ ...atsFld, appearance: 'auto' }}>{ATS_DEPTS.map(x => <option key={x}>{x}</option>)}</select></AF>
+                <AF label="Office"><select value={form.office} onChange={e => setForm(f => ({ ...f, office: e.target.value }))} style={{ ...atsFld, appearance: 'auto' }}>{(offices || []).map(o => <option key={o}>{o}</option>)}</select></AF>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, cursor: 'pointer', fontSize: 13.5, fontWeight: 600 }}>
+                <input type="checkbox" checked={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.checked }))} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} /> Clinical provider (needs NPI / license)
+              </label>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+                <button className="btn btn-ghost" onClick={() => setEditInfo(false)}>Cancel</button>
+                <button className="btn btn-primary" disabled={!form.first.trim() || !form.role.trim()} onClick={saveEdit}>Save details</button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 16px', fontSize: 13 }}>
+              <span style={{ color: 'var(--ink-3)' }}>Email</span><a href={'mailto:' + a.email} style={{ color: 'var(--accent-strong)', fontWeight: 600 }}>{a.email}</a>
+              <span style={{ color: 'var(--ink-3)' }}>Phone</span><span style={{ fontWeight: 600 }}>{a.phone || '—'}</span>
+              {a.address && <><span style={{ color: 'var(--ink-3)' }}>Address</span><span>{a.address}</span></>}
+              <span style={{ color: 'var(--ink-3)' }}>Source</span><span>{a.source}{a.years ? ` · ${a.years} yr${a.years === 1 ? '' : 's'} exp.` : ''}</span>
+              <span style={{ color: 'var(--ink-3)' }}>Applied</span><span>{atsFmt(a.applied)}</span>
+            </div>
+          )}
         </div>
 
         {/* working interview */}
@@ -695,7 +729,7 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
       {/* actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'var(--pad)', borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
         {rejected ? (
-          <button className="btn btn-ghost" onClick={() => onStage(a.id, 'applied')}><Icon name="refresh" /> Reopen</button>
+          <button className="btn btn-ghost" onClick={() => onReopen(a.id)}><Icon name="refresh" /> Reopen</button>
         ) : (
           <>
             <button className="btn btn-quiet" disabled={idx <= 0} onClick={() => onStage(a.id, ATS_STAGES[Math.max(0, idx - 1)].id)} title="Move back"><Icon name="arrowLeft" /></button>
@@ -837,6 +871,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
     if (flash) flash('Offer signed — onboarding team notified, onboarding started');
   };
   const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
+  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage: 'applied' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(next.offer ? r.name + ' reopened — details & offer are editable' : r.name + ' reopened'); };
   const setDisposition = (id, d) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, disposition: r.disposition === d ? '' : d }); };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
@@ -960,7 +995,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
     </div>
   );
 }
