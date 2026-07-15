@@ -15,7 +15,36 @@ const ATS_STAGES = [
 ];
 const ATS_IDX = {}; ATS_STAGES.forEach((s, i) => ATS_IDX[s.id] = i);
 const ATS_SOURCES = ['Indeed', 'LinkedIn', 'Referral', 'Careers page', 'ZipRecruiter', 'Walk-in', 'Other'];
-const ATS_DEPTS = ['Front Desk', 'Clinical Team', 'Insurance', 'Operations', 'Management'];
+const ATS_DEPTS = ['Payroll', 'Human Resources', 'Operations', 'Front Desk', 'Clinical Team', 'Hygiene', 'Lab', 'Marketing', 'Insurance', 'Accounting', 'Billing', 'Providers', 'Patient Experience', 'Management'];
+/* Live departments from org config (Organization screen / Cosmos appState); falls back to the list above. */
+function atsDepts() {
+  const live = ((typeof window !== 'undefined' && window.HR && window.HR.departments) || []).map(d => d.name).filter(Boolean);
+  return live.length ? live : ATS_DEPTS;
+}
+/* Deterministic role + department guess from résumé text (no AI), mirroring pdfparse's philosophy. */
+function atsGuessRoleDept(text) {
+  const t = (text || '').toLowerCase();
+  const rules = [
+    { re: /registered dental hygienist|dental hygienist|\brdh\b|hygienist/, role: 'Hygienist', dept: 'Hygiene' },
+    { re: /associate dentist|\bdentist\b|\bdds\b|\bdmd\b|doctor of dental/, role: 'Dentist', dept: 'Providers' },
+    { re: /dental assistant|\brda\b|\bdanb\b/, role: 'Dental Assistant', dept: 'Clinical Team' },
+    { re: /treatment coordinator|front desk|receptionist|patient coordinator|scheduling coordinator/, role: 'Receptionist/Treatment Coordinator', dept: 'Front Desk' },
+    { re: /insurance coordinator|insurance verification|benefits coordinator|eligibility/, role: 'Insurance Coordinator', dept: 'Insurance' },
+    { re: /billing coordinator|billing specialist|accounts receivable|claims specialist|\bar\b specialist/, role: 'Billing Coordinator', dept: 'Billing' },
+    { re: /office manager/, role: 'Office Manager', dept: 'Management' },
+    { re: /practice manager|operations manager|regional manager/, role: 'Manager', dept: 'Operations' },
+    { re: /lab technician|dental lab|ceramist|crown and bridge/, role: 'Lab Technician', dept: 'Lab' },
+    { re: /marketing coordinator|marketing specialist|social media/, role: 'Marketing Coordinator', dept: 'Marketing' },
+    { re: /customer service representative|patient experience|patient relations/, role: 'Customer Service Representative', dept: 'Patient Experience' },
+    { re: /\bnurse\b|\brn\b|\blpn\b/, role: 'Nurse', dept: 'Clinical Team' },
+    { re: /payroll/, role: '', dept: 'Payroll' },
+    { re: /human resources|\bhr\b generalist|recruiter/, role: '', dept: 'Human Resources' },
+    { re: /accountant|accounting|bookkeep/, role: '', dept: 'Accounting' },
+  ];
+  const live = new Set(atsDepts());
+  for (const r of rules) if (r.re.test(t)) return { role: r.role, dept: live.has(r.dept) ? r.dept : '' };
+  return { role: '', dept: '' };
+}
 const ATS_DISPOSITIONS = [
   { id: 'never_called', label: 'Never called', badge: 'badge-todo' },
   { id: 'on_file', label: 'On file', badge: 'badge-prog' },
@@ -232,7 +261,7 @@ function DraftCard({ d, offices, onChange, onRemove }) {
         <div style={{ marginTop: 12 }}><AF label="Address"><input value={d.address} onChange={e => set('address', e.target.value)} placeholder="Street, City, ST ZIP" style={atsFld} /></AF></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
           <AF label="Role applied for" req hint="You set this"><input value={d.role} onChange={e => set('role', e.target.value)} placeholder="e.g. Dental Hygienist" style={atsFld} /></AF>
-          <AF label="Department"><select value={d.dept} onChange={e => set('dept', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{ATS_DEPTS.map(x => <option key={x}>{x}</option>)}</select></AF>
+          <AF label="Department"><select value={d.dept} onChange={e => set('dept', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{atsDepts().map(x => <option key={x}>{x}</option>)}</select></AF>
           <AF label="Office"><select value={d.office} onChange={e => set('office', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{offices.map(o => <option key={o}>{o}</option>)}</select></AF>
           <AF label="Source"><select value={d.source} onChange={e => set('source', e.target.value)} style={{ ...atsFld, appearance: 'auto' }}>{ATS_SOURCES.map(s => <option key={s}>{s}</option>)}</select></AF>
         </div>
@@ -270,7 +299,8 @@ function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
       setDrafts(ds => [...ds, base]);
       window.PD_RESUME.parseFile(file).then(res => {
         const f = res.fields || {};
-        update(base._id, { first: f.first || '', last: f.last || '', email: f.email || '', phone: f.phone || '', address: f.address || '', resumeText: res.text || '', parsing: false, parsed: !res.empty, noText: !!res.empty });
+        const g = atsGuessRoleDept(res.text || '');
+        update(base._id, { first: f.first || '', last: f.last || '', email: f.email || '', phone: f.phone || '', address: f.address || '', role: g.role || '', dept: g.dept || base.dept, resumeText: res.text || '', parsing: false, parsed: !res.empty, noText: !!res.empty });
       }).catch(() => update(base._id, { parsing: false, noText: true }));
     });
   };
@@ -620,7 +650,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
               <div style={{ marginTop: 12 }}><AF label="Address"><input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} style={atsFld} /></AF></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                 <AF label="Role / title" req><input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="e.g. Front Desk Coordinator" style={atsFld} /></AF>
-                <AF label="Department"><select value={form.dept} onChange={e => setForm(f => ({ ...f, dept: e.target.value }))} style={{ ...atsFld, appearance: 'auto' }}>{ATS_DEPTS.map(x => <option key={x}>{x}</option>)}</select></AF>
+                <AF label="Department"><select value={form.dept} onChange={e => setForm(f => ({ ...f, dept: e.target.value }))} style={{ ...atsFld, appearance: 'auto' }}>{atsDepts().map(x => <option key={x}>{x}</option>)}</select></AF>
                 <AF label="Office"><select value={form.office} onChange={e => setForm(f => ({ ...f, office: e.target.value }))} style={{ ...atsFld, appearance: 'auto' }}>{(offices || []).map(o => <option key={o}>{o}</option>)}</select></AF>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, cursor: 'pointer', fontSize: 13.5, fontWeight: 600 }}>
@@ -740,7 +770,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
             ) : a.stage === 'offer' ? (
               isApprover ? <button className="btn btn-ghost" onClick={() => onHire(a)}>Hire Applicant</button> : null
             ) : (
-              <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[skipIdx].id)}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
+              <button className="btn btn-primary" disabled={!(a.role || '').trim()} title={!(a.role || '').trim() ? 'Add a role / title first' : ''} onClick={() => onStage(a.id, ATS_STAGES[skipIdx].id)}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
             )}
           </>
         )}
@@ -816,7 +846,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
 
   const commitOne = (next) => { setList(cur => (cur || []).map(a => a.id === next.id ? next : a)); saveApplicant(next); };
   const update = (id, patch) => { const r = list.find(a => a.id === id); if (r) commitOne({ ...r, ...patch }); };
-  const setStage = (id, stage) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage }; if (stage === 'offer' && !r.offer) next.offer = draftOffer(r); commitOne(next); };
+  const setStage = (id, stage) => { const r = list.find(a => a.id === id); if (!r) return; const target = ATS_IDX[stage] != null ? ATS_IDX[stage] : 0; const cur = ATS_IDX[r.stage] != null ? ATS_IDX[r.stage] : 0; if (target > cur && !(r.role || '').trim()) { if (flash) flash('Add a role / title before advancing'); return; } const next = { ...r, stage }; if (stage === 'offer' && !r.offer) next.offer = draftOffer(r); commitOne(next); };
   const addNote = (id, text) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, notes: [...(r.notes || []), { by: me.first + ' ' + (me.last || '')[0] + '.', at: atsFmt(new Date().toISOString().slice(0, 10)), text }] }); };
   const postFeedback = (id, rating, comment) => {
     const r = list.find(a => a.id === id); if (!r) return;
@@ -871,7 +901,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
     if (flash) flash('Offer signed — onboarding team notified, onboarding started');
   };
   const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
-  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage: 'applied' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(next.offer ? r.name + ' reopened — details & offer are editable' : r.name + ' reopened'); };
+  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage: 'applied', role: '' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(r.name + ' reopened — set a role / title to continue'); };
   const setDisposition = (id, d) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, disposition: r.disposition === d ? '' : d }); };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
