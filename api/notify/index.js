@@ -124,6 +124,11 @@ module.exports = async function (context, req) {
       urgent: !!input.urgent, read: false,
       createdAt: new Date().toISOString(),
     };
+    // Optional deep link back to the thing this notice is about (e.g. an applicant's offer).
+    // Whitelisted shape only — never pass through arbitrary client fields.
+    if (input.deepLink && typeof input.deepLink === 'object' && input.deepLink.view) {
+      notice.deepLink = { view: String(input.deepLink.view).slice(0, 40), applicantId: input.deepLink.applicantId ? String(input.deepLink.applicantId).slice(0, 80) : undefined };
+    }
 
     const up = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: notice, partitionKey: toEmail, upsert: true });
     if (up.status !== 200 && up.status !== 201) {

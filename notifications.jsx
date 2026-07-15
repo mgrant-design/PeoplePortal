@@ -175,7 +175,7 @@ function MessageComposer({ me, access, onSend, onCancel }) {
   );
 }
 
-function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete }) {
+function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete, onOpenDeepLink }) {
   const [reqs, setReqs] = useState([]);
   const [composing, setComposing] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
@@ -271,7 +271,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
             {notices.length === 0 && !composing && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No messages.</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {notices.map(n => (
-                <div key={n.id} className="card" onClick={() => !n.read && onMarkRead && onMarkRead(n.id)} style={{ padding: 12, cursor: n.read ? 'default' : 'pointer', borderColor: n.read ? 'var(--line)' : 'var(--accent)', background: n.read ? 'var(--surface)' : 'var(--accent-softer)' }}>
+                <div key={n.id} className="card" onClick={() => { if (!n.read && onMarkRead) onMarkRead(n.id); if (n.deepLink && onOpenDeepLink) onOpenDeepLink(n.deepLink); }} style={{ padding: 12, cursor: (n.read && !n.deepLink) ? 'default' : 'pointer', borderColor: n.read ? 'var(--line)' : 'var(--accent)', background: n.read ? 'var(--surface)' : 'var(--accent-softer)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{n.title || '(no subject)'}</div>
                     {n.urgent && <span className="badge badge-todo">Urgent</span>}

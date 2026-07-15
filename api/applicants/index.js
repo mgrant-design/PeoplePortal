@@ -34,14 +34,16 @@ function httpPost(urlStr, { headers = {}, body = '' } = {}) {
   });
 }
 
-/* Google Chat ping to the onboarding team when an offer is approved & sent. Wired only when
-   APPLICANTS_GCHAT_WEBHOOK is set as an app setting; otherwise stays honestly `simulated`. */
-async function notifyOfferSent(rec) {
-  const summary = { gchat: false, simulated: true, errors: [] };
+/* Google Chat ping to the onboarding team at two points in the offer flow: when it's
+   submitted for approval, and when it's approved & sent to the candidate. Wired to a
+   fixed webhook for now; swap in APPLICANTS_GCHAT_WEBHOOK once IT provisions one per env. */
+async function notifyOfferEvent(rec, kind) {
+  const summary = { gchat: false, simulated: false, errors: [] };
   const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
-  summary.simulated = false;
+  const text = kind === 'submitted'
+    ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${OFFER_APPROVER_NAME}'s review.`
+    : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
   try {
-    const text = `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
     const r = await httpPost(webhook, { body: { text } });
     summary.gchat = r.status >= 200 && r.status < 300;
     if (!summary.gchat) summary.errors.push('gchat ' + r.status);
@@ -131,10 +133,12 @@ module.exports = async function (context, req) {
     if (!access.viewAll && normLoc(doc.office) !== myLoc) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Applicant is outside your office' }) }; return;
     }
-    // Approving+sending an offer is gated to Amanda Vibert specifically, checked server-side
-    // (not just "any HR/Admin role") — the client tags the write with _offerAction so we know
-    // to enforce this and to fire the Chat ping; the tag itself is never persisted.
+    // Both offer-flow transitions (submit-for-approval, approve-and-send) are tagged by the
+    // client with _offerAction so we know to fire the matching Chat message. Approve is further
+    // gated to the approver's identity, checked server-side; submit has no extra gate beyond
+    // the normal recruiting-write check above. The tag itself is never persisted.
     const isApproveAction = doc._offerAction === 'approve';
+    const isSubmitAction = doc._offerAction === 'submit';
     if (isApproveAction && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can approve and send an offer' }) }; return;
     }
@@ -145,7 +149,8 @@ module.exports = async function (context, req) {
       context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status, detail: up.body }) }; return;
     }
     let notify;
-    if (isApproveAction) notify = await notifyOfferSent(rec);
+    if (isApproveAction) notify = await notifyOfferEvent(rec, 'approved');
+    else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
     context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body), notify }) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };

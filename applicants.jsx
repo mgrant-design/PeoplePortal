@@ -739,7 +739,7 @@ function ApplicantCard({ a, onOpen }) {
 }
 
 /* ------- Main board ------- */
-function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) {
+function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, openApplicantId, onOpenedApplicant }) {
   const offices = useMemo(() => Array.from(new Set([...(window.HR.offices || []).map(o => o.name), me.loc].filter(Boolean))), [me]);
   const [list, setList] = useState(null);
   const [sel, setSel] = useState(null);
@@ -763,6 +763,10 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    if (openApplicantId && list) { setSel(openApplicantId); if (onOpenedApplicant) onOpenedApplicant(); }
+  }, [openApplicantId, list]);
+
   const saveApplicant = (rec) => fetch('/api/applicants', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify(rec),
   }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); }).catch(e => { if (flash) flash('Couldn’t save to the server (' + ((e && e.message) || 'error') + ')'); });
@@ -784,12 +788,21 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
   const removeWI = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: null }); };
   const setOffer = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: { ...(r.offer || {}), ...patch } }); };
   const initOffer = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: draftOffer(r) }); };
-  const submitOfferForApproval = (id) => {
+  const submitOfferForApproval = async (id) => {
     const r = list.find(a => a.id === id); if (!r) return;
     const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
-    commitOne({ ...r, offer: { ...r.offer, status: 'pending_approval', submittedAt: Date.now(), submittedBy: who } });
-    if (typeof sendNotice === 'function') sendNotice({ toEmail: OFFER_APPROVER_EMAIL, title: 'Offer ready for approval — ' + r.name, body: r.name + ' (' + (r.offer.role || r.role) + ', ' + (r.office || 'office TBD') + ') has an offer ready for your review.' }).catch(() => {});
-    if (flash) flash('Sent to ' + OFFER_EXECUTOR + ' for approval');
+    const next = { ...r, offer: { ...r.offer, status: 'pending_approval', submittedAt: Date.now(), submittedBy: who } };
+    setList(cur => cur.map(x => x.id === next.id ? next : x));
+    if (typeof sendNotice === 'function') sendNotice({ toEmail: OFFER_APPROVER_EMAIL, title: 'Offer ready for approval — ' + r.name, body: r.name + ' (' + (r.offer.role || r.role) + ', ' + (r.office || 'office TBD') + ') has an offer ready for your review.', deepLink: { view: 'applicants', applicantId: r.id } }).catch(() => {});
+    try {
+      const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'submit' }) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const n = data.notify;
+      if (flash) flash(n && n.gchat ? 'Sent to ' + OFFER_EXECUTOR + ' for approval — onboarding team notified in Chat' : 'Sent to ' + OFFER_EXECUTOR + ' for approval');
+    } catch (e) {
+      if (flash) flash('Couldn’t save the submission (' + ((e && e.message) || 'error') + ')');
+    }
   };
   const sendBackOffer = (id) => { setOffer(id, { status: 'draft' }); if (flash) flash('Sent back to draft'); };
   const approveOffer = async (id) => {

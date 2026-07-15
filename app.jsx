@@ -202,6 +202,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     } catch (e) {}
   }, [me]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [openApplicantId, setOpenApplicantId] = useState(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [viewSwitchOpen, setViewSwitchOpen] = useState(false);
   // Tier 3 modules stream in after the dashboard. Until they're ready, any view other
@@ -472,7 +473,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
       case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
-      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} />;
+      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
       case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
       case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />; }
@@ -720,7 +721,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.filter(n => n.id !== id)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.filter(n => n.id !== id)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
