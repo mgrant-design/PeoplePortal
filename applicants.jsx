@@ -531,7 +531,6 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
   const idx = ATS_IDX[a.stage] != null ? ATS_IDX[a.stage] : 0;
   const rejected = a.stage === 'rejected';
   const stageDef = ATS_STAGES[idx] || ATS_STAGES[0];
-  const canHire = access.caps.hire;
   const canPay = access.caps.payroll || access.flags.isExec;
   const canExecute = access.flags.isHR || access.flags.isAdmin || access.flags.isExec || access.caps.payroll;
   const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
@@ -697,9 +696,7 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
             <div style={{ flex: 1 }} />
             {a.stage === 'hired' ? (
               <span className="badge badge-ok"><Icon name="check" /> Hired · in onboarding</span>
-            ) : a.stage === 'offer' ? (
-              canHire ? <button className="btn btn-ghost" onClick={() => onHire(a)} title="Skip the offer letter and start onboarding now"><Icon name="sparkle" /> Hire directly</button> : null
-            ) : (
+            ) : a.stage === 'offer' ? null : (
               <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].id)}>Advance to {ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].label} <Icon name="arrowRight" /></button>
             )}
           </>
