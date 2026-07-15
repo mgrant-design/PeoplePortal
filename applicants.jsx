@@ -68,6 +68,7 @@ const JD_TEMPLATES = {
   insurance: 'Insurance & Billing Specialist — submit and follow up on claims, post payments, manage AR and appeals, verify eligibility and benefits, and resolve patient billing questions in Denticon.',
 };
 const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
+const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR — only this address may approve+send, enforced server-side too
 
 /* Documents available to attach from Google Drive / Shared Drives (simulated until
    the Drive integration is connected). */
@@ -384,7 +385,7 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI
 }
 
 /* ------- Offer letter ------- */
-function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, onSend, onSign, flash }) {
+function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, flash }) {
   const o = a.offer;
   const [sig, setSig] = useState('');
   const [picker, setPicker] = useState(false);
@@ -406,6 +407,19 @@ function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, on
   const addAttach = (att) => setO({ attachments: [...(o.attachments || []), att] });
   const rmAttach = (i) => setO({ attachments: (o.attachments || []).filter((_, j) => j !== i) });
   const editable = o.status === 'draft';
+  const pending = o.status === 'pending_approval';
+  const summaryBlock = (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 13, lineHeight: 1.6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '5px 14px' }}>
+        <span style={{ color: 'var(--ink-3)' }}>Role</span><b>{o.role}</b>
+        <span style={{ color: 'var(--ink-3)' }}>Start date</span><span>{fmtStart(o.startDate)}</span>
+        {canPay && o.pay && <><span style={{ color: 'var(--ink-3)' }}>Pay</span><span>{o.pay} <span className="badge badge-todo" style={{ fontSize: 9 }}>protected</span></span></>}
+      </div>
+      {o.jobDescription && <p style={{ marginTop: 10, color: 'var(--ink-2)' }}>{o.jobDescription}</p>}
+      {o.extra && <p style={{ marginTop: 8, color: 'var(--ink-2)' }}>{o.extra}</p>}
+      {(o.attachments || []).length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>{o.attachments.map((at, i) => <span key={i} className="badge badge-todo" style={{ fontSize: 10.5 }}><Icon name="doc" style={{ width: 11, height: 11 }} /> {at.name}</span>)}</div>}
+    </div>
+  );
 
   return (
     <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
@@ -413,6 +427,7 @@ function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, on
         <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} />
         <span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
         {o.status === 'draft' && <span className="badge badge-todo" style={{ fontSize: 9.5 }}>Draft</span>}
+        {o.status === 'pending_approval' && <span className="badge badge-warn" style={{ fontSize: 9.5 }}>Awaiting {OFFER_EXECUTOR}'s approval</span>}
         {o.status === 'sent' && <span className="badge badge-prog" style={{ fontSize: 9.5 }}>Sent · awaiting signature</span>}
         {o.status === 'signed' && <span className="badge badge-ok" style={{ fontSize: 9.5 }}><Icon name="check" /> Accepted &amp; signed</span>}
       </div>
@@ -457,25 +472,28 @@ function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, on
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
             {canExecute
-              ? <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSend(a.id)}><Icon name="mail" /> Send offer to {a.name.split(' ')[0]}</button>
+              ? <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {OFFER_EXECUTOR} for approval</button>
               : <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Draft ready — {OFFER_EXECUTOR} (HR) will review &amp; send.</span>}
             {canExecute && canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
           </div>
           {picker && <AttachPicker driveOn={driveOn} onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
         </>
+      ) : pending ? (
+        <>
+          {summaryBlock}
+          {isApprover ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
+              <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back to draft</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="clock" style={{ width: 14, height: 14 }} /> Submitted by {o.submittedBy || 'recruiter'} — awaiting {OFFER_EXECUTOR}'s approval before it reaches the candidate.</div>
+          )}
+        </>
       ) : (
         <>
           {/* read-only letter summary */}
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '14px 16px', fontSize: 13, lineHeight: 1.6 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '5px 14px' }}>
-              <span style={{ color: 'var(--ink-3)' }}>Role</span><b>{o.role}</b>
-              <span style={{ color: 'var(--ink-3)' }}>Start date</span><span>{fmtStart(o.startDate)}</span>
-              {canPay && o.pay && <><span style={{ color: 'var(--ink-3)' }}>Pay</span><span>{o.pay} <span className="badge badge-todo" style={{ fontSize: 9 }}>protected</span></span></>}
-            </div>
-            {o.jobDescription && <p style={{ marginTop: 10, color: 'var(--ink-2)' }}>{o.jobDescription}</p>}
-            {o.extra && <p style={{ marginTop: 8, color: 'var(--ink-2)' }}>{o.extra}</p>}
-            {(o.attachments || []).length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>{o.attachments.map((at, i) => <span key={i} className="badge badge-todo" style={{ fontSize: 10.5 }}><Icon name="doc" style={{ width: 11, height: 11 }} /> {at.name}</span>)}</div>}
-          </div>
+          {summaryBlock}
 
           {o.status === 'signed' ? (
             <div className="fade-in" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--ok-soft)' }}>
@@ -504,7 +522,7 @@ function OfferLetter({ a, canPay, canExecute, driveOn, onOffer, onDraftOffer, on
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSendOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
+function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
   const [note, setNote] = useState('');
   const [showFull, setShowFull] = useState(false);
@@ -516,6 +534,7 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
   const canHire = access.caps.hire;
   const canPay = access.caps.payroll || access.flags.isExec;
   const canExecute = access.flags.isHR || access.flags.isAdmin || access.flags.isExec || access.caps.payroll;
+  const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
   const avg = avgRating(a);
   const fb = a.feedback || [];
   const showWI = !rejected && (a.workingInterview || a.provider || idx >= ATS_IDX.interview);
@@ -587,7 +606,7 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
         {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
 
         {/* offer letter */}
-        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} driveOn={driveOn} onOffer={onOffer} onDraftOffer={onDraftOffer} onSend={onSendOffer} onSign={onSignOffer} flash={flash} />}
+        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} driveOn={driveOn} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} flash={flash} />}
 
         {/* resume summary + full extracted text on file + raw PDF pointers */}
         {(a.resume || a.resumeText || (a.resumes || []).length > 0) && (
@@ -768,7 +787,28 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
   const removeWI = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: null }); };
   const setOffer = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: { ...(r.offer || {}), ...patch } }); };
   const initOffer = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: draftOffer(r) }); };
-  const sendOffer = (id) => { setOffer(id, { status: 'sent', sentAt: Date.now(), sentBy: OFFER_EXECUTOR }); if (flash) flash('Offer sent to candidate for signature'); };
+  const submitOfferForApproval = (id) => {
+    const r = list.find(a => a.id === id); if (!r) return;
+    const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
+    commitOne({ ...r, offer: { ...r.offer, status: 'pending_approval', submittedAt: Date.now(), submittedBy: who } });
+    if (typeof sendNotice === 'function') sendNotice({ toEmail: OFFER_APPROVER_EMAIL, title: 'Offer ready for approval — ' + r.name, body: r.name + ' (' + (r.offer.role || r.role) + ', ' + (r.office || 'office TBD') + ') has an offer ready for your review.' }).catch(() => {});
+    if (flash) flash('Sent to ' + OFFER_EXECUTOR + ' for approval');
+  };
+  const sendBackOffer = (id) => { setOffer(id, { status: 'draft' }); if (flash) flash('Sent back to draft'); };
+  const approveOffer = async (id) => {
+    const r = list.find(a => a.id === id); if (!r) return;
+    const next = { ...r, offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
+    setList(cur => cur.map(x => x.id === next.id ? next : x));
+    try {
+      const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'approve' }) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const n = data.notify;
+      if (flash) flash(n && n.gchat ? 'Offer approved — sent to candidate, onboarding team notified in Chat' : n && !n.simulated ? 'Offer approved and sent to candidate (Chat notice failed)' : 'Offer approved and sent to candidate');
+    } catch (e) {
+      if (flash) flash('Couldn’t save the approval (' + ((e && e.message) || 'error') + ')');
+    }
+  };
   const signOffer = (id, signature) => {
     const app = list.find(a => a.id === id); if (!app) return;
     commitOne({ ...app, offer: { ...(app.offer || {}), status: 'signed', signedAt: Date.now(), signature }, stage: 'hired', hiredAt: Date.now() });
@@ -816,6 +856,8 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
   const byStage = {}; ATS_STAGES.forEach(s => byStage[s.id] = active.filter(a => a.stage === s.id));
   const count = (id) => byStage[id].length;
   const selApp = sel ? list.find(a => a.id === sel) : null;
+  const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
+  const pendingApprovals = scoped.filter(a => a.offer && a.offer.status === 'pending_approval');
 
   const stat = (icon, label, value, tone) => (
     <div className="card" style={{ padding: '14px var(--pad)', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -836,6 +878,23 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
         </div>
         <button className="btn btn-primary btn-lg" onClick={() => setAdding(true)}><Icon name="plus" /> Add applicant</button>
       </div>
+
+      {isApprover && pendingApprovals.length > 0 && (
+        <div className="card" style={{ padding: '14px var(--pad)', marginBottom: 'var(--gap)', border: '1px solid var(--warn)', background: 'var(--warn-soft)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Icon name="mail" style={{ width: 16, height: 16, color: 'oklch(0.5 0.13 60)' }} />
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>{pendingApprovals.length} offer{pendingApprovals.length === 1 ? '' : 's'} awaiting your approval</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {pendingApprovals.map(a => (
+              <button key={a.id} onClick={() => setSel(a.id)} className="btn btn-ghost" style={{ justifyContent: 'space-between', textAlign: 'left', width: '100%' }}>
+                <span>{a.name}</span>
+                <span style={{ display: 'flex', gap: 10, color: 'var(--ink-3)', fontSize: 12.5 }}><span>{(a.offer && a.offer.role) || a.role}</span><span>{a.office}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
         {stat('users', 'In pipeline', active.length)}
@@ -880,7 +939,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash }) 
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSendOffer={sendOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
     </div>
   );
 }

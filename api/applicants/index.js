@@ -11,10 +11,43 @@
    recruiting reach — company-wide (Admin / HR / Leadership) or team-level (Manager /
    Supervisor). Team-level callers only see and write applicants at their own office. */
 
+const https = require('https');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
+// Only she may approve+send an offer — checked server-side, never trusted from the client.
+const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR
+const OFFER_APPROVER_NAME = 'Amanda Vibert';
+
+/* generic HTTPS POST, used for the Google Chat webhook (same pattern as api/schedule) */
+function httpPost(urlStr, { headers = {}, body = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try { url = new URL(urlStr); } catch (e) { return reject(new Error('bad url')); }
+    const payload = typeof body === 'string' ? body : JSON.stringify(body);
+    const opts = { hostname: url.hostname, path: url.pathname + url.search, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), ...headers } };
+    const rq = https.request(opts, (res) => { let data = ''; res.on('data', c => data += c); res.on('end', () => resolve({ status: res.statusCode, body: data })); });
+    rq.on('error', reject);
+    rq.write(payload);
+    rq.end();
+  });
+}
+
+/* Google Chat ping to the onboarding team when an offer is approved & sent. Wired only when
+   APPLICANTS_GCHAT_WEBHOOK is set as an app setting; otherwise stays honestly `simulated`. */
+async function notifyOfferSent(rec) {
+  const summary = { gchat: false, simulated: true, errors: [] };
+  const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
+  summary.simulated = false;
+  try {
+    const text = `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
+    const r = await httpPost(webhook, { body: { text } });
+    summary.gchat = r.status >= 200 && r.status < 300;
+    if (!summary.gchat) summary.errors.push('gchat ' + r.status);
+  } catch (e) { summary.errors.push('gchat ' + e.message); }
+  return summary;
+}
 
 /* Fold the office name to the same canonical label the client uses (rbac.jsx normLoc). */
 function normLoc(l) {
@@ -98,12 +131,22 @@ module.exports = async function (context, req) {
     if (!access.viewAll && normLoc(doc.office) !== myLoc) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Applicant is outside your office' }) }; return;
     }
-    const rec = { ...doc, updatedBy: identity.email, updatedAt: new Date().toISOString() };
+    // Approving+sending an offer is gated to Amanda Vibert specifically, checked server-side
+    // (not just "any HR/Admin role") — the client tags the write with _offerAction so we know
+    // to enforce this and to fire the Chat ping; the tag itself is never persisted.
+    const isApproveAction = doc._offerAction === 'approve';
+    if (isApproveAction && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
+      context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can approve and send an offer' }) }; return;
+    }
+    const { _offerAction, ...clean } = doc;
+    const rec = { ...clean, updatedBy: identity.email, updatedAt: new Date().toISOString() };
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: rec, partitionKey: rec.office, upsert: true });
     if (up.status !== 200 && up.status !== 201) {
       context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status, detail: up.body }) }; return;
     }
-    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body) }) };
+    let notify;
+    if (isApproveAction) notify = await notifyOfferSent(rec);
+    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body), notify }) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
