@@ -189,8 +189,16 @@ html:not([data-theme="dark"])[data-tint="tinted"][data-accent="yellow"] {
 @media (min-width: 1080px) { .statgrid.five { grid-template-columns: repeat(5, 1fr); } }
 @media (min-width: 620px) and (max-width: 1079px) { .statgrid.five { grid-template-columns: repeat(3, 1fr); } }
 
-/* Motion */
-[data-motion="calm"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.06s !important; }
+/* Applicant pipeline board: N-up on wide screens, fixed 3-up (wraps to 2 rows) below the
+   breakpoint instead of horizontal scroll — flex instead of grid there so a short last row
+   (e.g. 5 stages) centers instead of hugging the left edge. */
+.ats-board { display: grid; grid-template-columns: repeat(var(--ats-cols, 5), minmax(150px, 1fr)); }
+@media (max-width: 900px) {
+  .ats-board { display: flex !important; flex-wrap: wrap; justify-content: center; }
+  .ats-board > * { flex: 0 1 calc(33.333% - 8px); min-width: 150px; }
+}
+
+/* Motion */[data-motion="calm"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.06s !important; }
 [data-motion="bouncy"] button, [data-motion="bouncy"] .card { transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); }
 [data-motion="bouncy"] button:active { transform: scale(0.94); }
 

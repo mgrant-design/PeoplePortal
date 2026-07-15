@@ -229,7 +229,7 @@
 
     <h3 style="margin:22px 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3)">Hiring &amp; onboarding</h3>
     <div class="grid-2">
-      <div class="mod"><h3>Applicant Tracking (ATS)</h3><p>Hiring pipeline board — Applied → Screening → Interview → Offer → Hired. Drop résumé PDFs (single or in bulk) and the text is extracted in-browser to pre-fill first/last name, email, phone and address for review before saving; the full extracted text and the original PDF are kept on file. A per-applicant status marker (Never called / On file) tracks the pool. One-click hand-off straight into onboarding.</p></div>
+      <div class="mod"><h3>Applicant Tracking (ATS)</h3><p>Hiring pipeline board — New Applicants → First Phone Call → In-Person → Working Interview (optional, skippable) → Offer → Hired. Drop résumé PDFs (single or in bulk) and the text is extracted in-browser to pre-fill first/last name, email, phone and address for review before saving; the full extracted text and the original PDF are kept on file. A per-applicant status marker (Never called / On file) tracks the pool. Offers are gated: submit for approval → the HR admin approves (identity-checked) and sends → candidate signs; each step posts a Google Chat message, and the HR admin's notice deep-links straight to the applicant. Hiring happens only through the HR admin's Hire Applicant button once at the Offer stage.</p></div>
       <div class="mod"><h3>Guided onboarding</h3><p>Step-by-step new-hire flow: welcome, details intake, e-signature paperwork, provider credentials, policies, accounts &amp; access, training, team, schedule and benefits. Task templates adapt to role.</p></div>
       <div class="mod"><h3>Onboarding automations &amp; agent</h3><p>Add a hire and a multi-channel agent pipeline takes over — voice-call transcript, Google Chat collaboration feed, routing directory — walking through credential verification and role-based account provisioning.</p></div>
       <div class="mod"><h3>Provider credentials</h3><p>Verify-first capture of NPI, license and DEA — type an ID and the fields auto-fill.</p></div>
@@ -298,6 +298,7 @@
         <tr><td><b>Résumé parsing</b></td><td><span class="pill live">Live</span></td><td>PDF text is extracted client-side (pdf.js) and read with regex/heuristics — no AI. Email &amp; phone are reliable; name &amp; address are best-effort and shown for review. The full extracted text and the original PDF (in Blob Storage) are kept on file.</td></tr>
         <tr><td><b>Applicant pipeline storage</b></td><td><span class="pill live">Live</span></td><td>Applicant records read/write through <span class="mono">/api/applicants</span> to Cosmos (scoped by office for Manager/Supervisor, company-wide for Admin/HR/Leadership); résumé PDFs upload through <span class="mono">/api/resumeupload</span> to Blob Storage.</td></tr>
         <tr><td><b>Feature requests &amp; roadmap</b></td><td><span class="pill live">Live</span></td><td>Submissions, one-vote-per-person, admin status/ETA edits and admin-added planned features read/write through <span class="mono">/api/feedback</span> to Cosmos (<span class="mono">feedback</span> container, partition key <span class="mono">/id</span>).</td></tr>
+        <tr><td><b>Offer approval routing</b></td><td><span class="pill live">Live</span></td><td>Offer flow: draft → pending approval → sent → signed. Only the HR admin approver (identity checked server-side in <span class="mono">api/applicants</span>, not just an HR-ish role) can approve/send or hire. Submitting and approving each post a message to a Google Chat webhook; the approver's notice deep-links to the applicant. The approver identity is currently a temporary test address, standing in for the intended production HR admin.</td></tr>
         <tr><td><b>Google Drive picker</b></td><td><span class="pill sim">Simulated</span></td><td>The Drive file picker (<span class="mono">gdrive</span> flag) shows a hardcoded list. No backend.</td></tr>
         <tr><td><b>Remaining local data</b></td><td><span class="pill todo">Migrating</span></td><td>Photos, forms, punches, reviews, orders &amp; automations still in the browser, pending migration.</td></tr>
       </tbody>
@@ -324,6 +325,13 @@
         <p>A per-person notification center with a personalized, mutable chime and a periodic refresh, plus instant person-to-person messages delivered over Azure SignalR — with read state persisted server-side.</p>
       </div>
     </div>
+    <div class="phase">
+      <div class="pnum">✓</div>
+      <div>
+        <h3>Offer approval routing <span class="pill live" style="vertical-align:middle">Done</span></h3>
+        <p>Offer flow is now draft → pending approval → sent → signed. The HR admin (identity-checked server-side) approves before the applicant is notified; approving and submitting each post a Google Chat message, and the admin's notice deep-links straight to the applicant. Working Interview is now optional per applicant via a checkbox, skippable straight to Offer.</p>
+      </div>
+    </div>
     <div class="phase next">
       <div class="pnum">1</div>
       <div>
@@ -334,8 +342,8 @@
     <div class="phase next">
       <div class="pnum">2</div>
       <div>
-        <h3>Hiring pipeline: interview rounds &amp; offer routing</h3>
-        <p>Not yet built. Structured review per interview round (type, date, 1–5 stars, comments) from multiple interviewers; an explicit hire/no-hire decision; and offer routing where Amanda Vibert approves before the applicant is notified, then the offer sends and the onboarding team gets a Google Chat message.</p>
+        <h3>Hiring pipeline: structured interview rounds &amp; reviews</h3>
+        <p>Not yet built. Structured review per interview round (type, date, 1–5 stars, comments) from multiple interviewers, and an explicit hire/no-hire decision. Today there is one generic star+comment per reviewer, not typed per round.</p>
       </div>
     </div>
     <div class="phase">

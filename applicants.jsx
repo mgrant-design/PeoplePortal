@@ -926,8 +926,8 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       </div>
 
       {/* board */}
-      <div style={{ overflowX: 'auto', paddingBottom: 6, margin: '0 -4px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, minmax(208px, 1fr))`, gap: 12, padding: '0 4px', minWidth: 'min-content' }}>
+      <div className="ats-board-wrap" style={{ paddingBottom: 6, margin: '0 -4px' }}>
+        <div className="ats-board" style={{ '--ats-cols': visibleStages.length, gap: 12, padding: '0 4px' }}>
           {visibleStages.map(s => (
             <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
