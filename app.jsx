@@ -90,15 +90,15 @@ const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'autom
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
 const NAV_GROUPS = [
   { id: 'dashboard', label: 'Home', view: 'dashboard', show: () => true },
+  { id: 'g_people', label: 'People', children: [
+    { id: 'people', label: 'Directory', show: () => true },
+    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
+  ] },
   { id: 'g_mywork', label: 'My Work', children: [
     { id: 'myschedule', label: 'My schedule', show: () => true, flag: 'scheduler' },
     { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
     { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
     { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
-  ] },
-  { id: 'g_people', label: 'People', children: [
-    { id: 'people', label: 'Directory', show: () => true },
-    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
   ] },
   { id: 'g_manage', label: 'Manage', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
@@ -574,7 +574,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         })() : (
           <>
             <nav className="navgroups">
-              {NAV_GROUPS.map(g => {
+              {sortNav(NAV_GROUPS, 'dashboard').map(g => {
                 if (!g.children) {
                   if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
                   return <div className="navgroup" key={g.id}>
@@ -657,7 +657,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
                 )}
               </>
             );
-          })() : NAV_GROUPS.map(g => {
+          })() : sortNav(NAV_GROUPS, 'dashboard').map(g => {
             if (!g.children) {
               if (!g.show(access) || (g.flag && !flagOn(g.flag))) return null;
               return <button key={g.id} className={'mnav-top' + (navActive(g.id) ? ' active' : '')} onClick={() => go(g.view || g.id)}>{g.label}</button>;

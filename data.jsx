@@ -202,26 +202,6 @@ const WEEK_DAYS = (() => {
   return out;
 })();
 
-/* ---- feature requests & roadmap (talks to the /api/feedback Function) ---- */
-async function fetchFeedback() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/feedback', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('feedback read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.items || [];
-}
-async function feedbackAction(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('action failed (' + res.status + ')'));
-  return data;
-}
-
 /* This week's stable key — the Monday's date (YYYY-MM-DD). Shared by the scheduler
    builder and My schedule so both read & write the same week. */
 const WEEK_KEY = (() => {
@@ -386,5 +366,4 @@ Object.assign(window, {
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
   fetchNotices, sendNotice, markNoticeRead, deleteNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
-  fetchFeedback, feedbackAction,
 });
