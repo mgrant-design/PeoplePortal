@@ -6,10 +6,10 @@
 */
 
 const ATS_STAGES = [
-  { id: 'applied',   label: 'Applied',   badge: 'badge-todo' },
-  { id: 'screening', label: 'Screening', badge: 'badge-prog' },
-  { id: 'interview', label: 'Interview', badge: 'badge-prog' },
-  { id: 'working',   label: 'Working interview', badge: 'badge-prog' },
+  { id: 'applied',   label: 'New Applicants', badge: 'badge-todo' },
+  { id: 'screening', label: 'First Phone Call', badge: 'badge-prog' },
+  { id: 'interview', label: 'In-Person', badge: 'badge-prog' },
+  { id: 'working',   label: 'Working Interview', badge: 'badge-prog' },
   { id: 'offer',     label: 'Offer',     badge: 'badge-warn' },
   { id: 'hired',     label: 'Hired',     badge: 'badge-ok' },
 ];
@@ -522,7 +522,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
+function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
   const [note, setNote] = useState('');
   const [showFull, setShowFull] = useState(false);
@@ -530,13 +530,14 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
   const [myComment, setMyComment] = useState(myFb ? myFb.comment : '');
   const idx = ATS_IDX[a.stage] != null ? ATS_IDX[a.stage] : 0;
   const rejected = a.stage === 'rejected';
+  const skipIdx = (idx === ATS_IDX.interview && !a.wiRequired) ? ATS_IDX.offer : Math.min(ATS_STAGES.length - 1, idx + 1);
   const stageDef = ATS_STAGES[idx] || ATS_STAGES[0];
   const canPay = access.caps.payroll || access.flags.isExec;
   const canExecute = access.flags.isHR || access.flags.isAdmin || access.flags.isExec || access.caps.payroll;
   const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
   const avg = avgRating(a);
   const fb = a.feedback || [];
-  const showWI = !rejected && (a.workingInterview || a.provider || idx >= ATS_IDX.interview);
+  const showWI = !rejected && (a.workingInterview || a.provider || (idx >= ATS_IDX.interview && a.wiRequired));
   const showOffer = !rejected && (a.offer || idx >= ATS_IDX.offer);
 
   const addNote = () => { if (!note.trim()) return; onNote(a.id, note.trim()); setNote(''); };
@@ -585,6 +586,12 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
               return <button key={d.id} onClick={() => onDisposition(a.id, d.id)} className={on ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 12.5, padding: '6px 12px' }}>{on && <Icon name="check" style={{ width: 13, height: 13 }} />} {d.label}</button>;
             })}
           </div>
+        )}
+
+        {!rejected && idx >= ATS_IDX.interview && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!a.wiRequired} onChange={e => onWIRequired(a.id, e.target.checked)} /> Working Interview required
+          </label>
         )}
 
         {/* contact */}
@@ -699,7 +706,7 @@ function ApplicantDetail({ a, access, me, paychexOn, driveOn, onClose, onStage, 
             ) : a.stage === 'offer' ? (
               isApprover ? <button className="btn btn-ghost" onClick={() => onHire(a)}>Hire Applicant</button> : null
             ) : (
-              <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].id)}>Advance to {ATS_STAGES[Math.min(ATS_STAGES.length - 1, idx + 1)].label} <Icon name="arrowRight" /></button>
+              <button className="btn btn-primary" onClick={() => onStage(a.id, ATS_STAGES[skipIdx].id)}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
             )}
           </>
         )}
@@ -786,6 +793,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
     commitOne({ ...r, feedback: arr });
   };
   const setWI = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: { ...(r.workingInterview || {}), ...patch } }); };
+  const setWIRequired = (id, val) => update(id, { wiRequired: val });
   const scheduleWI = (id) => setWI(id, { status: 'scheduled', date: '', hours: '', rate: '', autoSend: true });
   const removeWI = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: null }); };
   const setOffer = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: { ...(r.offer || {}), ...patch } }); };
@@ -867,6 +875,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
   const archived = scoped.filter(a => a.stage === 'rejected');
   const byStage = {}; ATS_STAGES.forEach(s => byStage[s.id] = active.filter(a => a.stage === s.id));
   const count = (id) => byStage[id].length;
+  const visibleStages = ATS_STAGES.filter(s => s.id !== 'working' || count('working') > 0);
   const selApp = sel ? list.find(a => a.id === sel) : null;
   const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
   const pendingApprovals = scoped.filter(a => a.offer && a.offer.status === 'pending_approval');
@@ -918,8 +927,8 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
 
       {/* board */}
       <div style={{ overflowX: 'auto', paddingBottom: 6, margin: '0 -4px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ATS_STAGES.length}, minmax(208px, 1fr))`, gap: 12, padding: '0 4px', minWidth: 'min-content' }}>
-          {ATS_STAGES.map(s => (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, minmax(208px, 1fr))`, gap: 12, padding: '0 4px', minWidth: 'min-content' }}>
+          {visibleStages.map(s => (
             <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{s.label}</span>
@@ -951,7 +960,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
     </div>
   );
 }
