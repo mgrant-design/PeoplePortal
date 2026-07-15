@@ -128,19 +128,40 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
 }
 
 function MessageComposer({ me, access, onSend, onCancel }) {
-  const people = (typeof window !== 'undefined' && window.EMPLOYEES ? window.EMPLOYEES : []).filter(e => e && e.status === 'Active' && e.id !== me.id && (access.caps.viewAll || e.loc === me.loc) && e.workEmail);
+  const people = useMemo(() => (typeof window !== 'undefined' && window.EMPLOYEES ? window.EMPLOYEES : [])
+    .filter(e => e && e.status === 'Active' && e.id !== me.id && (access.caps.viewAll || e.loc === me.loc) && e.workEmail)
+    .sort((a, b) => a.name.localeCompare(b.name)), [me, access]);
   const [to, setTo] = useState('');
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [urgent, setUrgent] = useState(false);
   const inp = { width: '100%', padding: '9px 11px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  const selected = people.find(p => p.workEmail === to);
+  const q = query.trim().toLowerCase();
+  const filtered = q ? people.filter(p => p.name.toLowerCase().includes(q)) : people;
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
-      <label style={{ display: 'block', marginBottom: 9 }}><div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>To</div>
-        <select value={to} onChange={e => setTo(e.target.value)} style={{ ...inp, appearance: 'auto' }}>
-          <option value="">Select a person…</option>
-          {people.map(p => <option key={p.id} value={p.workEmail}>{p.name}{p.loc ? ' · ' + p.loc : ''}</option>)}
-        </select></label>
+      <label style={{ display: 'block', marginBottom: 9, position: 'relative' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>To</div>
+        <input
+          value={selected ? selected.name + (selected.loc ? ' · ' + selected.loc : '') : query}
+          onChange={e => { setTo(''); setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => { if (selected) { setTo(''); setQuery(''); } setOpen(true); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Type a name…" style={inp} autoComplete="off"
+        />
+        {open && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 5, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-md)', maxHeight: 220, overflowY: 'auto' }}>
+            {filtered.length === 0
+              ? <div style={{ padding: '9px 11px', fontSize: 13, color: 'var(--ink-3)' }}>No match</div>
+              : filtered.map(p => (
+                <button key={p.id} type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setTo(p.workEmail); setQuery(''); setOpen(false); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', fontSize: 13.5, border: 'none', background: 'none', color: 'var(--ink)', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>{p.name}{p.loc ? ' · ' + p.loc : ''}</button>
+              ))}
+          </div>
+        )}
+      </label>
       <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Subject" style={{ ...inp, marginBottom: 9 }} />
       <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} placeholder="Message" style={{ ...inp, resize: 'vertical' }} />
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13, cursor: 'pointer' }}>
