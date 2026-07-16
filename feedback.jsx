@@ -87,7 +87,8 @@ function Feedback({ me, access, flash }) {
   };
 
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
-  const sorted = items.slice().sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  // Requests = pending only. Completed/Declined move to History.
+  const sorted = items.slice().filter(i => i.status !== 'Complete' && i.status !== 'Declined').sort((a, b) => (b.votes || 0) - (a.votes || 0));
 
   return (
     <div className="fade-in">
@@ -155,24 +156,27 @@ function Feedback({ me, access, flash }) {
       )}
 
       {tab === 'History' && (() => {
-        const done = items.filter(i => i.status === 'Complete').sort((a, b) => new Date(b.completedAt || b.createdAt || 0) - new Date(a.completedAt || a.createdAt || 0));
+        const archived = items.filter(i => i.status === 'Complete' || i.status === 'Declined').sort((a, b) => new Date(b.completedAt || b.createdAt || 0) - new Date(a.completedAt || a.createdAt || 0));
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {done.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Nothing shipped yet.</div>}
-            {done.map(it => (
+            {archived.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Nothing shipped or declined yet.</div>}
+            {archived.map(it => {
+              const declined = it.status === 'Declined';
+              return (
               <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 2 }} />
+                <Icon name={declined ? 'x' : 'check'} style={{ width: 18, height: 18, color: declined ? 'var(--ink-3)' : 'var(--ok)', flex: 'none', marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 600, fontSize: 15 }}>{it.title}</span>
-                    <span className="badge badge-ok">Shipped</span>
+                    <span className={`badge ${declined ? 'badge-todo' : 'badge-ok'}`}>{declined ? 'Declined' : 'Shipped'}</span>
                   </div>
                   <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}{it.completedAt ? ' · completed ' + new Date(it.completedAt).toLocaleDateString() : ''}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}{it.completedAt ? ' · ' + (declined ? 'declined ' : 'completed ') + new Date(it.completedAt).toLocaleDateString() : ''}</div>
                 </div>
                 {isAdmin && <button className="btn btn-quiet" style={{ color: 'oklch(0.55 0.16 25)', fontSize: 12.5, flex: 'none' }} onClick={() => removeItem(it.id)}><Icon name="trash" style={{ width: 13, height: 13 }} /> Delete</button>}
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })()}

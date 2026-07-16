@@ -120,7 +120,10 @@ module.exports = async function (context, req) {
       if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
       next = { ...item };
       if (input.status !== undefined && STATUSES.includes(input.status)) {
-        if (input.status === 'Complete' && item.status !== 'Complete') next.completedAt = new Date().toISOString();
+        // stamp the archive date when an item moves into a terminal state (Complete/Declined)
+        const terminal = input.status === 'Complete' || input.status === 'Declined';
+        const wasTerminal = item.status === 'Complete' || item.status === 'Declined';
+        if (terminal && !wasTerminal) next.completedAt = new Date().toISOString();
         next.status = input.status;
       }
       if (input.eta !== undefined) next.eta = String(input.eta).slice(0, 60);
