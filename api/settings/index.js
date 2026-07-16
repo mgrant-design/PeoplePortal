@@ -9,6 +9,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
+const { listAll, collPath } = require('../_shared/cosmos');
 
 function authHeader(verb, resType, resId, date, key) {
   const text = `${verb.toLowerCase()}\n${resType.toLowerCase()}\n${resId}\n${date.toLowerCase()}\n\n`;
@@ -63,10 +64,9 @@ module.exports = async function (context, req) {
   const strip = ({ _rid, _self, _etag, _attachments, _ts, ...rest }) => rest;
 
   try {
-    // resolve the caller's empId from the roster
-    const rosterRes = await cosmos({ endpoint, key, verb: 'GET', resId: `dbs/${db}/colls/roster`, path: `/dbs/${db}/colls/roster/docs` });
-    if (rosterRes.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'roster read failed', status: rosterRes.status }) }; return; }
-    const me = (rosterRes.body.Documents || []).find(e => (e.workEmail || '').toLowerCase() === identity.email);
+    // resolve the caller's empId from the roster — listAll follows continuation tokens,
+    // a plain single-page GET would silently drop roster docs past one page.
+    const me = (await listAll(collPath('roster'))).find(e => (e.workEmail || '').toLowerCase() === identity.email);
     if (!me) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'No roster account for ' + identity.email }) }; return; }
     const empId = me.id;
 

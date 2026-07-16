@@ -11,7 +11,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { loadAccessControl, applyAccessControl } = require('../_shared/cosmos');
+const { loadAccessControl, applyAccessControl, listAll, collPath } = require('../_shared/cosmos');
 
 function authHeader(verb, resType, resId, date, key) {
   const text = `${verb.toLowerCase()}\n${resType.toLowerCase()}\n${resId}\n${date.toLowerCase()}\n\n`;
@@ -85,9 +85,10 @@ module.exports = async function (context, req) {
 
   // resolve the caller in the roster + their permissions
   async function loadMe() {
-    const r = await cosmos({ endpoint, key, verb: 'GET', resId: `dbs/${db}/colls/roster`, path: `/dbs/${db}/colls/roster/docs` });
-    if (r.status !== 200) throw new Error('roster read failed (' + r.status + ')');
-    const employees = (r.body.Documents || []).map(strip);
+    // listAll follows continuation tokens — a plain single-page GET silently drops
+    // roster docs past one page (a real bug: a recently-added employee could 403 as
+    // "no roster account" purely because their doc landed on a later page).
+    const employees = (await listAll(collPath('roster'))).map(strip);
     let ref = { users: [], managers: [] };
     try {
       const a = await cosmos({ endpoint, key, verb: 'GET', resId: `dbs/${db}/colls/appState`, path: `/dbs/${db}/colls/appState/docs` });
@@ -106,9 +107,7 @@ module.exports = async function (context, req) {
 
     /* ---------- READ ---------- */
     if (req.method === 'GET') {
-      const res = await cosmos({ endpoint, key, verb: 'GET', resId: coll, path: `/${coll}/docs` });
-      if (res.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', status: res.status }) }; return; }
-      let docs = (res.body.Documents || []).map(strip);
+      let docs = (await listAll(coll)).map(strip);
       if (ctx.access.viewAll) { /* all */ }
       else if (ctx.access.viewTeam) docs = docs.filter(d => d.office === ctx.office);
       else docs = docs.filter(d => d.empId === ctx.me.id);

@@ -10,7 +10,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { loadAccessControl, applyAccessControl } = require('../_shared/cosmos');
+const { loadAccessControl, applyAccessControl, listAll, collPath } = require('../_shared/cosmos');
 
 /* ---- Cosmos REST helpers (master-key HMAC signing, same scheme as api/roster) ---- */
 function authHeader(verb, resType, resId, date, key) {
@@ -177,9 +177,7 @@ module.exports = async function (context, req) {
   try {
     /* ---------- READ: list saved schedules ---------- */
     if (req.method === 'GET') {
-      const res = await cosmos({ endpoint, key, verb: 'GET', resId: coll, path: `/${coll}/docs` });
-      if (res.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', status: res.status, detail: res.body }) }; return; }
-      let docs = (res.body.Documents || []).map(strip);
+      let docs = (await listAll(coll)).map(strip);
       const office = req.query && req.query.office;
       const weekKey = req.query && req.query.weekKey;
       if (office) docs = docs.filter(d => d.office === office);
@@ -190,18 +188,14 @@ module.exports = async function (context, req) {
 
     /* ---------- WRITE: publish (upsert) one office's week ---------- */
     if (req.method === 'POST') {
-      // authorize against the live roster (server-side; never trust the client)
-      const rosterRes = await cosmos({ endpoint, key, verb: 'GET', resId: `dbs/${db}/colls/roster`, path: `/dbs/${db}/colls/roster/docs` });
-      if (rosterRes.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'roster read failed', status: rosterRes.status }) }; return; }
-      const employees = (rosterRes.body.Documents || []).map(strip);
+      // authorize against the live roster (server-side; never trust the client) —
+      // listAll follows continuation tokens, a plain single-page GET can silently drop docs.
+      const employees = (await listAll(collPath('roster'))).map(strip);
 
       let ref = { users: [], managers: [] };
       try {
-        const appRes = await cosmos({ endpoint, key, verb: 'GET', resId: `dbs/${db}/colls/appState`, path: `/dbs/${db}/colls/appState/docs` });
-        if (appRes.status === 200) {
-          const sup = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
-          if (sup) ref = { users: sup.users || [], managers: sup.managers || [] };
-        }
+        const sup = (await listAll(collPath('appState'))).find(d => d.id === 'roster-support');
+        if (sup) ref = { users: sup.users || [], managers: sup.managers || [] };
       } catch (e) {}
 
       const me = employees.find(e => (e.workEmail || '').toLowerCase() === identity.email);
