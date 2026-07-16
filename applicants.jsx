@@ -768,7 +768,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
             {a.stage === 'hired' ? (
               <span className="badge badge-ok"><Icon name="check" /> Hired · in onboarding</span>
             ) : a.stage === 'offer' ? (
-              isApprover ? <button className="btn btn-ghost" onClick={() => onHire(a)}>Hire Applicant</button> : null
+              isApprover && a.offer && a.offer.status === 'pending_approval' ? <button className="btn btn-primary" onClick={() => onApproveOffer(a.id)}><Icon name="mail" /> Send offer</button> : null
             ) : (
               <button className="btn btn-primary" disabled={!(a.role || '').trim()} title={!(a.role || '').trim() ? 'Add a role / title first' : ''} onClick={() => onStage(a.id, ATS_STAGES[skipIdx].id)}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
             )}
