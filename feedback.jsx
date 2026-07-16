@@ -66,6 +66,11 @@ function Feedback({ me, access, flash }) {
     setItems(list => list.map(i => i.id === id ? { ...i, eta } : i));
     window.feedbackAction({ action: 'update', id, eta }).catch(e => { flash && flash('Couldn’t update ETA (' + e.message + ')'); load(); });
   };
+  const removeItem = (id) => {
+    if (!window.confirm('Delete this permanently? This can’t be undone.')) return;
+    setItems(list => list.filter(i => i.id !== id));
+    window.feedbackAction({ action: 'delete', id }).catch(e => { flash && flash('Couldn’t delete (' + e.message + ')'); load(); });
+  };
   const vote = (id) => {
     if (myVotes[id]) return;
     setMyVotes(v => ({ ...v, [id]: 1 }));
@@ -98,7 +103,7 @@ function Feedback({ me, access, flash }) {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)' }}>
-        {['Requests', 'Roadmap'].map(tb => <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>)}
+        {['Requests', 'Roadmap', 'History'].map(tb => <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>)}
       </div>
 
       {tab === 'Requests' && (
@@ -139,6 +144,7 @@ function Feedback({ me, access, flash }) {
                     <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <select value={it.status} onChange={e => setStatus(it.id, e.target.value)} style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: 12.5 }}>{FB_STATUSES.map(s => <option key={s}>{s}</option>)}</select>
                       <input value={it.eta || ''} onChange={e => setEta(it.id, e.target.value)} placeholder="ETA (e.g. Q4 2026)" style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12.5 }} />
+                      <button className="btn btn-quiet" style={{ marginLeft: 'auto', color: 'oklch(0.55 0.16 25)', fontSize: 12.5 }} onClick={() => removeItem(it.id)}><Icon name="trash" style={{ width: 13, height: 13 }} /> Delete</button>
                     </div>
                   )}
                 </div>
@@ -147,6 +153,29 @@ function Feedback({ me, access, flash }) {
           </div>
         </>
       )}
+
+      {tab === 'History' && (() => {
+        const done = items.filter(i => i.status === 'Complete').sort((a, b) => new Date(b.completedAt || b.createdAt || 0) - new Date(a.completedAt || a.createdAt || 0));
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {done.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Nothing shipped yet.</div>}
+            {done.map(it => (
+              <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 2 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: 15 }}>{it.title}</span>
+                    <span className="badge badge-ok">Shipped</span>
+                  </div>
+                  <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}{it.completedAt ? ' · completed ' + new Date(it.completedAt).toLocaleDateString() : ''}</div>
+                </div>
+                {isAdmin && <button className="btn btn-quiet" style={{ color: 'oklch(0.55 0.16 25)', fontSize: 12.5, flex: 'none' }} onClick={() => removeItem(it.id)}><Icon name="trash" style={{ width: 13, height: 13 }} /> Delete</button>}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {tab === 'Roadmap' && (
         <>
@@ -181,7 +210,8 @@ function Feedback({ me, access, flash }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                           <span className="badge badge-todo" style={{ fontSize: 10.5 }}>{it.cat}</span>
                           {it.eta && <span className="badge badge-prog" style={{ fontSize: 10.5 }}><Icon name="calendar" /> {it.eta}</span>}
-                          {!it.planned && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: 'auto' }}>▲ {it.votes}</span>}
+                          {!it.planned && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>}
+                          {isAdmin && <button onClick={() => removeItem(it.id)} title="Delete" style={{ border: 'none', background: 'none', color: 'oklch(0.55 0.16 25)', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>}
                         </div>
                       </div>
                     ))}

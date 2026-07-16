@@ -1,11 +1,12 @@
 /* api/feedback/index.js — feature requests & roadmap, in Cosmos ("feedback" container, partition key /id).
    GET  /api/feedback  → every request (everyone with a roster account may view — matches the brief:
                          "Anyone can submit and view feature requests; admins set status").
-   POST /api/feedback  → { action: 'submit' | 'vote' | 'update' | 'addPlanned', ... }
+   POST /api/feedback  → { action: 'submit' | 'vote' | 'update' | 'addPlanned' | 'delete', ... }
      submit     — anyone: { title, desc, cat } → creates a request, by = caller's own name (server-resolved)
      vote       — anyone: { id } → adds the caller's email to that doc's voter list (once each, server-enforced)
-     update     — admin only: { id, status?, eta? }
+     update     — admin only: { id, status?, eta? } → stamps completedAt when status becomes 'Complete'
      addPlanned — admin only: { title, desc, cat, eta } → creates a Planned-status card for the roadmap
+     delete     — admin only: { id } → permanently removes a request/planned card
 
    Security mirrors api/accesscontrol: valid Google token, domain lock, caller resolved from the
    live roster, admin flag never trusted from the client. */
@@ -118,8 +119,17 @@ module.exports = async function (context, req) {
     } else if (input.action === 'update') {
       if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
       next = { ...item };
-      if (input.status !== undefined && STATUSES.includes(input.status)) next.status = input.status;
+      if (input.status !== undefined && STATUSES.includes(input.status)) {
+        if (input.status === 'Complete' && item.status !== 'Complete') next.completedAt = new Date().toISOString();
+        next.status = input.status;
+      }
       if (input.eta !== undefined) next.eta = String(input.eta).slice(0, 60);
+    } else if (input.action === 'delete') {
+      if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
+      const del = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${input.id}`, path: `/${coll}/docs/${input.id}`, partitionKey: input.id });
+      if (del.status !== 204 && del.status !== 200 && del.status !== 404) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, id: input.id }) };
+      return;
     } else {
       context.res = { status: 400, headers, body: JSON.stringify({ error: 'unknown action' }) }; return;
     }
