@@ -6,12 +6,12 @@
 */
 
 const ATS_STAGES = [
-  { id: 'applied',   label: 'New Applicants', badge: 'badge-todo' },
-  { id: 'screening', label: 'First Phone Call', badge: 'badge-prog' },
-  { id: 'interview', label: 'In-Person', badge: 'badge-prog' },
+  { id: 'applied',   label: 'New Applicant', badge: 'badge-todo' },
+  { id: 'screening', label: 'Screening Call', badge: 'badge-prog' },
+  { id: 'interview', label: 'In-Person Interview', badge: 'badge-prog' },
   { id: 'working',   label: 'Working Interview', badge: 'badge-prog' },
-  { id: 'offer',     label: 'Offer',     badge: 'badge-warn' },
-  { id: 'hired',     label: 'Hired',     badge: 'badge-ok' },
+  { id: 'offer',     label: 'Offer Pending Approval', badge: 'badge-warn' },
+  { id: 'hired',     label: 'Offer Sent', badge: 'badge-ok' },
 ];
 const ATS_IDX = {}; ATS_STAGES.forEach((s, i) => ATS_IDX[s.id] = i);
 const ATS_SOURCES = ['Indeed', 'LinkedIn', 'Referral', 'Careers page', 'ZipRecruiter', 'Walk-in', 'Other'];
@@ -577,6 +577,8 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
   const fb = a.feedback || [];
   const showWI = !rejected && (a.workingInterview || a.provider || (idx >= ATS_IDX.interview && a.wiRequired));
   const showOffer = !rejected && (a.offer || idx >= ATS_IDX.offer);
+  // working-interview step appears only when required for this applicant (or already scheduled / currently there)
+  const stepStages = ATS_STAGES.filter(s => s.id !== 'working' || a.wiRequired || a.workingInterview || a.stage === 'working');
 
   const addNote = () => { if (!note.trim()) return; onNote(a.id, note.trim()); setNote(''); };
   const postFb = () => { if (!myRating && !myComment.trim()) return; onFeedback(a.id, myRating, myComment.trim()); if (flash) flash('Your feedback was posted'); };
@@ -600,19 +602,19 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
         {/* pipeline tracker — click a stage to move there */}
         {!rejected && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
-            {ATS_STAGES.map((s, i) => (
+            {stepStages.map((s, i) => { const si = ATS_IDX[s.id]; return (
               <React.Fragment key={s.id}>
                 <button onClick={() => onStage(a.id, s.id)} title={`Move to ${s.label}`}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flex: 'none', border: 'none', background: 'none', cursor: 'pointer', padding: 0, width: 64 }}>
                   <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
-                    background: i < idx ? 'var(--ok)' : i === idx ? 'var(--accent)' : 'var(--surface-2)', color: i <= idx ? '#fff' : 'var(--ink-3)', border: i > idx ? '1px solid var(--line)' : 'none' }}>
-                    {i < idx ? <Icon name="check" style={{ width: 14, height: 14 }} /> : i + 1}
+                    background: si < idx ? 'var(--ok)' : si === idx ? 'var(--accent)' : 'var(--surface-2)', color: si <= idx ? '#fff' : 'var(--ink-3)', border: si > idx ? '1px solid var(--line)' : 'none' }}>
+                    {si < idx ? <Icon name="check" style={{ width: 14, height: 14 }} /> : i + 1}
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: i === idx ? 'var(--accent-strong)' : 'var(--ink-3)', textAlign: 'center', lineHeight: 1.2 }}>{s.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: si === idx ? 'var(--accent-strong)' : 'var(--ink-3)', textAlign: 'center', lineHeight: 1.2 }}>{s.label}</span>
                 </button>
-                {i < ATS_STAGES.length - 1 && <div style={{ flex: 1, height: 2, background: i < idx ? 'var(--ok)' : 'var(--line)', marginTop: 12 }} />}
+                {i < stepStages.length - 1 && <div style={{ flex: 1, height: 2, background: si < idx ? 'var(--ok)' : 'var(--line)', marginTop: 12 }} />}
               </React.Fragment>
-            ))}
+            ); })}
           </div>
         )}
 
@@ -699,8 +701,8 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
           </div>
         )}
 
-        {/* interviewer feedback */}
-        <div>
+        {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
+        {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Interview feedback</span>
             {fb.length > 0 && <><Stars value={avg} /><span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{avg}.0 avg · {fb.length} interviewer{fb.length === 1 ? '' : 's'}</span></>}
@@ -734,7 +736,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
               <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={postFb}>{myFb ? 'Update' : 'Post'} feedback</button>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* notes */}
         <div>
@@ -766,7 +768,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
             <button className="btn btn-ghost" onClick={() => onReject(a.id)} style={{ color: 'var(--ink-2)' }}>Reject</button>
             <div style={{ flex: 1 }} />
             {a.stage === 'hired' ? (
-              <span className="badge badge-ok"><Icon name="check" /> Hired · in onboarding</span>
+              <span className="badge badge-ok"><Icon name="check" /> {a.offer && a.offer.status === 'signed' ? 'Offer signed · in onboarding' : 'Offer sent'}</span>
             ) : a.stage === 'offer' ? (
               isApprover && a.offer && a.offer.status === 'pending_approval' ? <button className="btn btn-primary" onClick={() => onApproveOffer(a.id)}><Icon name="mail" /> Send offer</button> : null
             ) : (
@@ -884,7 +886,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
   const sendBackOffer = (id) => { setOffer(id, { status: 'draft' }); if (flash) flash('Sent back to draft'); };
   const approveOffer = async (id) => {
     const r = list.find(a => a.id === id); if (!r) return;
-    const next = { ...r, offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
+    const next = { ...r, stage: 'hired', offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
     setList(cur => cur.map(x => x.id === next.id ? next : x));
     try {
       const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'approve' }) });
@@ -988,9 +990,9 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
         {stat('users', 'In pipeline', active.length)}
         {stat('phone', 'Interviewing', count('interview'))}
-        {stat('clock', 'Working interview', count('working'))}
-        {stat('mail', 'Offers out', count('offer'), 'warn')}
-        {stat('check', 'Hired', count('hired'), 'ok')}
+        {count('working') > 0 && stat('clock', 'Working interview', count('working'))}
+        {stat('mail', 'Pending approval', count('offer'), 'warn')}
+        {stat('check', 'Offers sent', count('hired'), 'ok')}
       </div>
 
       {/* board */}
@@ -1024,7 +1026,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       )}
 
       <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}>
-        <Icon name="bolt" style={{ width: 14, height: 14 }} /> Hiring an applicant from the Offer stage hands them straight to the onboarding agent — no re-entry of their details.
+        <Icon name="bolt" style={{ width: 14, height: 14 }} /> Once an offer is sent, the applicant pipeline is done — the candidate's signature hands them straight to onboarding, no re-entry of their details.
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
