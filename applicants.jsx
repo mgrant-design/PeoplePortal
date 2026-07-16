@@ -788,19 +788,19 @@ function ApplicantCard({ a, onOpen }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <PhotoAvatar emp={{ id: a.id, name: a.name }} size={34} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: 13.5 }}>{a.name}</span>
             {a.provider && <Icon name="star" style={{ width: 11, height: 11, color: 'var(--accent)', flex: 'none' }} />}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.role}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{a.role}</div>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           {a.disposition && <span className={`badge ${dispBadge(a.disposition)}`} style={{ fontSize: 9, flex: 'none' }}>{dispLabel(a.disposition)}</span>}
-          <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="pin" style={{ width: 11, height: 11, flex: 'none' }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.office}</span>
+            <span>{a.office}</span>
           </span>
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none' }}>
