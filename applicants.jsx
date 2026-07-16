@@ -533,16 +533,13 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
           ) : (
             <>
               <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Sent by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate’s signature.</div>
-              {/* candidate acceptance (simulated) */}
-              <div style={{ marginTop: 12, border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '13px 15px' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 8 }}>Candidate acceptance (preview)</div>
-                <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 10 }}>This is what {a.name.split(' ')[0]} sees in their secure link. Typing their name and signing accepts the offer and notifies the onboarding team.</p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Type full legal name to e-sign" style={{ ...atsFld, flex: 1, minWidth: 180, fontFamily: 'var(--font-display)' }} />
-                  <button className="btn btn-primary" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Accept &amp; sign</button>
+              {isApprover && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+                  <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
+                  <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
                 </div>
-                {canExecute && <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 8, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>}
-              </div>
+              )}
             </>
           )}
         </>

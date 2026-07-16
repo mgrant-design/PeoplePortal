@@ -142,6 +142,19 @@ module.exports = async function (context, req) {
     if (isApproveAction && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can approve and send an offer' }) }; return;
     }
+    // Any transition of offer.status beyond draft/pending is the approver's alone — enforced
+    // against the stored record, not the client's tag: if the incoming doc's offer.status
+    // differs from what's on file and moves into sent/signed, only the approver may write it.
+    if (doc.offer && ['sent', 'signed'].includes(doc.offer.status) && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
+      let prevStatus = null;
+      try {
+        const prev = (await listAll(coll)).find(d => d.id === doc.id);
+        prevStatus = prev && prev.offer ? prev.offer.status : null;
+      } catch (e) { /* if the read fails, fall through to reject — never allow on error */ }
+      if (prevStatus !== doc.offer.status) {
+        context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can send or sign an offer' }) }; return;
+      }
+    }
     const { _offerAction, ...clean } = doc;
     const rec = { ...clean, updatedBy: identity.email, updatedAt: new Date().toISOString() };
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: rec, partitionKey: rec.office, upsert: true });
