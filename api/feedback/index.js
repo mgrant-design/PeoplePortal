@@ -11,7 +11,7 @@
    live roster, admin flag never trusted from the client. */
 
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
+const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
@@ -39,7 +39,10 @@ module.exports = async function (context, req) {
   if (!cosmosConfigured()) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing Cosmos config' }) }; return; }
 
   const coll = collPath('feedback');
-  const clean = doc => { const { voters, ...rest } = doc; return { ...rest, votes: (voters || []).length }; };
+  // voters stays server-only (no reason to expose the full list to every viewer), but each
+  // caller needs to know if THEY already voted — otherwise the client can't restore that
+  // state after a refresh and a returning voter can trigger a phantom local re-vote.
+  const clean = doc => { const { voters, ...rest } = doc; return { ...rest, votes: (voters || []).length, voted: (voters || []).includes(identity.email) }; };
 
   try {
     const { employees, support } = await loadRosterAndSupport();
@@ -52,9 +55,9 @@ module.exports = async function (context, req) {
 
     /* ---------- READ ---------- */
     if (req.method === 'GET') {
-      const res = await cosmos({ verb: 'GET', resId: coll, path: `/${coll}/docs` });
-      if (res.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', status: res.status }) }; return; }
-      const docs = (res.body.Documents || []).map(strip).map(clean).sort((a, b) => (b.votes || 0) - (a.votes || 0));
+      // listAll follows continuation tokens — a plain single-page GET silently drops
+      // documents once the container grows past one page (see _shared/cosmos.js).
+      const docs = (await listAll(coll)).map(strip).map(clean).sort((a, b) => (b.votes || 0) - (a.votes || 0));
       context.res = { status: 200, headers, body: JSON.stringify({ items: docs }) };
       return;
     }

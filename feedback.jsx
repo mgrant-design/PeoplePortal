@@ -21,10 +21,26 @@ function Feedback({ me, access, flash }) {
   const isAdmin = access.caps.manageUsers;
   const myEmail = (me.workEmail || me.email || '').toLowerCase();
 
+  // window.fetchFeedback comes from data.jsx, loaded well before this module — but if a
+  // slow/dropped network delayed that critical script, wait briefly instead of failing
+  // outright so a load-order hiccup doesn't get misread as a real backend error.
+  const waitForFetchFeedback = (msLeft = 4000) => new Promise((resolve, reject) => {
+    if (window.fetchFeedback) return resolve();
+    if (msLeft <= 0) return reject(new Error('Could not load — a required module failed to load. Refresh the page.'));
+    setTimeout(() => waitForFetchFeedback(msLeft - 200).then(resolve, reject), 200);
+  });
   const load = () => {
     setLoading(true);
-    (window.fetchFeedback ? window.fetchFeedback() : Promise.reject(new Error('offline')))
-      .then(list => { setItems(list); setLoadErr(null); })
+    waitForFetchFeedback()
+      .then(() => window.fetchFeedback())
+      .then(list => {
+        setItems(list);
+        setLoadErr(null);
+        // Restore "already voted" from the server (voters stays server-only, but each
+        // item now carries a per-caller `voted` flag) — otherwise this resets to {} on
+        // every refresh and a returning voter could re-click and desync the local count.
+        setMyVotes(Object.fromEntries(list.filter(i => i.voted).map(i => [i.id, 1])));
+      })
       .catch(e => setLoadErr(e.message || 'Could not load feature requests.'))
       .finally(() => setLoading(false));
   };
@@ -54,7 +70,15 @@ function Feedback({ me, access, flash }) {
     if (myVotes[id]) return;
     setMyVotes(v => ({ ...v, [id]: 1 }));
     setItems(list => list.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i));
-    window.feedbackAction({ action: 'vote', id }).catch(e => flash && flash('Couldn’t record vote (' + e.message + ')'));
+    window.feedbackAction({ action: 'vote', id })
+      // Reconcile with the server's real count instead of trusting the optimistic +1 —
+      // covers the case where this vote was already recorded in an earlier session.
+      .then(({ item }) => item && setItems(list => list.map(i => i.id === id ? { ...i, votes: item.votes } : i)))
+      .catch(e => {
+        setMyVotes(v => { const n = { ...v }; delete n[id]; return n; });
+        setItems(list => list.map(i => i.id === id ? { ...i, votes: Math.max(0, (i.votes || 1) - 1) } : i));
+        flash && flash('Couldn’t record vote (' + e.message + ')');
+      });
   };
 
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };

@@ -796,11 +796,14 @@ function ApplicantCard({ a, onOpen }) {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
           {a.disposition && <span className={`badge ${dispBadge(a.disposition)}`} style={{ fontSize: 9, flex: 'none' }}>{dispLabel(a.disposition)}</span>}
-          <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="pin" style={{ width: 11, height: 11 }} /> {a.office}</span>
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+            <Icon name="pin" style={{ width: 11, height: 11, flex: 'none' }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.office}</span>
+          </span>
         </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none' }}>
           {a.offer && a.offer.status === 'sent' && <Icon name="mail" style={{ width: 12, height: 12, color: 'var(--accent)' }} title="Offer sent" />}
           {a.offer && a.offer.status === 'signed' && <Icon name="check" style={{ width: 12, height: 12, color: 'var(--ok)' }} title="Offer signed" />}
           {a.workingInterview && <Icon name="clock" style={{ width: 12, height: 12, color: a.workingInterview.status === 'sent' ? 'var(--ok)' : 'var(--accent)' }} title="Working interview" />}
