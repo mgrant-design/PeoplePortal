@@ -150,9 +150,15 @@ module.exports = async function (context, req) {
     if (input.action === 'addComment') {
       if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
       const text = String(input.text || '').trim().slice(0, 2000);
-      if (!text) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'comment text is required' }) }; return; }
       const cColl = collPath('feedbackComments');
+      // Optional gif on the comment: Giphy CDN URL only, same host restriction as requests.
+      let cGif = null;
+      if (input.gif && input.gif.url && /^https:\/\/(media[0-9]*\.giphy\.com|i\.giphy\.com)\//.test(String(input.gif.url))) {
+        cGif = { url: String(input.gif.url).slice(0, 500), width: Number(input.gif.width) || 0, height: Number(input.gif.height) || 0, title: String(input.gif.title || 'gif').slice(0, 200) };
+      }
+      if (!text && !cGif) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'comment text is required' }) }; return; }
       const comment = { id: 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), by: myName, byEmail: identity.email, text, createdAt: new Date().toISOString() };
+      if (cGif) comment.gif = cGif;
       // One doc per post holds all its comments, so appending is a read-modify-write on that
       // single doc — guard it with the doc's _etag (If-Match) and retry on 412 so two people
       // commenting at once never clobber each other.

@@ -21,6 +21,8 @@ function Feedback({ me, access, flash }) {
   const [submitting, setSubmitting] = useState(false);
   const [gif, setGif] = useState(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const [gifTarget, setGifTarget] = useState('draft');
+  const [commentGif, setCommentGif] = useState(null);
   const [openComments, setOpenComments] = useState(null);
   const [commentsById, setCommentsById] = useState({});
   const [commentLoading, setCommentLoading] = useState(false);
@@ -87,8 +89,14 @@ function Feedback({ me, access, flash }) {
   // the Giphy search. Not surfaced in the UI — for those in the know.
   const onDescChange = (val) => {
     const m = val.match(/\/gif\b/i);
-    if (m) { setDraft({ ...draft, desc: val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart() }); setGifOpen(true); return; }
+    if (m) { setDraft({ ...draft, desc: val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart() }); setGifTarget('draft'); setGifOpen(true); return; }
     setDraft({ ...draft, desc: val });
+  };
+  // Same secret trigger inside a comment box.
+  const onCommentChange = (val) => {
+    const m = val.match(/\/gif\b/i);
+    if (m) { setCommentDraft(val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart()); setGifTarget('comment'); setGifOpen(true); return; }
+    setCommentDraft(val);
   };
 
   const toggleComments = (id) => {
@@ -103,13 +111,13 @@ function Feedback({ me, access, flash }) {
   };
   const postComment = (id) => {
     const text = commentDraft.trim();
-    if (!text || commentBusy) return;
+    if ((!text && !commentGif) || commentBusy) return;
     setCommentBusy(true);
-    window.feedbackAction({ action: 'addComment', id, text })
+    window.feedbackAction({ action: 'addComment', id, text, ...(commentGif ? { gif: commentGif } : {}) })
       .then(({ comments }) => {
         setCommentsById(m => ({ ...m, [id]: comments || [] }));
         setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
-        setCommentDraft('');
+        setCommentDraft(''); setCommentGif(null);
       })
       .catch(e => flash && flash('Couldn’t post comment (' + e.message + ')'))
       .finally(() => setCommentBusy(false));
@@ -261,6 +269,7 @@ function Feedback({ me, access, flash }) {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{c.by}</span> · {fmtWhen(c.createdAt)}</div>
                               <p style={{ fontSize: 13.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
+                              {c.gif && c.gif.url && <img src={c.gif.url} alt={c.gif.title || 'gif'} style={{ maxWidth: 220, maxHeight: 170, borderRadius: 'var(--r-md)', display: 'block', marginTop: 6, border: '1px solid var(--line)' }} />}
                             </div>
                             {(isAdmin || (c.byEmail || '').toLowerCase() === myEmail) && <button onClick={() => deleteComment(it.id, c.id)} title="Delete" style={{ flex: 'none', border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 2, display: 'inline-flex' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>}
                           </div>
@@ -268,9 +277,15 @@ function Feedback({ me, access, flash }) {
                         {commentsById[it.id] && commentsById[it.id].length === 0 && !commentLoading && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>No comments yet.</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                        <input value={commentDraft} onChange={e => setCommentDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder="Add a comment…" style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
-                        <button className="btn btn-primary" disabled={!commentDraft.trim() || commentBusy} onClick={() => postComment(it.id)}>Post</button>
+                        <input value={commentDraft} onChange={e => onCommentChange(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder="Add a comment…" style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
+                        <button className="btn btn-primary" disabled={(!commentDraft.trim() && !commentGif) || commentBusy} onClick={() => postComment(it.id)}>Post</button>
                       </div>
+                      {commentGif && (
+                        <div style={{ position: 'relative', display: 'inline-block', marginTop: 8 }}>
+                          <img src={commentGif.url} alt={commentGif.title} style={{ maxWidth: 200, maxHeight: 150, borderRadius: 'var(--r-md)', display: 'block', border: '1px solid var(--line)' }} />
+                          <button onClick={() => setCommentGif(null)} title="Remove gif" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {it.attachment && (
@@ -366,7 +381,7 @@ function Feedback({ me, access, flash }) {
         </>
       )}
 
-      {gifOpen && <GifPicker onPick={g => { setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
+      {gifOpen && <GifPicker onPick={g => { if (gifTarget === 'comment') setCommentGif(g); else setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
     </div>
   );
 }
