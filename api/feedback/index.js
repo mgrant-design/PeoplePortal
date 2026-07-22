@@ -70,6 +70,17 @@ module.exports = async function (context, req) {
 
     if (input.action === 'submit') {
       if (!input.title || !String(input.title).trim()) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'title is required' }) }; return; }
+      // An optional attachment: metadata rides on the request doc (small, always returned by
+      // GET); the raw bytes go to their own doc in the feedback-attachments container, keyed
+      // by the request id, so the request feed stays light and the file is fetched on demand.
+      let attMeta = null;
+      if (input.attachment && input.attachment.contentBase64) {
+        const a = input.attachment;
+        // Cosmos caps a document at 2 MB; base64 inflates ~37%, so refuse anything that
+        // would overflow rather than write a doc Cosmos will reject with a cryptic 413.
+        if (String(a.contentBase64).length > 1900000) { context.res = { status: 413, headers, body: JSON.stringify({ error: 'Attachment too large — max ~1.4 MB.' }) }; return; }
+        attMeta = { name: String(a.name || 'file').slice(0, 255), size: Number(a.size) || 0, type: String(a.type || 'application/octet-stream').slice(0, 120) };
+      }
       const doc = {
         id: 'fr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         title: String(input.title).trim().slice(0, 200),
@@ -80,9 +91,31 @@ module.exports = async function (context, req) {
         voters: [identity.email],
         createdAt: new Date().toISOString(),
       };
+      if (attMeta) doc.attachment = attMeta;
       const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: doc, partitionKey: doc.id, upsert: true });
       if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'submit failed', status: up.status, detail: up.body }) }; return; }
+      if (attMeta) {
+        const attColl = collPath('feedback-attachments');
+        const attDoc = { id: doc.id, ...attMeta, contentBase64: String(input.attachment.contentBase64) };
+        const ua = await cosmos({ verb: 'POST', resId: attColl, path: `/${attColl}/docs`, body: attDoc, partitionKey: attDoc.id, upsert: true });
+        // If the file write fails, roll the request back so we never show an attachment that
+        // can't be downloaded.
+        if (ua.status !== 200 && ua.status !== 201) {
+          await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${doc.id}`, path: `/${coll}/docs/${doc.id}`, partitionKey: doc.id }).catch(() => {});
+          context.res = { status: 500, headers, body: JSON.stringify({ error: 'attachment save failed', status: ua.status, detail: ua.body }) }; return;
+        }
+      }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, item: clean(strip(up.body)) }) };
+      return;
+    }
+
+    if (input.action === 'getAttachment') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const attColl = collPath('feedback-attachments');
+      const r = await cosmos({ verb: 'GET', resId: `${attColl}/docs/${input.id}`, path: `/${attColl}/docs/${input.id}`, partitionKey: input.id });
+      if (r.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'attachment not found' }) }; return; }
+      const a = strip(r.body);
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, name: a.name, type: a.type, size: a.size, contentBase64: a.contentBase64 }) };
       return;
     }
 
@@ -129,6 +162,11 @@ module.exports = async function (context, req) {
       if (input.eta !== undefined) next.eta = String(input.eta).slice(0, 60);
     } else if (input.action === 'delete') {
       if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
+      // Best-effort remove the attachment doc too (may not exist) so bytes don't orphan.
+      if (item.attachment) {
+        const attColl = collPath('feedback-attachments');
+        await cosmos({ verb: 'DELETE', resId: `${attColl}/docs/${input.id}`, path: `/${attColl}/docs/${input.id}`, partitionKey: input.id }).catch(() => {});
+      }
       const del = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${input.id}`, path: `/${coll}/docs/${input.id}`, partitionKey: input.id });
       if (del.status !== 204 && del.status !== 200 && del.status !== 404) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, id: input.id }) };

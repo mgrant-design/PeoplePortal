@@ -16,6 +16,9 @@ function Feedback({ me, access, flash }) {
   const [tab, setTab] = useState('Requests');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other' });
+  const [attachFile, setAttachFile] = useState(null);
+  const [attachErr, setAttachErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const isAdmin = access.caps.manageUsers;
@@ -47,10 +50,43 @@ function Feedback({ me, access, flash }) {
   useEffect(load, []);
 
   const submit = () => {
-    if (!draft.title.trim()) return;
-    window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat })
-      .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); })
-      .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'));
+    if (!draft.title.trim() || submitting) return;
+    setSubmitting(true);
+    const finish = (attachment) => {
+      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(attachment ? { attachment } : {}) })
+        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); setAttachFile(null); setAttachErr(''); flash && flash('Feature request submitted — thanks!'); })
+        .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'))
+        .finally(() => setSubmitting(false));
+    };
+    if (!attachFile) return finish(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const contentBase64 = String(reader.result).split(',')[1] || '';
+      finish({ name: attachFile.name, size: attachFile.size, type: attachFile.type || 'application/octet-stream', contentBase64 });
+    };
+    reader.onerror = () => { setSubmitting(false); flash && flash('Couldn’t read the attachment.'); };
+    reader.readAsDataURL(attachFile);
+  };
+
+  // ~1.4 MB raw ceiling: base64 inflates ~37% and a Cosmos doc caps at 2 MB.
+  const MAX_ATTACH = 1.4 * 1024 * 1024;
+  const pickFile = (f) => {
+    if (!f) { setAttachFile(null); setAttachErr(''); return; }
+    if (f.size > MAX_ATTACH) { setAttachFile(null); setAttachErr('File is too large — max 1.4 MB.'); return; }
+    setAttachErr(''); setAttachFile(f);
+  };
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  const downloadAttachment = (it) => {
+    window.feedbackAction({ action: 'getAttachment', id: it.id })
+      .then(r => {
+        const bin = atob(r.contentBase64 || '');
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: r.type || 'application/octet-stream' }));
+        const a = document.createElement('a'); a.href = url; a.download = r.name || (it.attachment && it.attachment.name) || 'attachment'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      })
+      .catch(e => flash && flash('Couldn’t download (' + e.message + ')'));
   };
   const addPlanned = () => {
     if (!plan.title.trim()) return;
@@ -114,11 +150,27 @@ function Feedback({ me, access, flash }) {
               <h3 style={{ fontSize: 15.5, marginBottom: 12 }}>Suggest an update</h3>
               <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Short title" style={{ ...inp, marginBottom: 10, fontWeight: 600 }} />
               <textarea value={draft.desc} onChange={e => setDraft({ ...draft, desc: e.target.value })} rows={3} placeholder="What would you like to see, and why?" style={{ ...inp, resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }} />
+              <div style={{ marginBottom: 10 }}>
+                {!attachFile ? (
+                  <label className="btn btn-quiet" style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                    <Icon name="plus" style={{ width: 13, height: 13 }} /> Attach a file
+                    <input type="file" onChange={e => pickFile(e.target.files[0])} style={{ display: 'none' }} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg" />
+                  </label>
+                ) : (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', fontSize: 12.5, color: 'var(--ink-2)' }}>
+                    <Icon name="doc" style={{ width: 13, height: 13 }} />
+                    <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attachFile.name}</span>
+                    <span className="mono" style={{ color: 'var(--ink-3)' }}>{fmtSize(attachFile.size)}</span>
+                    <button onClick={() => pickFile(null)} title="Remove" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 0, display: 'inline-flex' }}><Icon name="x" style={{ width: 13, height: 13 }} /></button>
+                  </div>
+                )}
+                {attachErr && <div style={{ fontSize: 12, color: 'oklch(0.55 0.16 25)', marginTop: 6 }}>{attachErr}</div>}
+              </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={draft.cat} onChange={e => setDraft({ ...draft, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                  <button className="btn btn-quiet" onClick={() => setAdding(false)}>Cancel</button>
-                  <button className="btn btn-primary" disabled={!draft.title.trim()} onClick={submit}><Icon name="check" /> Submit</button>
+                  <button className="btn btn-quiet" onClick={() => { setAdding(false); setAttachFile(null); setAttachErr(''); }}>Cancel</button>
+                  <button className="btn btn-primary" disabled={!draft.title.trim() || submitting} onClick={submit}><Icon name="check" /> {submitting ? 'Submitting…' : 'Submit'}</button>
                 </div>
               </div>
             </div>
@@ -141,6 +193,13 @@ function Feedback({ me, access, flash }) {
                   </div>
                   <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}</div>
+                  {it.attachment && (
+                    <button onClick={() => downloadAttachment(it)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
+                      <Icon name="doc" style={{ width: 13, height: 13 }} />
+                      <span style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.attachment.name}</span>
+                      {it.attachment.size ? <span className="mono" style={{ color: 'var(--ink-3)' }}>{fmtSize(it.attachment.size)}</span> : null}
+                    </button>
+                  )}
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <select value={it.status} onChange={e => setStatus(it.id, e.target.value)} style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: 12.5 }}>{FB_STATUSES.map(s => <option key={s}>{s}</option>)}</select>
