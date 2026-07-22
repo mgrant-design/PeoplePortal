@@ -19,6 +19,8 @@ function Feedback({ me, access, flash }) {
   const [attachFile, setAttachFile] = useState(null);
   const [attachErr, setAttachErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [gif, setGif] = useState(null);
+  const [gifOpen, setGifOpen] = useState(false);
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const isAdmin = access.caps.manageUsers;
@@ -53,8 +55,8 @@ function Feedback({ me, access, flash }) {
     if (!draft.title.trim() || submitting) return;
     setSubmitting(true);
     const finish = (attachment) => {
-      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(attachment ? { attachment } : {}) })
-        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); setAttachFile(null); setAttachErr(''); flash && flash('Feature request submitted — thanks!'); })
+      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(attachment ? { attachment } : {}), ...(gif ? { gif } : {}) })
+        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); setAttachFile(null); setAttachErr(''); setGif(null); flash && flash('Feature request submitted — thanks!'); })
         .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'))
         .finally(() => setSubmitting(false));
     };
@@ -76,6 +78,13 @@ function Feedback({ me, access, flash }) {
     setAttachErr(''); setAttachFile(f);
   };
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  // Secret gif picker: typing "/gif" anywhere in the description strips the token and opens
+  // the Giphy search. Not surfaced in the UI — for those in the know.
+  const onDescChange = (val) => {
+    const m = val.match(/\/gif\b/i);
+    if (m) { setDraft({ ...draft, desc: val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart() }); setGifOpen(true); return; }
+    setDraft({ ...draft, desc: val });
+  };
   const downloadAttachment = (it) => {
     window.feedbackAction({ action: 'getAttachment', id: it.id })
       .then(r => {
@@ -149,7 +158,13 @@ function Feedback({ me, access, flash }) {
             <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', borderColor: 'var(--accent)' }}>
               <h3 style={{ fontSize: 15.5, marginBottom: 12 }}>Suggest an update</h3>
               <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Short title" style={{ ...inp, marginBottom: 10, fontWeight: 600 }} />
-              <textarea value={draft.desc} onChange={e => setDraft({ ...draft, desc: e.target.value })} rows={3} placeholder="What would you like to see, and why?" style={{ ...inp, resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }} />
+              <textarea value={draft.desc} onChange={e => onDescChange(e.target.value)} rows={3} placeholder="What would you like to see, and why?" style={{ ...inp, resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }} />
+              {gif && (
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+                  <img src={gif.url} alt={gif.title} style={{ maxWidth: 260, maxHeight: 200, borderRadius: 'var(--r-md)', display: 'block', border: '1px solid var(--line)' }} />
+                  <button onClick={() => setGif(null)} title="Remove gif" style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" style={{ width: 13, height: 13 }} /></button>
+                </div>
+              )}
               <div style={{ marginBottom: 10 }}>
                 {!attachFile ? (
                   <label className="btn btn-quiet" style={{ cursor: 'pointer', display: 'inline-flex' }}>
@@ -169,7 +184,7 @@ function Feedback({ me, access, flash }) {
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={draft.cat} onChange={e => setDraft({ ...draft, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                  <button className="btn btn-quiet" onClick={() => { setAdding(false); setAttachFile(null); setAttachErr(''); }}>Cancel</button>
+                  <button className="btn btn-quiet" onClick={() => { setAdding(false); setAttachFile(null); setAttachErr(''); setGif(null); }}>Cancel</button>
                   <button className="btn btn-primary" disabled={!draft.title.trim() || submitting} onClick={submit}><Icon name="check" /> {submitting ? 'Submitting…' : 'Submit'}</button>
                 </div>
               </div>
@@ -192,6 +207,7 @@ function Feedback({ me, access, flash }) {
                     {it.eta && <span className="badge badge-prog"><Icon name="calendar" /> {it.eta}</span>}
                   </div>
                   <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
+                  {it.gif && it.gif.url && <img src={it.gif.url} alt={it.gif.title || 'gif'} style={{ maxWidth: 300, maxHeight: 220, borderRadius: 'var(--r-md)', display: 'block', marginTop: 8, border: '1px solid var(--line)' }} />}
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}</div>
                   {it.attachment && (
                     <button onClick={() => downloadAttachment(it)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
@@ -285,6 +301,48 @@ function Feedback({ me, access, flash }) {
           </div>
         </>
       )}
+
+      {gifOpen && <GifPicker onPick={g => { setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
+    </div>
+  );
+}
+
+function GifPicker({ onPick, onClose, flash }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      window.searchGifs(q)
+        .then(gifs => { if (live) setResults(gifs); })
+        .catch(e => { if (live) { setResults([]); flash && flash('Gif search failed (' + e.message + ')'); } })
+        .finally(() => { if (live) setLoading(false); });
+    }, q ? 300 : 0); // debounce typed queries; load trending immediately
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
+  const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(560px,100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 'var(--pad)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIPHY…" style={{ ...inp, flex: 1 }} />
+          <button onClick={onClose} className="btn btn-quiet"><Icon name="x" style={{ width: 14, height: 14 }} /></button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, minHeight: 120 }}>
+          {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Loading…</div>}
+          {!loading && results.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No gifs found.</div>}
+          {!loading && results.length > 0 && (
+            <div style={{ columnCount: 3, columnGap: 8 }}>
+              {results.map(g => (
+                <img key={g.id} src={g.previewUrl} alt={g.title} onClick={() => onPick(g)} style={{ width: '100%', marginBottom: 8, borderRadius: 'var(--r-sm)', cursor: 'pointer', display: 'block' }} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '.04em', marginTop: 10 }}>POWERED BY GIPHY</div>
+      </div>
     </div>
   );
 }

@@ -221,6 +221,15 @@ async function feedbackAction(body) {
   if (!res.ok) throw new Error(data.error || ('action failed (' + res.status + ')'));
   return data;
 }
+// Gif picker for feature requests: proxied through /api/giphy so the Giphy key stays
+// server-side. Empty query returns trending.
+async function searchGifs(q) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/giphy' + (q ? '?q=' + encodeURIComponent(q) : ''), { headers: { 'X-Google-Token': token } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('gif search failed (' + res.status + ')'));
+  return data.gifs || [];
+}
 
 /* This week's stable key — the Monday's date (YYYY-MM-DD). Shared by the scheduler
    builder and My schedule so both read & write the same week. */
@@ -386,5 +395,5 @@ Object.assign(window, {
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
   fetchNotices, sendNotice, markNoticeRead, deleteNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
-  fetchFeedback, feedbackAction,
+  fetchFeedback, feedbackAction, searchGifs,
 });

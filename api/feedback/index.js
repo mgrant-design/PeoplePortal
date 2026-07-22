@@ -81,6 +81,17 @@ module.exports = async function (context, req) {
         if (String(a.contentBase64).length > 1900000) { context.res = { status: 413, headers, body: JSON.stringify({ error: 'Attachment too large — max ~1.4 MB.' }) }; return; }
         attMeta = { name: String(a.name || 'file').slice(0, 255), size: Number(a.size) || 0, type: String(a.type || 'application/octet-stream').slice(0, 120) };
       }
+      // Optional gif: only a Giphy CDN URL is stored (no bytes). Restrict to Giphy hosts so
+      // this field can't be turned into an arbitrary-image / tracking-pixel vector.
+      let gifMeta = null;
+      if (input.gif && input.gif.url && /^https:\/\/(media[0-9]*\.giphy\.com|i\.giphy\.com)\//.test(String(input.gif.url))) {
+        gifMeta = {
+          url: String(input.gif.url).slice(0, 500),
+          width: Number(input.gif.width) || 0,
+          height: Number(input.gif.height) || 0,
+          title: String(input.gif.title || 'gif').slice(0, 200),
+        };
+      }
       const doc = {
         id: 'fr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         title: String(input.title).trim().slice(0, 200),
@@ -92,6 +103,7 @@ module.exports = async function (context, req) {
         createdAt: new Date().toISOString(),
       };
       if (attMeta) doc.attachment = attMeta;
+      if (gifMeta) doc.gif = gifMeta;
       const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: doc, partitionKey: doc.id, upsert: true });
       if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'submit failed', status: up.status, detail: up.body }) }; return; }
       if (attMeta) {
