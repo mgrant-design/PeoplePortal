@@ -59,6 +59,13 @@ module.exports = async function (context, req) {
       // listAll follows continuation tokens — a plain single-page GET silently drops
       // documents once the container grows past one page (see _shared/cosmos.js).
       const docs = (await listAll(coll)).map(strip).map(clean).sort((a, b) => (b.votes || 0) - (a.votes || 0));
+      // Attach a comment count per request so the card badge shows without opening the
+      // thread. One doc per post in feedbackComments (id = post id), holding the array.
+      let counts = {};
+      try {
+        (await listAll(collPath('feedbackComments'))).forEach(d => { counts[d.id] = ((d.comments || []).length) || 0; });
+      } catch (e) { /* container may be empty/absent — counts default to 0 */ }
+      docs.forEach(d => { d.commentCount = counts[d.id] || 0; });
       context.res = { status: 200, headers, body: JSON.stringify({ items: docs }) };
       return;
     }
@@ -131,6 +138,58 @@ module.exports = async function (context, req) {
       return;
     }
 
+    if (input.action === 'getComments') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const cColl = collPath('feedbackComments');
+      const r = await cosmos({ verb: 'GET', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id });
+      const comments = r.status === 200 ? (strip(r.body).comments || []) : [];
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments }) };
+      return;
+    }
+
+    if (input.action === 'addComment') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const text = String(input.text || '').trim().slice(0, 2000);
+      if (!text) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'comment text is required' }) }; return; }
+      const cColl = collPath('feedbackComments');
+      const comment = { id: 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), by: myName, byEmail: identity.email, text, createdAt: new Date().toISOString() };
+      // One doc per post holds all its comments, so appending is a read-modify-write on that
+      // single doc — guard it with the doc's _etag (If-Match) and retry on 412 so two people
+      // commenting at once never clobber each other.
+      let saved = null;
+      for (let attempt = 0; attempt < 4 && !saved; attempt++) {
+        const cur = await cosmos({ verb: 'GET', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id });
+        const exists = cur.status === 200;
+        const etag = exists ? cur.body._etag : null;
+        const doc = exists ? strip(cur.body) : { id: input.id, comments: [] };
+        doc.comments = [...(doc.comments || []), comment];
+        const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: etag || undefined });
+        if (wr.status === 200 || wr.status === 201) { saved = strip(wr.body); break; }
+        if (wr.status !== 412) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'comment save failed', status: wr.status, detail: wr.body }) }; return; }
+        // 412 = someone else wrote first; loop re-reads and retries.
+      }
+      if (!saved) { context.res = { status: 409, headers, body: JSON.stringify({ error: 'Too busy — try again.' }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comment, comments: saved.comments || [] }) };
+      return;
+    }
+
+    if (input.action === 'deleteComment') {
+      if (!input.id || !input.commentId) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id and commentId are required' }) }; return; }
+      const cColl = collPath('feedbackComments');
+      const cur = await cosmos({ verb: 'GET', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id });
+      if (cur.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'no comments' }) }; return; }
+      const doc = strip(cur.body);
+      const target = (doc.comments || []).find(c => c.id === input.commentId);
+      if (!target) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'comment not found' }) }; return; }
+      // A commenter may delete their own; admins may delete any.
+      if (!admin && target.byEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed' }) }; return; }
+      doc.comments = (doc.comments || []).filter(c => c.id !== input.commentId);
+      const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: cur.body._etag });
+      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: wr.status }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments: strip(wr.body).comments || [] }) };
+      return;
+    }
+
     if (input.action === 'addPlanned') {
       if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
       if (!input.title || !String(input.title).trim()) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'title is required' }) }; return; }
@@ -179,6 +238,9 @@ module.exports = async function (context, req) {
         const attColl = collPath('feedback-attachments');
         await cosmos({ verb: 'DELETE', resId: `${attColl}/docs/${input.id}`, path: `/${attColl}/docs/${input.id}`, partitionKey: input.id }).catch(() => {});
       }
+      // Best-effort remove this post's comment thread too.
+      const cColl = collPath('feedbackComments');
+      await cosmos({ verb: 'DELETE', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id }).catch(() => {});
       const del = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${input.id}`, path: `/${coll}/docs/${input.id}`, partitionKey: input.id });
       if (del.status !== 204 && del.status !== 200 && del.status !== 404) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, id: input.id }) };

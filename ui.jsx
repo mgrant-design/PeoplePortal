@@ -43,6 +43,7 @@ const ICON = {
   play: 'M7 5l8 5-8 5z',
   search: 'M9 3a6 6 0 104.5 10l3.5 3.5M9 3a6 6 0 010 12',
   download: 'M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 15v1.5h12V15',
+  comment: 'M3.5 4.5h13v9h-7l-3.5 3v-3h-2.5z',
 };
 
 function Icon({ name, style, className }) {

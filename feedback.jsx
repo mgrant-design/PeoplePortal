@@ -21,6 +21,11 @@ function Feedback({ me, access, flash }) {
   const [submitting, setSubmitting] = useState(false);
   const [gif, setGif] = useState(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const [openComments, setOpenComments] = useState(null);
+  const [commentsById, setCommentsById] = useState({});
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const isAdmin = access.caps.manageUsers;
@@ -85,6 +90,39 @@ function Feedback({ me, access, flash }) {
     if (m) { setDraft({ ...draft, desc: val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart() }); setGifOpen(true); return; }
     setDraft({ ...draft, desc: val });
   };
+
+  const toggleComments = (id) => {
+    if (openComments === id) { setOpenComments(null); return; }
+    setOpenComments(id); setCommentDraft('');
+    if (commentsById[id]) return; // already loaded this session
+    setCommentLoading(true);
+    window.feedbackAction({ action: 'getComments', id })
+      .then(({ comments }) => setCommentsById(m => ({ ...m, [id]: comments || [] })))
+      .catch(e => { flash && flash('Couldn’t load comments (' + e.message + ')'); setCommentsById(m => ({ ...m, [id]: [] })); })
+      .finally(() => setCommentLoading(false));
+  };
+  const postComment = (id) => {
+    const text = commentDraft.trim();
+    if (!text || commentBusy) return;
+    setCommentBusy(true);
+    window.feedbackAction({ action: 'addComment', id, text })
+      .then(({ comments }) => {
+        setCommentsById(m => ({ ...m, [id]: comments || [] }));
+        setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
+        setCommentDraft('');
+      })
+      .catch(e => flash && flash('Couldn’t post comment (' + e.message + ')'))
+      .finally(() => setCommentBusy(false));
+  };
+  const deleteComment = (id, commentId) => {
+    window.feedbackAction({ action: 'deleteComment', id, commentId })
+      .then(({ comments }) => {
+        setCommentsById(m => ({ ...m, [id]: comments || [] }));
+        setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
+      })
+      .catch(e => flash && flash('Couldn’t delete comment (' + e.message + ')'));
+  };
+  const fmtWhen = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } };
   const downloadAttachment = (it) => {
     window.feedbackAction({ action: 'getAttachment', id: it.id })
       .then(r => {
@@ -209,6 +247,32 @@ function Feedback({ me, access, flash }) {
                   <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
                   {it.gif && it.gif.url && <img src={it.gif.url} alt={it.gif.title || 'gif'} style={{ maxWidth: 300, maxHeight: 220, borderRadius: 'var(--r-md)', display: 'block', marginTop: 8, border: '1px solid var(--line)' }} />}
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}</div>
+                  <button onClick={() => toggleComments(it.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '6px 10px', border: '1px solid', borderColor: openComments === it.id ? 'var(--accent)' : 'var(--line)', borderRadius: 'var(--r-md)', background: openComments === it.id ? 'var(--accent-soft)' : 'var(--surface)', color: openComments === it.id ? 'var(--accent-strong)' : 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
+                    <Icon name="comment" style={{ width: 14, height: 14 }} />
+                    {it.commentCount ? 'Comments' : 'Comment'}
+                    {it.commentCount > 0 && <span className="mono" style={{ minWidth: 18, textAlign: 'center', padding: '1px 6px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 700 }}>{it.commentCount}</span>}
+                  </button>
+                  {openComments === it.id && (
+                    <div style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+                      {commentLoading && !commentsById[it.id] && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {(commentsById[it.id] || []).map(c => (
+                          <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{c.by}</span> · {fmtWhen(c.createdAt)}</div>
+                              <p style={{ fontSize: 13.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
+                            </div>
+                            {(isAdmin || (c.byEmail || '').toLowerCase() === myEmail) && <button onClick={() => deleteComment(it.id, c.id)} title="Delete" style={{ flex: 'none', border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 2, display: 'inline-flex' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>}
+                          </div>
+                        ))}
+                        {commentsById[it.id] && commentsById[it.id].length === 0 && !commentLoading && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>No comments yet.</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                        <input value={commentDraft} onChange={e => setCommentDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder="Add a comment…" style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
+                        <button className="btn btn-primary" disabled={!commentDraft.trim() || commentBusy} onClick={() => postComment(it.id)}>Post</button>
+                      </div>
+                    </div>
+                  )}
                   {it.attachment && (
                     <button onClick={() => downloadAttachment(it)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
                       <Icon name="doc" style={{ width: 13, height: 13 }} />
