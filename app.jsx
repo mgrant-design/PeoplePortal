@@ -75,7 +75,7 @@ const NAV = [
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
   { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
   { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
-  { id: 'feedback', label: 'Roadmap', show: () => true },
+  { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
   { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
   { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
 ];
@@ -107,7 +107,7 @@ const NAV_GROUPS = [
     { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
-    { id: 'feedback', label: 'Roadmap', show: () => true },
+    { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
   ] },
   { id: 'g_settings', label: 'Settings', children: [
     { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
@@ -456,7 +456,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
     // The Agent Automations section (console + runs + add-hire) is Admin-only. autodetail is
     // NOT gated — it's the post-hire pipeline the ATS and manager pre-hire flows land on.
-    const view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole', 'applicants'].includes(view)) ? 'dashboard' : view;
+    let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole', 'applicants'].includes(view)) ? 'dashboard' : view;
+    if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />;
       case 'people': return <Directory employees={EMPLOYEES} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
