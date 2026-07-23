@@ -45,13 +45,6 @@ function atsGuessRoleDept(text) {
   for (const r of rules) if (r.re.test(t)) return { role: r.role, dept: live.has(r.dept) ? r.dept : '' };
   return { role: '', dept: '' };
 }
-const ATS_DISPOSITIONS = [
-  { id: 'never_called', label: 'Never called', badge: 'badge-todo' },
-  { id: 'on_file', label: 'On file', badge: 'badge-prog' },
-];
-const dispDef = (id) => ATS_DISPOSITIONS.find(d => d.id === id);
-const dispLabel = (id) => (dispDef(id) || {}).label || '';
-const dispBadge = (id) => (dispDef(id) || {}).badge || 'badge-todo';
 
 function atsRoleKey({ provider, role, dept }) {
   if (/hygien|\bRDH\b/i.test(role || '')) return 'hygienist';
@@ -419,16 +412,20 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
   const o = a.offer;
   const [sig, setSig] = useState('');
   const [picker, setPicker] = useState(false);
+  const [open, setOpen] = useState(false);
   const fmtStart = (d) => atsFmt(d);
 
   if (!o) {
     return (
       <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <button onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 8 : 0, width: '100%', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}>
+          <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s', flex: 'none' }} />
           <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} /><span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
-        </div>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>Draft an offer with the role, job description, and pay for {OFFER_EXECUTOR} (HR &amp; Payroll) to review and send.</p>
-        <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer letter</button>
+        </button>
+        {open && <>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 10px', lineHeight: 1.5 }}>Draft an offer with the role, job description, and pay for {OFFER_EXECUTOR} (HR &amp; Payroll) to review and send.</p>
+          <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer letter</button>
+        </>}
       </div>
     );
   }
@@ -453,16 +450,17 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
 
   return (
     <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <button onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 12 : 0, width: '100%', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}>
+        <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s', flex: 'none' }} />
         <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} />
         <span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
         {o.status === 'draft' && <span className="badge badge-todo" style={{ fontSize: 9.5 }}>Draft</span>}
         {o.status === 'pending_approval' && <span className="badge badge-warn" style={{ fontSize: 9.5 }}>Awaiting {OFFER_EXECUTOR}'s approval</span>}
         {o.status === 'sent' && <span className="badge badge-prog" style={{ fontSize: 9.5 }}>Sent · awaiting signature</span>}
         {o.status === 'signed' && <span className="badge badge-ok" style={{ fontSize: 9.5 }}><Icon name="check" /> Accepted &amp; signed</span>}
-      </div>
+      </button>
 
-      {editable ? (
+      {open && (editable ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <AF label="Role / title"><input value={o.role || ''} onChange={e => setO({ role: e.target.value })} style={atsFld} /></AF>
@@ -543,16 +541,16 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
             </>
           )}
         </>
-      )}
+      ))}
     </div>
   );
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onNote, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, onDisposition, flash }) {
+function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
-  const [note, setNote] = useState('');
-  const [showFull, setShowFull] = useState(false);
+  const [fbOpen, setFbOpen] = useState(false);
+  const [fbEditing, setFbEditing] = useState(false);
   const [myRating, setMyRating] = useState(myFb ? myFb.rating : 0);
   const [myComment, setMyComment] = useState(myFb ? myFb.comment : '');
   const [editInfo, setEditInfo] = useState(false);
@@ -573,11 +571,10 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
   const avg = avgRating(a);
   const fb = a.feedback || [];
   const showWI = !rejected && (a.workingInterview || a.provider || (idx >= ATS_IDX.interview && a.wiRequired));
-  const showOffer = !rejected && (a.offer || idx >= ATS_IDX.offer);
+  const showOffer = !rejected && (a.offer || idx >= ATS_IDX.interview);
   // working-interview step appears only when required for this applicant (or already scheduled / currently there)
   const stepStages = ATS_STAGES.filter(s => s.id !== 'working' || a.wiRequired || a.workingInterview || a.stage === 'working');
 
-  const addNote = () => { if (!note.trim()) return; onNote(a.id, note.trim()); setNote(''); };
   const postFb = () => { if (!myRating && !myComment.trim()) return; onFeedback(a.id, myRating, myComment.trim()); if (flash) flash('Your feedback was posted'); };
 
   return (
@@ -612,16 +609,6 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
                 {i < stepStages.length - 1 && <div style={{ flex: 1, height: 2, background: si < idx ? 'var(--ok)' : 'var(--line)', marginTop: 12 }} />}
               </React.Fragment>
             ); })}
-          </div>
-        )}
-
-        {!rejected && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Status</span>
-            {ATS_DISPOSITIONS.map(d => {
-              const on = a.disposition === d.id;
-              return <button key={d.id} onClick={() => onDisposition(a.id, d.id)} className={on ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 12.5, padding: '6px 12px' }}>{on && <Icon name="check" style={{ width: 13, height: 13 }} />} {d.label}</button>;
-            })}
           </div>
         )}
 
@@ -677,33 +664,14 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
         {/* offer letter */}
         {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} driveOn={driveOn} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} flash={flash} />}
 
-        {/* resume summary + full extracted text on file + raw PDF pointers */}
-        {(a.resume || a.resumeText || (a.resumes || []).length > 0) && (
-          <div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="doc" style={{ width: 13, height: 13 }} /> Résumé{a.resumeText ? ' · on file' : ''}</div>
-            {a.resume && <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>{a.resume}</p>}
-            {(a.resumes || []).length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '2px 0 4px' }}>
-                {a.resumes.map((r, i) => (
-                  <a key={i} href={r.url || '#'} target="_blank" rel="noreferrer" className="badge badge-todo" style={{ fontSize: 10.5, textDecoration: 'none' }}><Icon name="doc" style={{ width: 11, height: 11 }} /> {r.name || 'Résumé PDF'}</a>
-                ))}
-              </div>
-            )}
-            {a.resumeText && (
-              <>
-                <button className="btn btn-quiet" style={{ fontSize: 12.5, padding: '4px 0', color: 'var(--accent-strong)' }} onClick={() => setShowFull(v => !v)}><Icon name="chevron" style={{ width: 13, height: 13, transform: showFull ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} /> {showFull ? 'Hide' : 'Show'} full extracted text</button>
-                {showFull && <pre style={{ marginTop: 8, maxHeight: 260, overflow: 'auto', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '10px 12px', fontSize: 11.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', color: 'var(--ink-2)', margin: '8px 0 0' }}>{a.resumeText}</pre>}
-              </>
-            )}
-          </div>
-        )}
-
         {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
         {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <button onClick={() => setFbOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: fbOpen ? 10 : 0 }}>
+            <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', transform: fbOpen ? 'rotate(90deg)' : 'none', transition: 'transform .2s', flex: 'none' }} />
             <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Interview feedback</span>
             {fb.length > 0 && <><Stars value={avg} /><span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{avg}.0 avg · {fb.length} interviewer{fb.length === 1 ? '' : 's'}</span></>}
-          </div>
+          </button>
+          {fbOpen && <>
           {fb.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               {fb.map((f, i) => (
@@ -722,37 +690,24 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
               ))}
             </div>
           )}
-          {/* your feedback */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '12px 13px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFb ? 'Update your feedback' : 'Add your feedback'}</span>
-              <Stars value={myRating} onChange={setMyRating} />
+          {/* your feedback — behind an explicit action */}
+          {fbEditing ? (
+            <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '12px 13px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFb ? 'Update your feedback' : 'Add your feedback'}</span>
+                <Stars value={myRating} onChange={setMyRating} />
+              </div>
+              <textarea value={myComment} onChange={e => setMyComment(e.target.value)} rows={2} placeholder="Your comments on this candidate…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 9 }}>
+                <button className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setFbEditing(false)}>Cancel</button>
+                <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={() => { postFb(); setFbEditing(false); }}>{myFb ? 'Update' : 'Post'} feedback</button>
+              </div>
             </div>
-            <textarea value={myComment} onChange={e => setMyComment(e.target.value)} rows={2} placeholder="Your comments on this candidate…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 9 }}>
-              <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={postFb}>{myFb ? 'Update' : 'Post'} feedback</button>
-            </div>
-          </div>
-        </div>}
-
-        {/* notes */}
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 8 }}>Notes</div>
-          {(a.notes || []).length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-              {a.notes.map((n, i) => (
-                <div key={i} style={{ fontSize: 13, lineHeight: 1.5, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: '9px 12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><b style={{ fontSize: 12 }}>{n.by}</b><span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{n.at}</span></div>
-                  <span style={{ color: 'var(--ink-2)' }}>{n.text}</span>
-                </div>
-              ))}
-            </div>
+          ) : (
+            <button className="btn btn-ghost" onClick={() => setFbEditing(true)}><Icon name="pen" style={{ width: 14, height: 14 }} /> {myFb ? 'Update your feedback' : 'Add your feedback'}</button>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="Add a note…" style={{ ...atsFld, flex: 1 }} />
-            <button className="btn btn-ghost" onClick={addNote} disabled={!note.trim()}>Add</button>
-          </div>
-        </div>
+          </>}
+        </div>}
       </div>
 
       {/* actions */}
@@ -769,7 +724,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
             ) : a.stage === 'offer' ? (
               isApprover && a.offer && a.offer.status === 'pending_approval' ? <button className="btn btn-primary" onClick={() => onApproveOffer(a.id)}><Icon name="mail" /> Send offer</button> : null
             ) : (
-              <button className="btn btn-primary" disabled={!(a.role || '').trim()} title={!(a.role || '').trim() ? 'Add a role / title first' : ''} onClick={() => onStage(a.id, ATS_STAGES[skipIdx].id)}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
+              <button className="btn btn-primary" disabled={!(a.role || '').trim()} title={!(a.role || '').trim() ? 'Add a role / title first' : ''} onClick={() => { onStage(a.id, ATS_STAGES[skipIdx].id); onClose(); }}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
             )}
           </>
         )}
@@ -796,7 +751,6 @@ function ApplicantCard({ a, onOpen }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {a.disposition && <span className={`badge ${dispBadge(a.disposition)}`} style={{ fontSize: 9, flex: 'none' }}>{dispLabel(a.disposition)}</span>}
           <span style={{ fontSize: 11, color: 'var(--ink-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="pin" style={{ width: 11, height: 11, flex: 'none' }} />
             <span>{a.office}</span>
@@ -849,7 +803,6 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
   const commitOne = (next) => { setList(cur => (cur || []).map(a => a.id === next.id ? next : a)); saveApplicant(next); };
   const update = (id, patch) => { const r = list.find(a => a.id === id); if (r) commitOne({ ...r, ...patch }); };
   const setStage = (id, stage) => { const r = list.find(a => a.id === id); if (!r) return; const target = ATS_IDX[stage] != null ? ATS_IDX[stage] : 0; const cur = ATS_IDX[r.stage] != null ? ATS_IDX[r.stage] : 0; if (target > cur && !(r.role || '').trim()) { if (flash) flash('Add a role / title before advancing'); return; } const next = { ...r, stage }; if (stage === 'offer' && !r.offer) next.offer = draftOffer(r); commitOne(next); };
-  const addNote = (id, text) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, notes: [...(r.notes || []), { by: me.first + ' ' + (me.last || '')[0] + '.', at: atsFmt(new Date().toISOString().slice(0, 10)), text }] }); };
   const postFeedback = (id, rating, comment) => {
     const r = list.find(a => a.id === id); if (!r) return;
     const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
@@ -904,7 +857,6 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
   };
   const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
   const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage: 'applied', role: '' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(r.name + ' reopened — set a role / title to continue'); };
-  const setDisposition = (id, d) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, disposition: r.disposition === d ? '' : d }); };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
     const today = new Date().toISOString().slice(0, 10);
@@ -1027,7 +979,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onNote={addNote} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} onDisposition={setDisposition} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
     </div>
   );
 }
