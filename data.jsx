@@ -368,6 +368,17 @@ async function deleteNotice(id) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('delete failed (' + res.status + ')')); }
   return res.json();
 }
+/* Restore a dismissed notice back to the inbox (recipient-only, server-checked). */
+async function restoreNotice(id) {
+  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
+  const res = await fetch('/api/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
+    body: JSON.stringify({ action: 'restore', id }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('restore failed (' + res.status + ')')); }
+  return res.json();
+}
 /* Open the live SignalR connection so notices pushed to me arrive instantly. Returns the
    connection (call .stop() to close) or null when unavailable — no client library, not
    signed in, or no /api (sandbox). Safe to call always: on null the 5-min poll still covers
@@ -394,6 +405,6 @@ Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
   SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
   fetchCoverage, saveCoverage,
-  fetchNotices, sendNotice, markNoticeRead, deleteNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
+  fetchNotices, sendNotice, markNoticeRead, deleteNotice, restoreNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
   fetchFeedback, feedbackAction, searchGifs,
 });

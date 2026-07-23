@@ -175,9 +175,10 @@ function MessageComposer({ me, access, onSend, onCancel }) {
   );
 }
 
-function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete, onOpenDeepLink }) {
+function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete, onRestore, onOpenDeepLink }) {
   const [reqs, setReqs] = useState([]);
   const [composing, setComposing] = useState(false);
+  const [historyMode, setHistoryMode] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
   const [adding, setAdding] = useState(false);
   const [sndChoice, setSndChoice] = useState(() => (window.PDSound ? window.PDSound.getChoice(me.id) : 1));
@@ -191,7 +192,34 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   const locs = Object.keys(openByOffice);
   const myScope = scopedRequests(reqs, me, access);
   const actionable = myScope.filter(r => (isHR && r.status === 'hr_review') || (isMgr && r.status === 'mgr_review'));
-  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0 && notices.length === 0;
+  const live = notices.filter(n => !n.dismissed);
+  const dismissed = notices.filter(n => n.dismissed);
+  const catOf = (n) => n.category || 'message';
+  const needYou = live.filter(n => catOf(n) === 'action');
+  const messages = live.filter(n => catOf(n) === 'message' || catOf(n) === 'mention');
+  const activity = live.filter(n => catOf(n) === 'social');
+  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0 && live.length === 0;
+  // One notice card, reused across the tiers and the history view. Reactions ('social') render
+  // muted and never as “unread”; history items swap dismiss (×) for a restore action.
+  const NoticeCard = (n, historyItem) => {
+    const social = catOf(n) === 'social';
+    const unread = !n.read && !social && !historyItem;
+    return (
+      <div key={n.id} className="card" onClick={() => { if (!historyItem && !n.read && onMarkRead) onMarkRead(n.id); if (n.deepLink && onOpenDeepLink) onOpenDeepLink(n.deepLink); }}
+        style={{ padding: 12, cursor: n.deepLink ? 'pointer' : ((n.read || historyItem) ? 'default' : 'pointer'), borderColor: unread ? 'var(--accent)' : 'var(--line)', background: unread ? 'var(--accent-softer)' : 'var(--surface)', opacity: (social || historyItem) ? 0.92 : 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, color: social ? 'var(--ink-2)' : 'var(--ink)' }}>{n.title || '(no subject)'}</div>
+          {n.urgent && <span className="badge badge-todo">Urgent</span>}
+          {unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none' }} />}
+          {historyItem
+            ? <button onClick={(e) => { e.stopPropagation(); onRestore && onRestore(n.id); }} aria-label="Restore notification" title="Restore to inbox" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent-strong)', padding: 2, flex: 'none', display: 'inline-flex' }}><Icon name="refresh" style={{ width: 14, height: 14 }} /></button>
+            : <button onClick={(e) => { e.stopPropagation(); onDelete && onDelete(n.id); }} aria-label="Dismiss notification" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 2, flex: 'none' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>}
+        </div>
+        {n.body && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6 }}>{n.body}</p>}
+        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>from {n.fromName || n.fromEmail}</div>
+      </div>
+    );
+  };
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
 
@@ -254,36 +282,55 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
             <button onClick={toggleSndMute} aria-label={sndMuted ? 'Unmute notifications' : 'Mute notifications'} style={sndCirc(sndMuted)}>
               <svg viewBox="0 0 20 20" style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h2.5L10 5v10L6.5 12H4z" /><path d="M13.5 7.5l3.5 5M17 7.5l-3.5 5" /></svg>
             </button>
+            <button onClick={() => setHistoryMode(v => !v)} aria-label={historyMode ? 'Back to inbox' : 'Notification history'} title={historyMode ? 'Inbox' : 'History'} style={sndCirc(historyMode)}>
+              <Icon name={historyMode ? 'bell' : 'clock'} style={{ width: 13, height: 13 }} />
+            </button>
           </div>
           <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: fullyEmpty && !adding && !composing ? 'flex' : 'block' }}>
-          {fullyEmpty && !adding && !composing ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} onCompose={() => setComposing(true)} /> : <>
-          {/* direct messages (person → person) — anyone can compose to someone in their scope */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: (fullyEmpty && !historyMode && !adding && !composing) ? 'flex' : 'block' }}>
+          {historyMode ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Icon name="clock" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
+                <h3 style={{ fontSize: 14, flex: 1 }}>Dismissed history</h3>
+              </div>
+              {dismissed.length === 0 && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Nothing dismissed yet.</p>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{dismissed.map(n => NoticeCard(n, true))}</div>
+            </div>
+          ) : (fullyEmpty && !adding && !composing) ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} onCompose={() => setComposing(true)} /> : <>
+          {/* NEEDS YOU — action-required notices */}
+          {needYou.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Icon name="bell" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
+                <h3 style={{ fontSize: 14, flex: 1 }}>Needs you</h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{needYou.map(n => NoticeCard(n, false))}</div>
+            </div>
+          )}
+          {/* MESSAGES & MENTIONS — direct messages + comment/reply mentions, with composer */}
           <div style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Icon name="mail" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-              <h3 style={{ fontSize: 14, flex: 1 }}>Messages</h3>
+              <h3 style={{ fontSize: 14, flex: 1 }}>Messages &amp; mentions</h3>
               <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => setComposing(c => !c)}><Icon name="plus" /> New</button>
             </div>
             {composing && <MessageComposer me={me} access={access} onCancel={() => setComposing(false)} onSend={(body) => { setComposing(false); Promise.resolve(onSend && onSend(body)).then(() => flash && flash('Message sent.')).catch(err => flash && flash((err && err.message) || 'Send failed.')); }} />}
-            {notices.length === 0 && !composing && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No messages.</p>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {notices.map(n => (
-                <div key={n.id} className="card" onClick={() => { if (!n.read && onMarkRead) onMarkRead(n.id); if (n.deepLink && onOpenDeepLink) onOpenDeepLink(n.deepLink); }} style={{ padding: 12, cursor: (n.read && !n.deepLink) ? 'default' : 'pointer', borderColor: n.read ? 'var(--line)' : 'var(--accent)', background: n.read ? 'var(--surface)' : 'var(--accent-softer)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{n.title || '(no subject)'}</div>
-                    {n.urgent && <span className="badge badge-todo">Urgent</span>}
-                    {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none' }} />}
-                    <button onClick={(e) => { e.stopPropagation(); onDelete && onDelete(n.id); }} aria-label="Delete notification" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 2, flex: 'none' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
-                  </div>
-                  {n.body && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6 }}>{n.body}</p>}
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>from {n.fromName || n.fromEmail}</div>
-                </div>
-              ))}
-            </div>
+            {messages.length === 0 && !composing && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No messages.</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{messages.map(n => NoticeCard(n, false))}</div>
           </div>
+          {/* ACTIVITY — reactions, lowkey (no badge, no ding) */}
+          {activity.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Icon name="sparkle" style={{ width: 16, height: 16, color: 'var(--ink-3)' }} />
+                <h3 style={{ fontSize: 14, flex: 1, color: 'var(--ink-2)' }}>Activity</h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{activity.map(n => NoticeCard(n, false))}</div>
+            </div>
+          )}
           {/* open shifts — managers/HR */}
           {isMgr && (
             <div style={{ marginBottom: 24 }}>

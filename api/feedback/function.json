@@ -11,6 +11,13 @@
       "type": "http",
       "direction": "out",
       "name": "res"
+    },
+    {
+      "type": "signalR",
+      "direction": "out",
+      "name": "signalRMessages",
+      "hubName": "notifications",
+      "connectionStringSetting": "AzureSignalRConnectionString"
     }
   ]
 }

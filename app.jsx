@@ -266,7 +266,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     const key = 'pd_seen_notifs_' + me.id;
     const sigs = [
       ...(typeof myNotifSignatures === 'function' ? myNotifSignatures(notifReqs, me, access) : []),
-      ...notices.map(n => 'notice:' + n.id),   // a direct notice is terminal — one ding when it first appears
+      ...notices.filter(n => !n.dismissed && n.category !== 'social').map(n => 'notice:' + n.id),   // direct notices ding once when they appear; reactions (social) never ding
     ];
     let seen = seenNotifRef.current;
     if (seen === null) {
@@ -298,8 +298,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     const onNotice = (n) => {
       if (!n || !n.id) return;
       if (seenNotifRef.current instanceof Set) seenNotifRef.current.add('notice:' + n.id);
-      setNotices(list => list.some(x => x.id === n.id) ? list : [n, ...list]);
-      if (window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
+      setNotices(list => { const i = list.findIndex(x => x.id === n.id); if (i >= 0) { const next = list.slice(); next[i] = n; return next; } return [n, ...list]; });
+      if (n.category !== 'social' && window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
     };
     connectNotifications(me.workEmail, onNotice).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
     return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };
@@ -307,7 +307,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
-  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read).length;
+  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
@@ -721,7 +721,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.filter(n => n.id !== id)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: true } : n)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onRestore={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: false } : n)); if (typeof restoreNotice === 'function') restoreNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } else if (dl && dl.view === 'feedback') { go('feedback'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}

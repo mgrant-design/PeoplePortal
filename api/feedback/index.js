@@ -22,6 +22,30 @@ function isAdminFor(me, usersByEmail) {
   return !!(usersByEmail[(me.workEmail || '').toLowerCase()] || {}).admin;
 }
 
+/* Fire a direct notice to one person about activity on a feature request, and push it live on
+   the same SignalR channel the client already listens on. Written straight to the notices
+   container (feedback is company-wide, so this bypasses /api/notify's office scoping). Never
+   notifies you about your own action, and never fails the comment/reaction if the notice does.
+   category: 'mention' (comments/replies — badge + ding) or 'social' (reactions — quiet). */
+async function notifyRecipient(context, { toEmail, toName, fromEmail, fromName, title, body, category, feedbackId, id }) {
+  const to = (toEmail || '').toLowerCase();
+  if (!to || to === (fromEmail || '').toLowerCase()) return;
+  const NOTICES = collPath('notices');
+  const notice = {
+    id: id || ('nt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)),
+    kind: 'notice', category: category || 'mention',
+    fromEmail: (fromEmail || '').toLowerCase(), fromName: fromName || fromEmail,
+    toEmail: to, toName: toName || to,
+    title: String(title || '').slice(0, 200), body: String(body || '').slice(0, 2000),
+    read: false, createdAt: new Date().toISOString(),
+    deepLink: { view: 'feedback', feedbackId: feedbackId ? String(feedbackId).slice(0, 80) : undefined },
+  };
+  try {
+    await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: notice, partitionKey: to, upsert: true });
+    context.bindings.signalRMessages = [...(context.bindings.signalRMessages || []), { userId: to, target: 'notify', arguments: [notice] }];
+  } catch (e) { /* best-effort */ }
+}
+
 module.exports = async function (context, req) {
   const headers = {
     'Content-Type': 'application/json',
@@ -179,6 +203,16 @@ module.exports = async function (context, req) {
         // 412 = someone else wrote first; loop re-reads and retries.
       }
       if (!saved) { context.res = { status: 409, headers, body: JSON.stringify({ error: 'Too busy — try again.' }) }; return; }
+      // Notify: a reply pings the parent comment's author; a top-level comment pings the
+      // request's author. Both are 'mention' (badge + ding). Self-actions are skipped inside.
+      const cBody = text || (cGif ? 'sent a GIF' : '');
+      if (comment.parentId) {
+        const parent = (saved.comments || []).find(c => c.id === comment.parentId);
+        if (parent) await notifyRecipient(context, { toEmail: parent.byEmail, toName: parent.by, fromEmail: identity.email, fromName: myName, title: `${myName} replied to your comment`, body: cBody, category: 'mention', feedbackId: input.id });
+      } else {
+        const rq = await cosmos({ verb: 'GET', resId: `${coll}/docs/${input.id}`, path: `/${coll}/docs/${input.id}`, partitionKey: input.id });
+        if (rq.status === 200) { const rd = strip(rq.body); await notifyRecipient(context, { toEmail: rd.byEmail, toName: rd.by, fromEmail: identity.email, fromName: myName, title: `${myName} commented on “${rd.title || 'your request'}”`, body: cBody, category: 'mention', feedbackId: input.id }); }
+      }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comment, comments: saved.comments || [] }) };
       return;
     }
@@ -207,6 +241,7 @@ module.exports = async function (context, req) {
       const cColl = collPath('feedbackComments');
       // read-modify-write on the one comments doc, etag-guarded + retried, same as addComment.
       let saved = null;
+      let didAdd = false;
       for (let attempt = 0; attempt < 4 && !saved; attempt++) {
         const cur = await cosmos({ verb: 'GET', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id });
         if (cur.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'no comments' }) }; return; }
@@ -219,6 +254,7 @@ module.exports = async function (context, req) {
         const had = (r[input.emoji] || []).includes(identity.email);
         REACTIONS.forEach(k => { if (r[k]) r[k] = r[k].filter(e => e !== identity.email); });
         if (!had) r[input.emoji] = [...(r[input.emoji] || []), identity.email];
+        didAdd = !had;
         REACTIONS.forEach(k => { if (r[k] && r[k].length === 0) delete r[k]; });
         target.reactions = r;
         const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: cur.body._etag });
@@ -226,6 +262,16 @@ module.exports = async function (context, req) {
         if (wr.status !== 412) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'reaction save failed', status: wr.status }) }; return; }
       }
       if (!saved) { context.res = { status: 409, headers, body: JSON.stringify({ error: 'Too busy — try again.' }) }; return; }
+      // Notify the comment's author — only when a reaction was ADDED (not toggled off). 'social'
+      // so it lands quietly (no badge, no ding). One notice per comment (stable id) groups
+      // repeat reactions into a single “N people reacted” entry that re-surfaces on each new one.
+      if (didAdd) {
+        const tc = (saved.comments || []).find(c => c.id === input.commentId);
+        if (tc) {
+          const total = REACTIONS.reduce((n, k) => n + ((tc.reactions || {})[k] || []).length, 0);
+          await notifyRecipient(context, { id: 'nt-rx-' + input.commentId, toEmail: tc.byEmail, toName: tc.by, fromEmail: identity.email, fromName: myName, title: 'New reaction on your comment', body: `${total} ${total === 1 ? 'person has' : 'people have'} reacted to your comment.`, category: 'social', feedbackId: input.id });
+        }
+      }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments: saved.comments || [] }) };
       return;
     }

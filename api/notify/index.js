@@ -82,17 +82,33 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // delete one of MY notices (recipient only — point-delete scoped to my partition, same
-    // ownership check as marking read).
+    // dismiss one of MY notices (recipient only). This is a SOFT delete: the doc is flagged
+    // hidden and dropped from the inbox GET, but never removed from Cosmos — so the record
+    // survives for a later audit and a routine inbox tidy can't actually destroy anything.
     if (input && input.action === 'delete') {
       if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
       const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
       if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
       const doc = strip(dr.body);
       if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
-      const del = await cosmos({ verb: 'DELETE', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
-      if (del.status !== 200 && del.status !== 204) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
+      const next = { ...doc, dismissed: true, dismissedAt: new Date().toISOString() };
+      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
+      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'dismiss failed', status: wr.status }) }; return; }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true }) };
+      return;
+    }
+
+    // restore a dismissed notice back to the inbox (recipient only).
+    if (input && input.action === 'restore') {
+      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
+      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
+      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
+      const doc = strip(dr.body);
+      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
+      const next = { ...doc, dismissed: false }; delete next.dismissedAt;
+      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
+      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'restore failed', status: wr.status }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, notice: strip(next) }) };
       return;
     }
 
@@ -114,9 +130,11 @@ module.exports = async function (context, req) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'You can only send to people in your office' }) }; return;
     }
 
+    const NOTICE_CATS = ['action', 'message', 'mention', 'social'];
     const notice = {
       id: 'nt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       kind: 'notice',
+      category: NOTICE_CATS.includes(input.category) ? input.category : 'message',
       fromEmail: identity.email, fromName: nameOf(me),
       toEmail, toName: nameOf(recip), office: officeOf(recip),
       title: String(input.title || '').slice(0, 200),
@@ -127,7 +145,7 @@ module.exports = async function (context, req) {
     // Optional deep link back to the thing this notice is about (e.g. an applicant's offer).
     // Whitelisted shape only — never pass through arbitrary client fields.
     if (input.deepLink && typeof input.deepLink === 'object' && input.deepLink.view) {
-      notice.deepLink = { view: String(input.deepLink.view).slice(0, 40), applicantId: input.deepLink.applicantId ? String(input.deepLink.applicantId).slice(0, 80) : undefined };
+      notice.deepLink = { view: String(input.deepLink.view).slice(0, 40), applicantId: input.deepLink.applicantId ? String(input.deepLink.applicantId).slice(0, 80) : undefined, feedbackId: input.deepLink.feedbackId ? String(input.deepLink.feedbackId).slice(0, 80) : undefined };
     }
 
     const up = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: notice, partitionKey: toEmail, upsert: true });
