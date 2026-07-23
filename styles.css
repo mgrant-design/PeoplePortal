@@ -312,10 +312,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Sweet — Rochester, an upright, tidy casual script (no connecting loops). Pin 400 and
    normalize x-height so it sizes like a real header. Body is Just Another Hand. */
-[data-font="sweet"] :is(h1, h2, h3, h4, .brand) { font-weight: 400; letter-spacing: normal; font-size-adjust: 0.56; }
+[data-font="sweet"] :is(h1, h2, h3, h4, .brand) { font-weight: 400; letter-spacing: normal; font-size-adjust: none; }
 /* Sweet's body (Oregano) is a casual italic hand with a fairly normal x-height; light
    x-height normalization keeps it comfortable. Glyph-only scaling, layout stays put. */
-[data-font="sweet"] .app { font-size-adjust: 0.48; }
 [data-font="sweet"] .brand small { margin-top: 9px; }
 /* Noir's display (Manufacturing Consent) is an ornate single-weight blackletter — the
    global 600 faux-bolds it into mush. Pin 400. Its cap proportions render small, so
