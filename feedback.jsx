@@ -4,7 +4,7 @@
 
 const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
-const FB_CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
+const FB_CATS = ['Dashboard', 'Applicants', 'My onboarding', 'Directory', 'Scheduling', 'My schedule', 'Time clock', 'Reviews', 'Reports', 'Agent Automations', 'Offboarding', 'Offices', 'Organization', 'Security', 'Modules', 'Roadmap', 'Ask Riley', 'Ask HR', 'Learning Library', 'Scrubs', 'Other'];
 
 const ROADMAP_COLS = [['Submitted', 'Submitted'], ['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
 
@@ -45,7 +45,7 @@ function Feedback({ me, access, flash }) {
   const [sortMode, setSortMode] = useState('top');
   const [tab, setTab] = useState('Requests');
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other' });
+  const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other', catOther: '' });
   const [attachFiles, setAttachFiles] = useState([]);
   const [attachErr, setAttachErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -96,8 +96,8 @@ function Feedback({ me, access, flash }) {
     if (!draft.title.trim() || submitting) return;
     setSubmitting(true);
     const send = (attachments) => {
-      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(attachments.length ? { attachments } : {}), ...(gif ? { gif } : {}) })
-        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); setAttachFiles([]); setAttachErr(''); setGif(null); flash && flash('Feature request submitted — thanks!'); })
+      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(draft.cat === 'Other' && (draft.catOther || '').trim() ? { catOther: draft.catOther.trim() } : {}), ...(attachments.length ? { attachments } : {}), ...(gif ? { gif } : {}) })
+        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other', catOther: '' }); setAttachFiles([]); setAttachErr(''); setGif(null); flash && flash('Feature request submitted — thanks!'); })
         .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'))
         .finally(() => setSubmitting(false));
     };
@@ -327,6 +327,7 @@ function Feedback({ me, access, flash }) {
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={draft.cat} onChange={e => setDraft({ ...draft, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
+                {draft.cat === 'Other' && <input value={draft.catOther || ''} onChange={e => setDraft({ ...draft, catOther: e.target.value })} placeholder="Specify a category…" style={{ ...inp, width: 200 }} />}
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <button className="btn btn-quiet" onClick={() => { setAdding(false); setAttachFiles([]); setAttachErr(''); setGif(null); }}>Cancel</button>
                   <button className="btn btn-primary" disabled={!draft.title.trim() || submitting} onClick={submit}><Icon name="check" /> {submitting ? 'Submitting…' : 'Submit'}</button>

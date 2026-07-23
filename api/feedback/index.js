@@ -16,7 +16,7 @@ const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
-const CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
+const CATS = ['Dashboard', 'Applicants', 'My onboarding', 'Directory', 'Scheduling', 'My schedule', 'Time clock', 'Reviews', 'Reports', 'Agent Automations', 'Offboarding', 'Offices', 'Organization', 'Security', 'Modules', 'Roadmap', 'Ask Riley', 'Ask HR', 'Learning Library', 'Scrubs', 'Other'];
 
 function isAdminFor(me, usersByEmail) {
   return !!(usersByEmail[(me.workEmail || '').toLowerCase()] || {}).admin;
@@ -151,7 +151,7 @@ module.exports = async function (context, req) {
         id: 'fr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         title: String(input.title).trim().slice(0, 200),
         desc: String(input.desc || '').trim().slice(0, 2000),
-        cat: CATS.includes(input.cat) ? input.cat : 'Other',
+        cat: (input.cat === 'Other' && input.catOther) ? (String(input.catOther).trim().slice(0, 60) || 'Other') : (CATS.includes(input.cat) ? input.cat : 'Other'),
         by: myName, byEmail: identity.email,
         status: 'Submitted', eta: '',
         ballots: [{ e: identity.email, v: 1 }],
