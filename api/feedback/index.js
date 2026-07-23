@@ -157,6 +157,7 @@ module.exports = async function (context, req) {
         cGif = { url: String(input.gif.url).slice(0, 500), width: Number(input.gif.width) || 0, height: Number(input.gif.height) || 0, title: String(input.gif.title || 'gif').slice(0, 200) };
       }
       if (!text && !cGif) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'comment text is required' }) }; return; }
+      const parentId = input.parentId ? String(input.parentId).slice(0, 80) : null;
       const comment = { id: 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), by: myName, byEmail: identity.email, text, createdAt: new Date().toISOString() };
       if (cGif) comment.gif = cGif;
       // One doc per post holds all its comments, so appending is a read-modify-write on that
@@ -168,6 +169,9 @@ module.exports = async function (context, req) {
         const exists = cur.status === 200;
         const etag = exists ? cur.body._etag : null;
         const doc = exists ? strip(cur.body) : { id: input.id, comments: [] };
+        // single-level threading: a reply attaches to a top-level comment; a reply to a reply
+        // is normalized up to that reply's parent so nesting never exceeds one level.
+        if (parentId) { const p = (doc.comments || []).find(c => c.id === parentId); comment.parentId = p && p.parentId ? p.parentId : parentId; }
         doc.comments = [...(doc.comments || []), comment];
         const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: etag || undefined });
         if (wr.status === 200 || wr.status === 201) { saved = strip(wr.body); break; }
@@ -187,12 +191,42 @@ module.exports = async function (context, req) {
       const doc = strip(cur.body);
       const target = (doc.comments || []).find(c => c.id === input.commentId);
       if (!target) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'comment not found' }) }; return; }
-      // A commenter may delete their own; admins may delete any.
-      if (!admin && target.byEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed' }) }; return; }
+      // A commenter may delete their own. Only the author may delete a comment.
+      if (target.byEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed' }) }; return; }
       doc.comments = (doc.comments || []).filter(c => c.id !== input.commentId);
       const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: cur.body._etag });
       if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: wr.status }) }; return; }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments: strip(wr.body).comments || [] }) };
+      return;
+    }
+
+    if (input.action === 'reactComment') {
+      if (!input.id || !input.commentId) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id and commentId are required' }) }; return; }
+      const REACTIONS = ['heart', 'up', 'down', 'laugh', 'fire'];
+      if (!REACTIONS.includes(input.emoji)) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'invalid reaction' }) }; return; }
+      const cColl = collPath('feedbackComments');
+      // read-modify-write on the one comments doc, etag-guarded + retried, same as addComment.
+      let saved = null;
+      for (let attempt = 0; attempt < 4 && !saved; attempt++) {
+        const cur = await cosmos({ verb: 'GET', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id });
+        if (cur.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'no comments' }) }; return; }
+        const doc = strip(cur.body);
+        const target = (doc.comments || []).find(c => c.id === input.commentId);
+        if (!target) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'comment not found' }) }; return; }
+        const r = target.reactions || {};
+        // one reaction per person: clear this person from every emoji first, then set the chosen
+        // one — unless they already had it, which makes this a toggle-off.
+        const had = (r[input.emoji] || []).includes(identity.email);
+        REACTIONS.forEach(k => { if (r[k]) r[k] = r[k].filter(e => e !== identity.email); });
+        if (!had) r[input.emoji] = [...(r[input.emoji] || []), identity.email];
+        REACTIONS.forEach(k => { if (r[k] && r[k].length === 0) delete r[k]; });
+        target.reactions = r;
+        const wr = await cosmos({ verb: 'POST', resId: cColl, path: `/${cColl}/docs`, body: doc, partitionKey: input.id, upsert: true, ifMatch: cur.body._etag });
+        if (wr.status === 200 || wr.status === 201) { saved = strip(wr.body); break; }
+        if (wr.status !== 412) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'reaction save failed', status: wr.status }) }; return; }
+      }
+      if (!saved) { context.res = { status: 409, headers, body: JSON.stringify({ error: 'Too busy — try again.' }) }; return; }
+      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments: saved.comments || [] }) };
       return;
     }
 

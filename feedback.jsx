@@ -28,6 +28,9 @@ function Feedback({ me, access, flash }) {
   const [commentLoading, setCommentLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [commentBusy, setCommentBusy] = useState(false);
+  const [reactFor, setReactFor] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const pressTimer = React.useRef(null);
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const isAdmin = access.caps.manageUsers;
@@ -113,11 +116,12 @@ function Feedback({ me, access, flash }) {
     const text = commentDraft.trim();
     if ((!text && !commentGif) || commentBusy) return;
     setCommentBusy(true);
-    window.feedbackAction({ action: 'addComment', id, text, ...(commentGif ? { gif: commentGif } : {}) })
+    const parentId = (replyTo && replyTo.id === id) ? replyTo.commentId : undefined;
+    window.feedbackAction({ action: 'addComment', id, text, ...(parentId ? { parentId } : {}), ...(commentGif ? { gif: commentGif } : {}) })
       .then(({ comments }) => {
         setCommentsById(m => ({ ...m, [id]: comments || [] }));
         setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
-        setCommentDraft(''); setCommentGif(null);
+        setCommentDraft(''); setCommentGif(null); setReplyTo(null);
       })
       .catch(e => flash && flash('Couldn’t post comment (' + e.message + ')'))
       .finally(() => setCommentBusy(false));
@@ -131,6 +135,53 @@ function Feedback({ me, access, flash }) {
       .catch(e => flash && flash('Couldn’t delete comment (' + e.message + ')'));
   };
   const fmtWhen = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } };
+  // Reactions: one per person per comment (server-enforced), stored on the comment inside the
+  // one comments doc — no new container. Long-press / sustained click (or right-click) opens the bar.
+  const REACTION_DEFS = [['heart', '❤️'], ['up', '👍'], ['down', '👎'], ['laugh', '😂'], ['fire', '🔥']];
+  const reactComment = (id, commentId, emoji) => {
+    setReactFor(null);
+    window.feedbackAction({ action: 'reactComment', id, commentId, emoji })
+      .then(({ comments }) => setCommentsById(m => ({ ...m, [id]: comments || [] })))
+      .catch(e => flash && flash('Couldn’t react (' + e.message + ')'));
+  };
+  const renderComment = (postId, c, isReply) => {
+    const mine = (c.byEmail || '').toLowerCase() === myEmail;
+    const reactions = c.reactions || {};
+    const has = (k) => (reactions[k] || []).some(e => (e || '').toLowerCase() === myEmail);
+    const startPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); pressTimer.current = setTimeout(() => setReactFor(c.id), 450); };
+    const endPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+    return (
+      <div style={{ position: 'relative' }}>
+        <div onPointerDown={startPress} onPointerUp={endPress} onPointerLeave={endPress} onContextMenu={e => { e.preventDefault(); setReactFor(c.id); }}
+          style={{ display: 'flex', gap: 8, alignItems: 'flex-start', touchAction: 'pan-y' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{c.by}</span> · {fmtWhen(c.createdAt)}</div>
+            <p style={{ fontSize: 13.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
+            {c.gif && c.gif.url && <img src={c.gif.url} alt={c.gif.title || 'gif'} style={{ maxWidth: 220, maxHeight: 170, borderRadius: 'var(--r-md)', display: 'block', marginTop: 6, border: '1px solid var(--line)' }} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {REACTION_DEFS.filter(([k]) => (reactions[k] || []).length).map(([k, e]) => (
+                <button key={k} onClick={() => reactComment(postId, c.id, k)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: '1px solid', borderColor: has(k) ? 'var(--accent)' : 'var(--line)', background: has(k) ? 'var(--accent-soft)' : 'var(--surface)', color: 'var(--ink-2)', borderRadius: 999, padding: '1px 8px', fontSize: 12, cursor: 'pointer', lineHeight: 1.7 }}>
+                  <span>{e}</span><span className="mono">{(reactions[k] || []).length}</span>
+                </button>
+              ))}
+              {!isReply && <button onClick={() => setReplyTo({ id: postId, commentId: c.id, name: c.by })} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>Reply</button>}
+            </div>
+          </div>
+          {mine && <button onClick={() => deleteComment(postId, c.id)} title="Delete" style={{ flex: 'none', border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 2, display: 'inline-flex' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>}
+        </div>
+        {reactFor === c.id && (<>
+          {ReactDOM.createPortal(<div onClick={() => setReactFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />, document.body)}
+          <div style={{ position: 'relative', zIndex: 41, display: 'inline-flex', gap: 2, marginTop: 6, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 999, background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
+            {REACTION_DEFS.map(([k, e]) => (
+              <button key={k} onClick={() => reactComment(postId, c.id, k)} title={k}
+                style={{ border: 'none', background: has(k) ? 'var(--accent-soft)' : 'none', borderRadius: 8, cursor: 'pointer', fontSize: 19, padding: '3px 6px', lineHeight: 1 }}>{e}</button>
+            ))}
+          </div>
+        </>)}
+      </div>
+    );
+  };
   const downloadAttachment = (it) => {
     window.feedbackAction({ action: 'getAttachment', id: it.id })
       .then(r => {
@@ -264,21 +315,30 @@ function Feedback({ me, access, flash }) {
                     <div style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
                       {commentLoading && !commentsById[it.id] && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {(commentsById[it.id] || []).map(c => (
-                          <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{c.by}</span> · {fmtWhen(c.createdAt)}</div>
-                              <p style={{ fontSize: 13.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
-                              {c.gif && c.gif.url && <img src={c.gif.url} alt={c.gif.title || 'gif'} style={{ maxWidth: 220, maxHeight: 170, borderRadius: 'var(--r-md)', display: 'block', marginTop: 6, border: '1px solid var(--line)' }} />}
+                        {(commentsById[it.id] || []).filter(c => !c.parentId).map(c => {
+                          const replies = (commentsById[it.id] || []).filter(r => r.parentId === c.id);
+                          return (
+                            <div key={c.id}>
+                              {renderComment(it.id, c, false)}
+                              {replies.length > 0 && (
+                                <div style={{ marginLeft: 13, paddingLeft: 13, borderLeft: '2px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                                  {replies.map(r => renderComment(it.id, r, true))}
+                                </div>
+                              )}
                             </div>
-                            {(isAdmin || (c.byEmail || '').toLowerCase() === myEmail) && <button onClick={() => deleteComment(it.id, c.id)} title="Delete" style={{ flex: 'none', border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 2, display: 'inline-flex' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>}
-                          </div>
-                        ))}
+                          );
+                        })}
                         {commentsById[it.id] && commentsById[it.id].length === 0 && !commentLoading && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>No comments yet.</div>}
                       </div>
-                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                        <input value={commentDraft} onChange={e => onCommentChange(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder="Add a comment…" style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
-                        <button className="btn btn-primary" disabled={(!commentDraft.trim() && !commentGif) || commentBusy} onClick={() => postComment(it.id)}>Post</button>
+                      {replyTo && replyTo.id === it.id && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 12.5, color: 'var(--ink-2)' }}>
+                          <Icon name="comment" style={{ width: 12, height: 12 }} /> Replying to <b>{replyTo.name}</b>
+                          <button onClick={() => setReplyTo(null)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', display: 'inline-flex', padding: 2 }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 8, marginTop: (replyTo && replyTo.id === it.id) ? 6 : 12 }}>
+                        <input value={commentDraft} onChange={e => onCommentChange(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder={(replyTo && replyTo.id === it.id) ? `Reply to ${replyTo.name}…` : 'Add a comment…'} style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
+                        <button className="btn btn-primary" disabled={(!commentDraft.trim() && !commentGif) || commentBusy} onClick={() => postComment(it.id)}>{(replyTo && replyTo.id === it.id) ? 'Reply' : 'Post'}</button>
                       </div>
                       {commentGif && (
                         <div style={{ position: 'relative', display: 'inline-block', marginTop: 8 }}>
