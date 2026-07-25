@@ -92,11 +92,8 @@ const JD_TEMPLATES = {
 const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
 const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR — only this address may approve+send, enforced server-side too
 
-/* Documents available to attach from Google Drive / Shared Drives (simulated until
-   the Drive integration is connected). */
-const DRIVE_FILES = [
-  { name: 'Dental Hygienist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
-  { name: 'Associate Dentist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
+/* Google Drive is not connected. Until it is, the Drive tabs show a "not connected"
+   state and only device upload works — no hardcoded file list. */
   { name: 'Front Desk Coordinator — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
   { name: 'Insurance & Billing Specialist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
   { name: 'Dental Assistant — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
@@ -111,13 +108,10 @@ const DRIVE_FILES = [
   { name: 'Recruiting — Candidate Scorecard.pdf', drive: 'mydrive', loc: 'My Drive' },
 ];
 
-function AttachPicker({ driveOn, onPick, onClose }) {
+function AttachPicker({ driveOn, onPick, onClose }) {   // driveOn is inert: Drive is not connected, so the Drive tabs always show the not-connected state
   const [tab, setTab] = useState('device');
-  const [q, setQ] = useState('');
   const TABS = [['device', 'This device', 'upload'], ['mydrive', 'My Drive', 'doc'], ['shared', 'Shared Drives', 'users']];
   const onFile = (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; onPick({ name: f.name, kind: 'file', source: 'Upload' }); };
-  const pool = DRIVE_FILES.filter(d => tab === 'mydrive' ? d.drive === 'mydrive' : d.drive === 'shared');
-  const results = pool.filter(d => !q || (d.name + ' ' + d.loc).toLowerCase().includes(q.toLowerCase()));
 
   return (
     <ModalShell onClose={onClose} width={520}>
@@ -144,36 +138,13 @@ function AttachPicker({ driveOn, onPick, onClose }) {
               <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3 }}>PDF, Word, or image</div>
             </div>
           </label>
-        ) : !driveOn ? (
+        ) : (
           <div style={{ textAlign: 'center', padding: '24px 16px' }}>
             <div style={{ width: 46, height: 46, borderRadius: 'var(--r-md)', margin: '0 auto 12px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center' }}><Icon name="link" style={{ width: 22, height: 22 }} /></div>
             <h3 style={{ fontSize: 15.5 }}>Google Drive isn’t connected yet</h3>
             <p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 6, lineHeight: 1.5, maxWidth: 360, marginInline: 'auto' }}>Once an admin connects Google Drive in <b>Admin → Modules</b>, you can search {tab === 'shared' ? 'Shared Drives' : 'My Drive'} for job descriptions, offer templates and forms. For now, upload from this device.</p>
             <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={() => setTab('device')}><Icon name="upload" /> Upload from device</button>
           </div>
-        ) : (
-          <>
-            <div style={{ position: 'relative', marginBottom: 12 }}>
-              <Icon name="search" style={{ width: 15, height: 15, color: 'var(--ink-3)', position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
-              <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder={`Search ${tab === 'shared' ? 'Shared Drives' : 'My Drive'}…`} style={{ ...atsFld, paddingLeft: 34 }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '46vh', overflowY: 'auto' }}>
-              {results.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, padding: '20px 0' }}>No documents match “{q}”.</div>
-                : results.map((d, i) => (
-                  <button key={i} onClick={() => onPick({ name: d.name, kind: 'file', source: tab === 'shared' ? 'Shared Drive' : 'Drive', loc: d.loc })}
-                    style={{ display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 'var(--r-md)', padding: '10px 12px', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--line)'}>
-                    <Icon name="doc" style={{ width: 17, height: 17, color: 'var(--accent-strong)', flex: 'none' }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
-                      <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{d.loc}</div>
-                    </div>
-                    <Icon name="plus" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
-                  </button>
-                ))}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 12, display: 'flex', gap: 6, alignItems: 'center' }}><Icon name="shield" style={{ width: 13, height: 13 }} /> Connected as Pure Dental Workspace · {tab === 'shared' ? 'Shared Drives' : 'My Drive'}</div>
-          </>
         )}
       </div>
     </ModalShell>

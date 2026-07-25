@@ -224,41 +224,15 @@ Have an attorney review any termination involving leave, a complaint, or a prote
   },
 ];
 
-/* Guides & templates library. */
-const HR_GUIDES = [
-  { cat: 'Handbook', icon: 'book', title: 'Employee Handbook (NY/NJ master)', desc: 'Multi-state handbook with NY and NJ addenda — at-will, PTO, sick leave, conduct, and acknowledgment page.', kind: 'Policy', updated: 'Reviewed Q1 2026' },
-  { cat: 'Discipline', icon: 'doc', title: 'Corrective Action / Write-up Form', desc: 'Progressive-discipline template: incident, policy referenced, expectations, employee acknowledgment.', kind: 'Form', updated: '1 page' },
-  { cat: 'Discipline', icon: 'doc', title: 'Performance Improvement Plan (PIP)', desc: '30/60/90-day PIP with measurable goals, check-in dates, and outcomes.', kind: 'Template', updated: '2 pages' },
-  { cat: 'Hiring', icon: 'doc', title: 'Offer Letter (at-will, NY & NJ)', desc: 'Editable offer letter with at-will language, pay basis, and contingency clauses.', kind: 'Template', updated: '1 page' },
-  { cat: 'Hiring', icon: 'shield', title: 'I-9 & E-Verify Checklist', desc: 'Step-by-step Form I-9 completion, acceptable documents, retention, and reverification.', kind: 'Checklist', updated: 'Updated 2026' },
-  { cat: 'Leaves', icon: 'calendar', title: 'NY Paid Sick Leave Policy', desc: 'Compliant accrual, carryover, and use policy for the 100+ employee bracket (56 hours).', kind: 'Policy', updated: 'NY' },
-  { cat: 'Leaves', icon: 'calendar', title: 'NJ Earned Sick Leave Policy', desc: 'Totowa office policy — 1 hour per 30 worked, up to 40 hours/year.', kind: 'Policy', updated: 'NJ' },
-  { cat: 'Leaves', icon: 'heart', title: 'Leave Request & Accommodation Form', desc: 'Single intake for PTO, FMLA/NYPFL, pregnancy, religious, and ADA accommodation requests.', kind: 'Form', updated: '1 page' },
-  { cat: 'Offboarding', icon: 'doc', title: 'Termination Checklist', desc: 'Final pay timing, COBRA/benefits notice, access removal, property return, and documentation.', kind: 'Checklist', updated: 'NY/NJ' },
-  { cat: 'Compliance', icon: 'shield', title: 'OSHA for Dental Practices', desc: 'Bloodborne pathogens, hazard communication, exposure control plan, and annual training log.', kind: 'Guide', updated: 'Dental' },
-  { cat: 'Compliance', icon: 'shield', title: 'HIPAA Workforce Policy', desc: 'PHI handling, minimum-necessary, sanctions, and the annual workforce training acknowledgment.', kind: 'Policy', updated: 'Dental' },
-  { cat: 'Compliance', icon: 'shield', title: 'Anti-Harassment Policy & Training', desc: 'NY State-compliant sexual-harassment policy, complaint form, and annual training requirement.', kind: 'Policy', updated: 'NY' },
-];
+/* Guides & templates library. No seeded guides — the tab shows managers' own uploads
+   only, until a real document store exists. */
+const HR_GUIDES = [];
 
-/* Webinars — on-demand + upcoming live. */
-const HR_WEBINARS = [
-  { live: false, title: 'Documenting Discipline That Holds Up', dur: '38 min', presenter: 'Harper Vance, SPHR', tag: 'Employee Relations', desc: 'How to write warnings and PIPs that protect the practice if a claim is ever filed.' },
-  { live: false, title: 'NY Wage & Hour for Dental Offices', dur: '45 min', presenter: 'Harper Vance, SPHR', tag: 'Compliance', desc: 'Overtime, classification, spread-of-hours, and the Long Island minimum-wage schedule.' },
-  { live: false, title: 'Hiring & Onboarding Without Legal Landmines', dur: '32 min', presenter: 'Harper Vance, SPHR', tag: 'Hiring', desc: 'Interview questions to avoid, I-9 done right, and clean at-will offers.' },
-  { live: false, title: 'Terminations & Final Pay (NY vs NJ)', dur: '29 min', presenter: 'Harper Vance, SPHR', tag: 'Offboarding', desc: 'Run a respectful, defensible exit and get the final paycheck and notices right.' },
-  { live: true, title: 'Live Q&A: 2026 Compliance Changes', when: 'Thu, Jul 9 · 12:00 PM ET', dur: '60 min', presenter: 'Harper Vance, SPHR', tag: 'Live', desc: 'Bring your questions on the 2026 wage, leave, and accommodation updates affecting NY & NJ.' },
-  { live: true, title: 'Live Workshop: Handling Complaints', when: 'Wed, Aug 13 · 12:00 PM ET', dur: '60 min', presenter: 'Harper Vance, SPHR', tag: 'Live', desc: 'A practical framework for taking, investigating, and closing out employee complaints.' },
-];
+/* Webinars — on-demand + upcoming live. No seeded sessions until a real source exists. */
+const HR_WEBINARS = [];
 
-/* Compliance alerts — jurisdiction-specific, clearly dated, framed as "verify". */
-const HR_ALERTS = [
-  { level: 'action', juris: 'NY State', title: '2026 minimum wage step increase', effective: 'Effective Jan 1, 2026', body: 'Long Island (Suffolk & Nassau) and the downstate region step up on the scheduled increase, ahead of the rest of NY. Update pay rates and tipped/youth rates at all NY offices — confirm the current figure before posting.' },
-  { level: 'action', juris: 'NY State', title: 'Paid prenatal leave in effect', effective: 'In effect since 2025', body: 'NY employers must provide paid leave for prenatal medical appointments, in addition to existing sick leave. Confirm the current hour allotment and update the handbook + payroll codes.' },
-  { level: 'review', juris: 'New Jersey', title: 'NJ minimum wage adjustment', effective: 'Effective Jan 1, 2026', body: 'The Totowa office must apply the new NJ statewide minimum for large employers. Confirm the current figure and update payroll for any affected staff.' },
-  { level: 'review', juris: 'Federal', title: 'FLSA salary threshold — status', effective: 'Confirm current', body: 'After the 2024 increase was vacated in court, the exempt salary threshold reverted. Re-check any borderline salaried roles against the figure currently in force — and against NY\'s higher state threshold, which controls when greater.' },
-  { level: 'info', juris: 'NY State', title: 'Annual sexual-harassment training due', effective: 'Annual requirement', body: 'NY requires annual interactive anti-harassment training for every employee. Schedule the 2026 cycle and keep completion records — see the Webinars and Guides tabs for ready materials.' },
-  { level: 'info', juris: 'Dental / OSHA', title: 'Bloodborne pathogens training refresh', effective: 'Annual requirement', body: 'OSHA requires annual bloodborne-pathogens training for clinical staff and a reviewed exposure control plan. Log completion per office in the Learning Library.' },
-];
+/* Compliance alerts — jurisdiction-specific. No seeded alerts until a real feed exists. */
+const HR_ALERTS = [];
 
 Object.assign(window, {
   HR_ADVISOR, HR_JURISDICTIONS, HR_SYSTEM_PROMPT, HR_SUGGESTED,

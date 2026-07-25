@@ -318,6 +318,15 @@ function GuidesTab({ flash }) {
 function WebinarsTab({ flash }) {
   const live = HR_WEBINARS.filter(w => w.live);
   const demand = HR_WEBINARS.filter(w => !w.live);
+  if (!live.length && !demand.length) {
+    return (
+      <div className="card fade-in" style={{ padding: '44px 24px', textAlign: 'center', color: 'var(--ink-3)' }}>
+        <Icon name="play" style={{ width: 30, height: 30, margin: '0 auto 12px', color: 'var(--ink-3)' }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-2)' }}>No webinars yet</div>
+        <div style={{ fontSize: 13, marginTop: 6, maxWidth: 380, marginInline: 'auto', lineHeight: 1.5 }}>Live sessions and the on-demand library will appear here once HR content is connected. For now, ask {HR_ADVISOR.short} anything in the Advisor tab.</div>
+      </div>
+    );
+  }
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
       <div>
@@ -367,6 +376,15 @@ const HR_ALERT_STYLE = {
   info: { label: 'For awareness', color: 'var(--ink-3)', soft: 'var(--surface-2)', icon: 'bell' },
 };
 function ComplianceTab() {
+  if (!HR_ALERTS.length) {
+    return (
+      <div className="card fade-in" style={{ padding: '44px 24px', textAlign: 'center', color: 'var(--ink-3)' }}>
+        <Icon name="shield" style={{ width: 30, height: 30, margin: '0 auto 12px', color: 'var(--ink-3)' }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-2)' }}>No compliance alerts</div>
+        <div style={{ fontSize: 13, marginTop: 6, maxWidth: 400, marginInline: 'auto', lineHeight: 1.5 }}>Jurisdiction-specific alerts for our NY and NJ offices will appear here once a compliance feed is connected. In the meantime, ask {HR_ADVISOR.short} about a specific rule in the Advisor tab.</div>
+      </div>
+    );
+  }
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
       <div className="card" style={{ padding: '14px var(--pad)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--accent-softer)', borderColor: 'var(--accent-soft)' }}>
