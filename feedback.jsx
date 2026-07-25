@@ -64,6 +64,7 @@ function Feedback({ me, access, flash }) {
   const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
   const [planning, setPlanning] = useState(false);
   const [detail, setDetail] = useState(null);
+  const [focusId, setFocusId] = useState(null);
   const isAdmin = access.caps.manageUsers;
   const myEmail = (me.workEmail || me.email || '').toLowerCase();
 
@@ -272,6 +273,29 @@ function Feedback({ me, access, flash }) {
       });
   };
 
+  /* Roadmap card → popup → the real post. Complete/Declined live in History, everything
+     else in Requests. Switch tab, scroll the card into view, ring it briefly. */
+  const openPost = (it) => {
+    const target = (it.status === 'Complete' || it.status === 'Declined') ? 'History' : 'Requests';
+    setDetail(null); setTab(target); setFocusId(it.id);
+  };
+  useEffect(() => {
+    if (!focusId) return;
+    let t2;
+    const t = setTimeout(() => {
+      const el = document.querySelector('[data-fb-id="' + focusId + '"]');
+      if (el) {
+        let sc = el.parentElement;
+        while (sc && sc !== document.body && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        const top = el.getBoundingClientRect().top;
+        if (sc && sc !== document.body) sc.scrollTo({ top: sc.scrollTop + top - sc.getBoundingClientRect().top - 24, behavior: 'smooth' });
+        else window.scrollTo({ top: window.scrollY + top - 90, behavior: 'smooth' });
+      }
+      t2 = setTimeout(() => setFocusId(null), 2200);
+    }, 60);
+    return () => { clearTimeout(t); clearTimeout(t2); };
+  }, [focusId]);
+
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   // Requests = pending only. Completed/Declined move to History.
   const sorted = items.slice().filter(i => i.status !== 'Complete' && i.status !== 'Declined').sort((a, b) => sortMode === 'new' ? (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : ((b.votes || 0) - (a.votes || 0)));
@@ -349,7 +373,7 @@ function Feedback({ me, access, flash }) {
           {!loading && !loadErr && sorted.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {!loading && !loadErr && sorted.map(it => (
-              <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div key={it.id} data-fb-id={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'box-shadow .25s, border-color .25s', ...(focusId === it.id ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' } : null) }}>
                 <VoteBox value={it.votes || 0} mine={myVote[it.id] || 0} up={it.upCount || 0} down={it.downCount || 0} onUp={() => vote(it.id, 'up')} onDown={() => vote(it.id, 'down')} readOnly={!isAdmin} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -437,7 +461,7 @@ function Feedback({ me, access, flash }) {
             {archived.map(it => {
               const declined = it.status === 'Declined';
               return (
-              <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div key={it.id} data-fb-id={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'box-shadow .25s, border-color .25s', ...(focusId === it.id ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' } : null) }}>
                 <Icon name={declined ? 'x' : 'check'} style={{ width: 18, height: 18, color: declined ? 'var(--ink-3)' : 'var(--ok)', flex: 'none', marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -482,11 +506,11 @@ function Feedback({ me, access, flash }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {col.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', padding: '14px', textAlign: 'center', border: '1px dashed var(--line)', borderRadius: 'var(--r-md)' }}>Nothing here yet</div>}
                     {col.map(it => (
-                      <div key={it.id} onClick={() => setDetail(it)} className="card" style={{ padding: '14px var(--pad)', cursor: 'pointer' }}
+                      <div key={it.id} onClick={() => setDetail(it)} className="card" style={{ padding: '14px var(--pad)', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
                         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = ''}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{it.title}</div>
-                        <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>{it.desc}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.title}</div>
+                        <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4, minHeight: '2.8em', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.desc}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 10, flexWrap: 'wrap' }}>
                           <span className="badge badge-todo" style={{ fontSize: 10.5 }}>{it.cat}</span>
                           {it.eta && <span className="badge badge-prog" style={{ fontSize: 10.5 }}><Icon name="calendar" /> {it.eta}</span>}
                           {!it.planned && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>}
@@ -505,10 +529,10 @@ function Feedback({ me, access, flash }) {
       {gifOpen && <GifPicker onPick={g => { if (gifTarget === 'comment') setCommentGif(g); else setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
       {detail && (
         <div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.2 0.03 250 / 0.45)', display: 'grid', placeItems: 'center', padding: '6vh 16px' }}>
-          <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(520px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 'var(--pad)' }}>
+          <div onClick={e => { e.stopPropagation(); openPost(detail); }} title="Open this post" className="card" style={{ width: 'min(520px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 'var(--pad)', cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <h2 style={{ fontSize: 18, flex: 1 }}>{detail.title}</h2>
-              <button className="btn btn-quiet" style={{ padding: 8 }} onClick={() => setDetail(null)}><Icon name="x" /></button>
+              <button className="btn btn-quiet" style={{ padding: 8 }} onClick={e => { e.stopPropagation(); setDetail(null); }}><Icon name="x" /></button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
               <span className={`badge ${FB_TONE[detail.status]}`}>{detail.status}</span>
@@ -518,6 +542,10 @@ function Feedback({ me, access, flash }) {
             </div>
             {detail.desc && <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{detail.desc}</p>}
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 12 }}>Suggested by {detail.by || 'someone'}{detail.commentCount ? ` · ${detail.commentCount} comment${detail.commentCount === 1 ? '' : 's'}` : ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)', fontSize: 12.5, fontWeight: 600, color: 'var(--accent-strong)' }}>
+              Open in {(detail.status === 'Complete' || detail.status === 'Declined') ? 'History' : 'Requests'}
+              <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(-90deg)' }} />
+            </div>
           </div>
         </div>
       )}
