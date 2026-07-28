@@ -1,11 +1,10 @@
 /* api/feedback/index.js — feature requests & roadmap, in Cosmos ("feedback" container, partition key /id).
    GET  /api/feedback  → every request (everyone with a roster account may view — matches the brief:
                          "Anyone can submit and view feature requests; admins set status").
-   POST /api/feedback  → { action: 'submit' | 'vote' | 'update' | 'addPlanned' | 'delete', ... }
+   POST /api/feedback  → { action: 'submit' | 'vote' | 'update' | 'delete', ... }
      submit     — anyone: { title, desc, cat } → creates a request, by = caller's own name (server-resolved)
      vote       — anyone: { id } → adds the caller's email to that doc's voter list (once each, server-enforced)
      update     — admin only: { id, status?, eta? } → stamps completedAt when status becomes 'Complete'
-     addPlanned — admin only: { title, desc, cat, eta } → creates a Planned-status card for the roadmap
      delete     — admin only: { id } → permanently removes a request/planned card
 
    Security mirrors api/accesscontrol: valid Google token, domain lock, caller resolved from the
@@ -311,25 +310,6 @@ module.exports = async function (context, req) {
         }
       }
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, comments: saved.comments || [] }) };
-      return;
-    }
-
-    if (input.action === 'addPlanned') {
-      if (!admin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Admin only' }) }; return; }
-      if (!input.title || !String(input.title).trim()) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'title is required' }) }; return; }
-      const doc = {
-        id: 'fr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-        title: String(input.title).trim().slice(0, 200),
-        desc: String(input.desc || '').trim().slice(0, 2000),
-        cat: CATS.includes(input.cat) ? input.cat : 'Scheduling',
-        by: 'Product', byEmail: identity.email,
-        status: 'Planned', eta: String(input.eta || '').slice(0, 60),
-        ballots: [], planned: true,
-        createdAt: new Date().toISOString(),
-      };
-      const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: doc, partitionKey: doc.id, upsert: true });
-      if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'add failed', status: up.status, detail: up.body }) }; return; }
-      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, item: clean(strip(up.body)) }) };
       return;
     }
 

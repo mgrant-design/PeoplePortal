@@ -1,5 +1,5 @@
 /* feedback.jsx — Feature requests + visual roadmap.
-   Everyone can submit & view; admin sets status / approves / adds planned features.
+   Everyone can submit & view; admin sets status / approves requests.
    Persisted in Cosmos via /api/feedback (see data.jsx: fetchFeedback/feedbackAction). */
 
 const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
@@ -61,8 +61,6 @@ function Feedback({ me, access, flash }) {
   const [reactFor, setReactFor] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const pressTimer = React.useRef(null);
-  const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
-  const [planning, setPlanning] = useState(false);
   const [focusId, setFocusId] = useState(null);
   const isAdmin = access.caps.manageUsers;
   const myEmail = (me.workEmail || me.email || '').toLowerCase();
@@ -234,12 +232,6 @@ function Feedback({ me, access, flash }) {
       })
       .catch(e => flash && flash('Couldn’t download (' + e.message + ')'));
   };
-  const addPlanned = () => {
-    if (!plan.title.trim()) return;
-    window.feedbackAction({ action: 'addPlanned', title: plan.title.trim(), desc: plan.desc.trim(), cat: plan.cat, eta: plan.eta })
-      .then(({ item }) => { setItems(list => [item, ...list]); setPlanning(false); setPlan({ title: '', desc: '', cat: 'Scheduling', eta: '' }); flash && flash('Planned feature added to the roadmap.'); })
-      .catch(e => flash && flash('Couldn’t add (' + e.message + ')'));
-  };
   const setStatus = (id, status) => {
     setItems(list => list.map(i => i.id === id ? { ...i, status } : i));
     window.feedbackAction({ action: 'update', id, status }).catch(e => { flash && flash('Couldn’t update status (' + e.message + ')'); load(); });
@@ -307,7 +299,6 @@ function Feedback({ me, access, flash }) {
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Suggest improvements and see what’s coming next.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {isAdmin && tab === 'Roadmap' && <button className="btn btn-ghost" onClick={() => setPlanning(p => !p)}><Icon name="plus" /> Add planned feature</button>}
           {isAdmin && <button className="btn btn-primary" onClick={() => { setTab('Requests'); setAdding(a => !a); }}><Icon name="plus" /> Submit a request</button>}
         </div>
       </div>
@@ -480,18 +471,6 @@ function Feedback({ me, access, flash }) {
 
       {tab === 'Roadmap' && (
         <>
-          {planning && isAdmin && (
-            <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', borderColor: 'var(--accent)' }}>
-              <h3 style={{ fontSize: 15.5, marginBottom: 12 }}>Add a planned feature</h3>
-              <input value={plan.title} onChange={e => setPlan({ ...plan, title: e.target.value })} placeholder="Feature name" style={{ ...inp, marginBottom: 10, fontWeight: 600 }} />
-              <textarea value={plan.desc} onChange={e => setPlan({ ...plan, desc: e.target.value })} rows={2} placeholder="Description" style={{ ...inp, resize: 'vertical', marginBottom: 10 }} />
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select value={plan.cat} onChange={e => setPlan({ ...plan, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
-                <input value={plan.eta} onChange={e => setPlan({ ...plan, eta: e.target.value })} placeholder="Est. timeline" style={{ ...inp, width: 160 }} />
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button className="btn btn-quiet" onClick={() => setPlanning(false)}>Cancel</button><button className="btn btn-primary" disabled={!plan.title.trim()} onClick={addPlanned}><Icon name="check" /> Add</button></div>
-              </div>
-            </div>
-          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 'var(--gap)' }}>
             {ROADMAP_COLS.map(([status, label]) => {
               const col = items.filter(i => i.status === status).sort((a, b) => (b.votes || 0) - (a.votes || 0));
@@ -512,7 +491,7 @@ function Feedback({ me, access, flash }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 10, flexWrap: 'wrap' }}>
                           <span className="badge badge-todo" style={{ fontSize: 10.5 }}>{it.cat}</span>
                           {it.eta && <span className="badge badge-prog" style={{ fontSize: 10.5 }}><Icon name="calendar" /> {it.eta}</span>}
-                          {!it.planned && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>}
+                          <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>
                           {isAdmin && <button onClick={(e) => { e.stopPropagation(); removeItem(it.id); }} title="Delete" style={{ border: 'none', background: 'none', color: 'oklch(0.55 0.16 25)', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>}
                         </div>
                       </div>
