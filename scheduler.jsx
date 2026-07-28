@@ -29,11 +29,11 @@ function SchedShift({ s, hue, multi, dim, hi, onClick }) {
   const open = !!s.open, off = !!s.offered;
   return (
     <button onClick={onClick} className="sched-shift" style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', position: 'relative',
-      background: open ? 'var(--warn-soft)' : off ? 'oklch(0.95 0.06 320)' : `oklch(0.96 0.05 ${hue})`,
+      background: open ? `color-mix(in oklab, oklch(0.7 0.14 75) 18%, var(--surface))` : off ? `color-mix(in oklab, oklch(0.65 0.16 320) 16%, var(--surface))` : `color-mix(in oklab, oklch(0.65 0.13 ${hue}) 16%, var(--surface))`,
       borderLeft: `3px solid ${open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : `oklch(0.58 0.14 ${hue})`}`,
       borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dim ? 0.35 : 1,
       outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
-      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: open ? 'oklch(0.45 0.12 65)' : off ? 'oklch(0.45 0.15 320)' : `oklch(0.4 0.13 ${hue})` }}>{shiftRange(s)}</span>
+      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : `oklch(0.5 0.14 ${hue})`} 60%, var(--ink))` }}>{shiftRange(s)}</span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
         {open ? 'Open shift' : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
       </span>
@@ -262,7 +262,7 @@ function Scheduler({ me, access, onBack }) {
       put(s._office, { id: e.id, name: e.name, dept: e.department || 'Unassigned', office: s._office });
     });
     return Object.values(groups)
-      .sort((a, b) => a.office.localeCompare(b.office) || a.dept.localeCompare(b.dept))
+      .sort((a, b) => a.dept.localeCompare(b.dept) || a.office.localeCompare(b.office))
       .map(g => ({ ...g, people: g.people.sort((a, b) => a.name.localeCompare(b.name)) }));
   }, [roster, view, focusEmp, shifts, search]);
 
@@ -278,7 +278,7 @@ function Scheduler({ me, access, onBack }) {
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
-      subtitle="Click any slot to add a shift — presets or exact times. Repeat shifts across weeks, copy or template whole weeks, then publish to lock and notify."
+      subtitle="Click any slot to add a shift. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."
       onBack={onBack}
       aside={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -383,15 +383,9 @@ function Scheduler({ me, access, onBack }) {
                 return (
                 <React.Fragment key={gk}>
                   {group.dept && (
-                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `oklch(0.975 0.012 ${deptHue(group.dept)})`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none' }} title={closed ? 'Expand' : 'Collapse'}>
-                      <div style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `oklch(0.42 0.1 ${deptHue(group.dept)})`, display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
-                        {group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}
-                      </div>
-                      {days.map(d => {
-                        const n = group.people.filter(p => cellShifts(p.id, d.date, group.office).length).length;
-                        return <div key={d.date} className="mono" style={{ padding: '6px 5px', textAlign: 'center', borderLeft: '1px solid var(--line-soft)', fontSize: 10.5, fontWeight: 700, color: n ? `oklch(0.42 0.1 ${deptHue(group.dept)})` : 'var(--ink-3)' }}>{n || '–'}</div>;
-                      })}
+                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `color-mix(in oklab, oklch(0.5 0.13 ${deptHue(group.dept)}) 65%, var(--ink))`, background: `color-mix(in oklab, oklch(0.65 0.1 ${deptHue(group.dept)}) 10%, var(--surface))`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }} title={closed ? 'Expand' : 'Collapse'}>
+                      <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
+                      {group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}
                     </div>
                   )}
                   {!closed && group.people.map((p, ri) => (
