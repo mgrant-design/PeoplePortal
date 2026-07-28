@@ -4,7 +4,7 @@
    the by-Department view groups on the employee record's department field.
    Publishing locks per office, per week (D5). Supervisor edits to a published
    week queue for manager approval; the server decides, never the client.
-   No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. */
+   No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. This is not "no x feature" forever situation */
 
 const SCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
 
