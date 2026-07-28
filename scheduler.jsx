@@ -6,7 +6,7 @@
    week queue for manager approval; the server decides, never the client.
    No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. */
 
-const SCHED_VIEWS = [['person', 'By team member'], ['dept', 'By department']];
+const SCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
 
 function schedOffices() {
   const out = [];
@@ -44,12 +44,9 @@ function SchedShift({ s, hue, multi, dim, hi, onClick }) {
 function Scheduler({ me, access, onBack }) {
   const OFFICES = useMemo(() => schedOffices(), []);
   const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
-  const [offices, setOffices] = useState(() => {
-    const mine = me && (me.loc || me.location);
-    return OFFICES.includes(mine) ? [mine] : OFFICES.slice(0, 1);
-  });
+  const [offices, setOffices] = useState(() => OFFICES); // "All" is the default view
   const [weekKey, setWeekKey] = useState(() => thisWeekKey());
-  const [view, setView] = useState('person');
+  const [view, setView] = useState('dept');
   const [docs, setDocs] = useState({});           // office → week doc
   const [requests, setRequests] = useState([]);   // edits / swaps / blackouts, scoped
   const [loading, setLoading] = useState(true);
@@ -58,10 +55,10 @@ function Scheduler({ me, access, onBack }) {
   const [sortBy, setSortBy] = useState('name');   // name | hours
   const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
   const [focusEmp, setFocusEmp] = useState(null);
+  const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
   const [menu, setMenu] = useState(null);         // 'copy' | 'options' | null
   const [tplModal, setTplModal] = useState(null); // 'save' | 'load'
   const [templates, setTemplates] = useState([]);
-  const [insights, setInsights] = useState(false);
   const [toast, setToast] = useState(null);
   const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
 
@@ -81,8 +78,9 @@ function Scheduler({ me, access, onBack }) {
     (r.type === 'edit' && r.status === 'pending') || (r.type === 'swap' && r.status === 'pending') ||
     (r.type === 'blackout' && (r.status === 'hr_review' || r.status === 'mgr_review'))), [requests]);
 
-  const load = () => {
-    setLoading(true);
+  const load = (force) => {
+    if (dirty && !force && !window.confirm('You have unpublished changes — loading discards them. Continue?')) return;
+    repeatsRef.current = []; setDirty(false); setLoading(true);
     Promise.all([
       fetchSchedules({ offices, weekKey }).catch(() => []),
       fetchSchedRequests().catch(() => []),
@@ -94,26 +92,37 @@ function Scheduler({ me, access, onBack }) {
   };
   useEffect(load, [offices.join('|'), weekKey]);
 
-  /* ---- persistence: managers apply immediately; supervisors on a published week
-          queue per-change approvals (server enforces either way) ---- */
+  /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
+          Cosmos until Publish, which saves the week, locks it, and notifies.
+          One exception, because it's an approval queue rather than a save: a
+          SUPERVISOR editing a PUBLISHED week sends each change to the server
+          immediately so the manager can approve or reject it. ---- */
+  const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs; }, [docs]);
+  const [dirty, setDirty] = useState(false);
   const applyLocal = (office, fn) => setDocs(d => {
     const doc = d[office] || { id: `${weekKey}__${office}`, office, weekKey, published: false, shifts: [] };
-    return { ...d, [office]: { ...doc, shifts: fn(doc.shifts || []) } };
+    return { ...d, [office]: { ...doc, shifts: fn(doc.shifts || []), _dirty: true } };
   });
+  /* warn before the tab closes with unpublished local edits */
+  useEffect(() => {
+    const h = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
+  }, [dirty]);
   const oneChange = async (office, change, localFn) => {
-    const doc = docs[office];
-    const queued = doc && doc.published && isSup;
-    if (!queued) applyLocal(office, localFn);
-    try {
-      const res = await schedAction({ action: 'edit', office, weekKey: change.weekKey || weekKey, change });
-      if (res.pending) { flash('Sent to your manager for approval — the schedule updates when they approve.'); fetchSchedRequests().then(setRequests).catch(() => {}); }
-    } catch (e) { flash('Save failed: ' + e.message); load(); }
+    const doc = docsRef.current[office];
+    if (doc && doc.published && isSup) {
+      try {
+        const res = await schedAction({ action: 'edit', office, weekKey: change.weekKey || weekKey, change });
+        if (res.pending) { flash('Sent to your manager for approval — the schedule updates when they approve.'); fetchSchedRequests().then(setRequests).catch(() => {}); }
+      } catch (e) { flash('Change failed: ' + e.message); load(true); }
+      return;
+    }
+    applyLocal(office, localFn); setDirty(true);
   };
-  const saveAll = async (office, nextShifts) => {
-    applyLocal(office, () => nextShifts);
-    try { await schedAction({ action: 'save', office, weekKey, shifts: nextShifts }); }
-    catch (e) { flash('Save failed: ' + e.message); load(); }
-  };
+  const saveAll = async (office, nextShifts) => { applyLocal(office, () => nextShifts); setDirty(true); };
+  /* repeat copies aimed at OTHER weeks: held here until Publish, then written into
+     their own week documents (each week is its own doc in Cosmos) */
+  const repeatsRef = useRef([]); // [{ office, weekKey, shift }]
 
   /* ---- shift form save / delete (incl. repeats §2.2) ---- */
   const saveShift = async (form) => {
@@ -129,9 +138,9 @@ function Scheduler({ me, access, onBack }) {
       const wk = weekKeyOf(date);
       const copy = { ...base, id: newShiftId(), date };
       if (wk === weekKey) await oneChange(form.office, { op: 'add', shift: copy }, list => [...list, copy]);
-      else await schedAction({ action: 'edit', office: form.office, weekKey: wk, change: { op: 'add', shift: copy } }).catch(e => flash('Repeat save failed: ' + e.message));
+      else { repeatsRef.current.push({ office: form.office, weekKey: wk, shift: copy }); setDirty(true); }
     }
-    if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'}.`);
+    if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'} — saved when you publish.`);
   };
   const deleteShift = async (form) => {
     setModal(null);
@@ -141,9 +150,14 @@ function Scheduler({ me, access, onBack }) {
   /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
   const unpubCount = shifts.filter(s => !s.pub).length;
   const publish = async () => {
+    /* save-then-publish, per office: this is the ONLY write path for drafts */
     for (const office of offices) {
-      const doc = docs[office];
+      const doc = docsRef.current[office];
       if (!doc || !(doc.shifts || []).length) continue;
+      if (doc._dirty) {
+        try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
+        catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
+      }
       try {
         const res = await schedAction({ action: 'publish', office, weekKey });
         const n = res.notify; const parts = [];
@@ -151,7 +165,14 @@ function Scheduler({ me, access, onBack }) {
         flash(`${office} week published${parts.length ? ' — team notified via ' + parts.join(' + ') : ''}.`);
       } catch (e) { flash(office + ' publish failed: ' + e.message); }
     }
-    load();
+    /* write the held repeat copies into their future weeks (saved, not published —
+       you publish those weeks when you build them) */
+    for (const r of repeatsRef.current.splice(0)) {
+      try { await schedAction({ action: 'edit', office: r.office, weekKey: r.weekKey, change: { op: 'add', shift: r.shift } }); }
+      catch (e) { flash(`Repeat for week of ${r.weekKey} failed: ` + e.message); }
+    }
+    setDirty(false);
+    load(true);
   };
 
   /* ---- copy & templates (§3.3) ---- */
@@ -210,22 +231,50 @@ function Scheduler({ me, access, onBack }) {
     return list.sort((a, b) => sortBy === 'hours' ? b.hours - a.hours : a.name.localeCompare(b.name));
   }, [roster, shifts, sortBy]);
 
+  /* ---- row groups ----
+     Dept view: one group per office+department ("Clinical Team — Islandia").
+     Membership = everyone whose HOME office is that office (so unscheduled people
+     have a row to click) PLUS anyone with a shift AT that office this week, even
+     if their home is elsewhere — each row shows only that office's shifts. */
   const rows = useMemo(() => {
     const list = focusEmp ? roster.filter(p => p.id === focusEmp) : roster;
-    if (view === 'person') return [{ dept: null, people: [...list].sort((a, b) => a.name.localeCompare(b.name)) }];
-    const by = {};
-    list.forEach(p => { (by[p.dept] = by[p.dept] || []).push(p); });
-    return Object.keys(by).sort().map(dept => ({ dept, people: by[dept].sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [roster, view, focusEmp]);
+    if (view === 'person') {
+      const seen = new Set();
+      const people = list.filter(p => seen.has(p.id) ? false : seen.add(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+      return [{ office: null, dept: null, people }];
+    }
+    const all = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+    const q = search.trim().toLowerCase();
+    const groups = {};
+    const put = (office, p) => {
+      const k = office + '|' + p.dept;
+      groups[k] = groups[k] || { office, dept: p.dept, people: [] };
+      if (!groups[k].people.some(x => x.id === p.id)) groups[k].people.push(p);
+    };
+    list.forEach(p => { if (!focusEmp || p.id === focusEmp) put(p.office, p); });
+    /* guests: scheduled at an office that isn't their home */
+    shifts.forEach(s => {
+      if (!s.empId) return;
+      const e = all.find(x => x.id === s.empId);
+      if (!e || (e.loc || e.location) === s._office) return;
+      if (q && !(e.name || '').toLowerCase().includes(q)) return;
+      if (focusEmp && e.id !== focusEmp) return;
+      put(s._office, { id: e.id, name: e.name, dept: e.department || 'Unassigned', office: s._office });
+    });
+    return Object.values(groups)
+      .sort((a, b) => a.office.localeCompare(b.office) || a.dept.localeCompare(b.dept))
+      .map(g => ({ ...g, people: g.people.sort((a, b) => a.name.localeCompare(b.name)) }));
+  }, [roster, view, focusEmp, shifts, search]);
 
-  const cellShifts = (pid, date) => shifts.filter(s => s.empId === pid && s.date === date);
+  /* dept view rows show only that group's office; person view shows all selected */
+  const cellShifts = (pid, date, office) => shifts.filter(s => s.empId === pid && s.date === date && (!office || s._office === office));
   const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
   const colTemplate = `200px repeat(7, minmax(96px, 1fr))`;
   const dim = s => statusHi === 'unpub' ? !!s.pub : statusHi === 'open' ? !(s.open || s.offered) : false;
 
-  const toggleOffice = (o) => setOffices(cur => cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
+  const toggleOffice = (o) => setOffices(cur => cur.length === OFFICES.length ? [o] : cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
@@ -234,7 +283,6 @@ function Scheduler({ me, access, onBack }) {
       aside={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" onClick={load} title="Reload changes made by others"><Icon name="refresh" /> Refresh</button>
-          <button className="btn btn-ghost" onClick={() => setInsights(true)}><Icon name="list" /> Insights</button>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-ghost" onClick={() => setMenu(m => m === 'copy' ? null : 'copy')}><Icon name="doc" /> Copy <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(90deg)' }} /></button>
             {menu === 'copy' && <Dropdown onClose={() => setMenu(null)} items={[
@@ -250,7 +298,7 @@ function Scheduler({ me, access, onBack }) {
               ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }, true],
             ]} />}
           </div>
-          <button className="btn btn-primary" disabled={!anySaved} onClick={publish}>
+          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={publish}>
             <Icon name="check" /> Publish{unpubCount ? ` (${unpubCount})` : ''}
           </button>
         </div>
@@ -260,13 +308,21 @@ function Scheduler({ me, access, onBack }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <Icon name="pin" style={{ width: 16, height: 16, color: 'var(--ink-3)' }} />
-          {OFFICES.map(o => (
-            <button key={o} onClick={() => toggleOffice(o)}
-              style={{ border: '1px solid', borderColor: offices.includes(o) ? 'var(--accent)' : 'var(--line)', background: offices.includes(o) ? 'var(--accent-soft)' : 'var(--surface)',
-                color: offices.includes(o) ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              {o}
-            </button>
-          ))}
+          <button onClick={() => setOffices(OFFICES)}
+            style={{ border: '1px solid', borderColor: offices.length === OFFICES.length ? 'var(--accent)' : 'var(--line)', background: offices.length === OFFICES.length ? 'var(--accent-soft)' : 'var(--surface)',
+              color: offices.length === OFFICES.length ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            All
+          </button>
+          {OFFICES.map(o => {
+            const on = offices.length !== OFFICES.length && offices.includes(o);
+            return (
+              <button key={o} onClick={() => toggleOffice(o)}
+                style={{ border: '1px solid', borderColor: on ? 'var(--accent)' : 'var(--line)', background: on ? 'var(--accent-soft)' : 'var(--surface)',
+                  color: on ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {o}
+              </button>
+            );
+          })}
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
           <button className="btn btn-quiet" onClick={() => setWeekKey(k => addWeeks(k, -1))} title="Previous week" style={{ padding: '6px 9px' }}><Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(180deg)' }} /></button>
@@ -297,7 +353,7 @@ function Scheduler({ me, access, onBack }) {
                 <Avatar name={p.name} size={28} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${deptHue(p.dept)}), oklch(0.55 0.12 ${deptHue(p.dept)}))` }} />
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                  <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}{multi ? ` · ${p.office}` : ''}</span>
+                  <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}</span>
                 </span>
                 <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.hours ? 'var(--ink)' : 'var(--ink-3)' }}>{p.hours}h</span>
               </button>
@@ -321,28 +377,34 @@ function Scheduler({ me, access, onBack }) {
                 ))}
               </div>
 
-              {rows.map(group => (
-                <React.Fragment key={group.dept || 'all'}>
+              {rows.map(group => {
+                const gk = group.office + '|' + group.dept;
+                const closed = !!collapsed[gk];
+                return (
+                <React.Fragment key={gk}>
                   {group.dept && (
-                    <div style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `oklch(0.975 0.012 ${deptHue(group.dept)})`, borderBottom: '1px solid var(--line)' }}>
-                      <div style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `oklch(0.42 0.1 ${deptHue(group.dept)})` }}>{group.dept}</div>
+                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `oklch(0.975 0.012 ${deptHue(group.dept)})`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none' }} title={closed ? 'Expand' : 'Collapse'}>
+                      <div style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `oklch(0.42 0.1 ${deptHue(group.dept)})`, display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
+                        {group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}
+                      </div>
                       {days.map(d => {
-                        const n = group.people.filter(p => cellShifts(p.id, d.date).length).length;
+                        const n = group.people.filter(p => cellShifts(p.id, d.date, group.office).length).length;
                         return <div key={d.date} className="mono" style={{ padding: '6px 5px', textAlign: 'center', borderLeft: '1px solid var(--line-soft)', fontSize: 10.5, fontWeight: 700, color: n ? `oklch(0.42 0.1 ${deptHue(group.dept)})` : 'var(--ink-3)' }}>{n || '–'}</div>;
                       })}
                     </div>
                   )}
-                  {group.people.map((p, ri) => (
+                  {!closed && group.people.map((p, ri) => (
                     <div key={p.id + p.office} style={{ display: 'grid', gridTemplateColumns: colTemplate, borderBottom: '1px solid var(--line-soft)' }}>
                       <div style={{ padding: '8px 13px', display: 'flex', alignItems: 'center', gap: 9, borderRight: '1px solid var(--line)', minWidth: 0 }}>
                         <Avatar name={p.name} size={28} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${deptHue(p.dept)}), oklch(0.55 0.12 ${deptHue(p.dept)}))` }} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                          <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{view === 'person' ? p.dept : ''}{multi ? (view === 'person' ? ' · ' : '') + p.office : ''}</div>
+                          {view === 'person' && <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}</div>}
                         </div>
                       </div>
                       {days.map(d => {
-                        const list = cellShifts(p.id, d.date);
+                        const list = cellShifts(p.id, d.date, group.office);
                         const bo = boFor(p.id, d.date);
                         const isEmpty = list.length === 0;
                         return (
@@ -352,7 +414,7 @@ function Scheduler({ me, access, onBack }) {
                               background: bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
                               outline: statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
+                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
                             {isEmpty && <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: 0.3 }}><Icon name="plus" style={{ width: 13, height: 13 }} /></div>}
                           </div>
                         );
@@ -360,7 +422,8 @@ function Scheduler({ me, access, onBack }) {
                     </div>
                   ))}
                 </React.Fragment>
-              ))}
+                );
+              })}
               {roster.length === 0 && <div style={{ padding: 36, textAlign: 'center', color: 'var(--ink-3)', fontSize: 14 }}>{loading ? 'Loading…' : 'No active employees at the selected office(s).'}</div>}
             </div>
           </div>
@@ -381,7 +444,6 @@ function Scheduler({ me, access, onBack }) {
       {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
       {tplModal === 'save' && <NameModal title="Save week as template" hint={`Saves ${offices[0]}'s currently displayed week as a reusable setup.`} onSave={saveTemplate} onClose={() => setTplModal(null)} />}
       {tplModal === 'load' && <LoadTplModal office={offices[0]} templates={templates} onPick={loadTemplate} onDelete={async t => { try { await schedAction({ action: 'template_delete', office: offices[0], id: t.id }); setTemplates(x => x.filter(y => y.id !== t.id)); } catch (e) { flash(e.message); } }} onClose={() => setTplModal(null)} />}
-      {insights && <InsightsModal offices={offices} days={days} shifts={shifts} onClose={() => setInsights(false)} />}
 
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -409,6 +471,11 @@ function Dropdown({ items, onClose }) {
   );
 }
 
+/* modals render through a portal to document.body: an ancestor with a CSS transform
+   makes position:fixed anchor to that ancestor instead of the viewport, which is why
+   the popup was landing mid-scroll-area instead of mid-screen */
+function SchedPortal({ children }) { return ReactDOM.createPortal(children, document.body); }
+
 /* ---- the shift form (§2.1, §2.2, §2.3): presets + typed times, repeats,
         conflict warning that never blocks ---- */
 function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, onClose }) {
@@ -422,7 +489,11 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
   const [repeat, setRepeat] = useState('none');
   const [repeatN, setRepeatN] = useState(3);
   const team = officeRoster(office);
-  const emp = team.find(p => p.id === empId);
+  const others = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
+    .filter(e => e.status === 'Active' && (e.loc || e.location) !== office && !['', 'Unassigned'].includes(e.loc || e.location || ''))
+    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const emp = team.find(p => p.id === empId) || others.find(p => p.id === empId);
 
   const conflict = useMemo(() => open || !empId ? { shifts: [], blackout: null } :
     shiftConflicts({ shifts: weekShifts, blackouts, empId, date, start, end, excludeId: s && s.id }),
@@ -432,7 +503,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
 
   const preset = SHIFT_PRESETS.find(p => p.start === start && p.end === end);
   return (
-    <>
+    <SchedPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
       <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -454,7 +525,12 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
             <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Employee
               <select value={empId} onChange={e => setEmpId(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
                 <option value="">— pick —</option>
-                {team.map(p => <option key={p.id} value={p.id}>{p.name} · {p.dept}</option>)}
+                <optgroup label={office}>
+                  {team.map(p => <option key={p.id} value={p.id}>{p.name} · {p.dept}</option>)}
+                </optgroup>
+                <optgroup label="Other offices">
+                  {others.map(p => <option key={p.id} value={p.id}>{p.name} · {p.office}</option>)}
+                </optgroup>
               </select>
             </label>
             {s && (
@@ -467,7 +543,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
           </label>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 6 }}>Time — pick a preset or type exact times (D10)</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 6 }}>Time — pick a preset or type exact times</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
               {SHIFT_PRESETS.map(p => (
                 <button key={p.label} onClick={() => { setStart(p.start); setEnd(p.end); }}
@@ -485,7 +561,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
           </div>
           {!s && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Repeat (§2.2)
+              <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Repeat
                 <select value={repeat} onChange={e => setRepeat(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
                   <option value="none">Don’t repeat</option>
                   <option value="daily">Daily — following days</option>
@@ -504,7 +580,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
               <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Conflict</b>
               {conflict.shifts.map(c => <div key={c.id}>{emp ? emp.name : 'They'} already work{emp ? 's' : ''} {shiftRange(c)} this day{c._office && c._office !== office ? ` at ${c._office}` : ''}.</div>)}
               {conflict.blackout && <div>{emp ? emp.name : 'This person'} has an approved blackout on {date}.</div>}
-              <div style={{ marginTop: 4, fontWeight: 600 }}>You can still save — the warning never blocks (§2.3).</div>
+              <div style={{ marginTop: 4, fontWeight: 600 }}>You can still save — the warning never blocks.</div>
             </div>
           )}
         </div>
@@ -517,7 +593,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
           </button>
         </div>
       </div>
-    </>
+    </SchedPortal>
   );
 }
 
@@ -601,37 +677,6 @@ function LoadTplModal({ office, templates, onPick, onDelete, onClose }) {
         ))}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ---- Insights (§3.3, D12): ACTUAL staffing counts by department and day —
-        no targets, no gap badges, no wage or sales panels ---- */
-function InsightsModal({ offices, days, shifts, onClose }) {
-  const roster = offices.flatMap(officeRoster);
-  const byId = Object.fromEntries(roster.map(p => [p.id, p]));
-  const depts = [...new Set(roster.map(p => p.dept))].sort();
-  const count = (dept, date) => new Set(shifts.filter(s => !s.open && s.date === date && byId[s.empId] && byId[s.empId].dept === dept).map(s => s.empId)).size;
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(620px, 94vw)', maxHeight: '88vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h3 style={{ fontSize: 17 }}>Insights — actual staffing</h3>
-          <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
-        </div>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>People scheduled per department per day across {offices.join(', ')}. Counts only — no targets (D12).</p>
-        <div style={{ display: 'grid', gridTemplateColumns: `130px repeat(7, 1fr)`, gap: 1, background: 'var(--line-soft)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', overflow: 'hidden', fontSize: 12 }}>
-          <div style={{ background: 'var(--surface-2)', padding: '7px 10px', fontWeight: 700 }}>Dept</div>
-          {days.map(d => <div key={d.date} style={{ background: 'var(--surface-2)', padding: '7px 4px', textAlign: 'center', fontWeight: 700 }}>{d.dname}</div>)}
-          {depts.map(dept => (
-            <React.Fragment key={dept}>
-              <div style={{ background: 'var(--surface)', padding: '7px 10px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dept}</div>
-              {days.map(d => { const n = count(dept, d.date); return <div key={d.date} className="mono" style={{ background: n ? `oklch(${Math.max(0.85, 0.97 - n * 0.03)} 0.05 ${deptHue(dept)})` : 'var(--surface)', padding: '7px 4px', textAlign: 'center', fontWeight: 700, color: n ? 'var(--ink)' : 'var(--ink-3)' }}>{n || '–'}</div>; })}
-            </React.Fragment>
-          ))}
         </div>
       </div>
     </>
