@@ -179,28 +179,7 @@ const BENEFITS = [
   ]},
 ];
 
-/* ---- Scheduling module seed data ---- */
-const SCHED_ROLES = ['Dentist', 'RDH', 'DA', 'Front Desk'];
-/* Coverage requirements per office (role -> count). Empty by default — managers
-   configure per office; no requirement means no gap is flagged. */
-const COVERAGE_REQS = {};
-const WEEKEND_REQS = {};
-const SHIFT_TEMPLATES = [
-  { id: 's-open', label: 'Opening', start: '7:00', end: '3:00', hue: 195 },
-  { id: 's-mid',  label: 'Mid', start: '9:00', end: '5:00', hue: 220 },
-  { id: 's-close',label: 'Closing', start: '11:00', end: '7:00', hue: 280 },
-  { id: 's-half', label: 'Half day', start: '8:00', end: '12:00', hue: 150 },
-];
-/* Current week, Mon–Sat (labels like "Mon 22") — generated, not hardcoded. */
-const WEEK_DAYS = (() => {
-  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const now = new Date();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const out = [];
-  for (let i = 0; i < 6; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); out.push(`${names[d.getDay()]} ${d.getDate()}`); }
-  return out;
-})();
+/* ---- Scheduling moved to sched-core.jsx (shift model, week math, /api/schedule client) ---- */
 
 /* ---- feature requests & roadmap (talks to the /api/feedback Function) ---- */
 async function fetchFeedback() {
@@ -231,61 +210,8 @@ async function searchGifs(q) {
   return data.gifs || [];
 }
 
-/* This week's stable key — the Monday's date (YYYY-MM-DD). Shared by the scheduler
-   builder and My schedule so both read & write the same week. */
-const WEEK_KEY = (() => {
-  const now = new Date();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const z = n => String(n).padStart(2, '0');
-  return `${monday.getFullYear()}-${z(monday.getMonth() + 1)}-${z(monday.getDate())}`;
-})();
-
-/* ---- schedule persistence API (talks to the /api/schedule Function) ----
-   Sends the Google token the same way /api/roster does. Outside production (sandbox)
-   there is no /api, so these reject and callers fall back to an empty state. */
-async function fetchSchedules({ office, weekKey } = {}) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const qs = new URLSearchParams();
-  if (office) qs.set('office', office);
-  if (weekKey) qs.set('weekKey', weekKey);
-  const res = await fetch('/api/schedule' + (qs.toString() ? '?' + qs.toString() : ''), { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('schedule read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.schedules || [];
-}
-async function publishSchedule(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/schedule', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('publish failed (' + res.status + ')')); }
-  return res.json();
-}
-
-/* ---- coverage requirements API (talks to the /api/coverage Function) ----
-   Per-office weekday/weekend role→count targets. Outside production (sandbox)
-   there is no /api, so these reject and callers fall back to empty config. */
-async function fetchCoverage(office) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const qs = office ? '?office=' + encodeURIComponent(office) : '';
-  const res = await fetch('/api/coverage' + qs, { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('coverage read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.coverage || [];
-}
-async function saveCoverage(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/coverage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('save failed (' + res.status + ')')); }
-  return res.json();
-}
+/* This week's stable key, schedule fetch/publish and coverage helpers were re-homed
+   in sched-core.jsx when the scheduler was rebuilt (real date ranges, shift lists). */
 
 /* ---- time-off persistence API (talks to the /api/timeoff Function) ---- */
 async function fetchTimeoff() {
@@ -403,8 +329,7 @@ async function connectNotifications(email, onNotice) {
 
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
-  SCHED_ROLES, COVERAGE_REQS, WEEKEND_REQS, SHIFT_TEMPLATES, WEEK_DAYS, WEEK_KEY, fetchSchedules, publishSchedule, fetchTimeoff, timeoffAction,
-  fetchCoverage, saveCoverage,
+  fetchTimeoff, timeoffAction,
   fetchNotices, sendNotice, markNoticeRead, deleteNotice, restoreNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
   fetchFeedback, feedbackAction, searchGifs,
 });

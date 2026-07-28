@@ -227,21 +227,19 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   const reload = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setReqs).catch(e => flash && flash('Could not load time-off: ' + ((e && e.message) || 'no backend'))); };
   useEffect(() => { reload(); }, []);
 
-  // Open shifts come from published schedules (the builder's open-shifts lane).
+  // Open & offered shifts come from this week's published schedules (new shift-list shape).
   useEffect(() => {
     if (!isMgr || typeof fetchSchedules !== 'function') return;
     let cancelled = false;
-    fetchSchedules({}).then(list => {
+    fetchSchedules({ weekKey: (typeof thisWeekKey === 'function' ? thisWeekKey() : undefined) }).then(list => {
       if (cancelled) return;
-      const tpl = Object.fromEntries((typeof SHIFT_TEMPLATES !== 'undefined' ? SHIFT_TEMPLATES : []).map(t => [t.id, t]));
-      const days = (typeof WEEK_DAYS !== 'undefined' ? WEEK_DAYS : []);
       const byOffice = {};
       list.forEach(s => {
         if (!access.caps.viewAll && s.office !== me.loc) return;
-        Object.entries(s.open || {}).forEach(([d, arr]) => (arr || []).forEach(o => {
-          const t = tpl[o.tpl];
-          (byOffice[s.office] = byOffice[s.office] || []).push({ day: days[d] || ('Day ' + d), time: t ? `${t.start}–${t.end}` : '', label: t ? t.label : 'Open' });
-        }));
+        (s.shifts || []).forEach(o => {
+          if (!o.open && !o.offered) return;
+          (byOffice[s.office] = byOffice[s.office] || []).push({ day: o.date, time: typeof shiftRange === 'function' ? shiftRange(o) : `${o.start}–${o.end}`, label: o.open ? 'Open' : 'Offered' });
+        });
       });
       setOpenByOffice(byOffice);
     }).catch(() => {});

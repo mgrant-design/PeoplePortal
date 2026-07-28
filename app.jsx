@@ -483,7 +483,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'security': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
       case 'modules': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
-      case 'scheduler': return <Scheduler onBack={() => go('dashboard')} />;
+      case 'scheduler': return <Scheduler me={me} access={access} onBack={() => go('dashboard')} />;
       case 'myschedule': return <MySchedule me={me} />;
       // ---- onboarding sub-flow ----
       case 'onboarding':
@@ -722,7 +722,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: true } : n)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onRestore={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: false } : n)); if (typeof restoreNotice === 'function') restoreNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } else if (dl && dl.view === 'feedback') { go('feedback'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: true } : n)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onRestore={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: false } : n)); if (typeof restoreNotice === 'function') restoreNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } else if (dl && (dl.view === 'scheduler' || dl.view === 'myschedule')) { go(dl.view); } else if (dl && dl.view === 'feedback') { go('feedback'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
       {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
