@@ -42,7 +42,7 @@ function Feedback({ me, access, flash }) {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState(null);
   const [myVote, setMyVote] = useState({});
-  const [sortMode, setSortMode] = useState('top');
+  const [sortMode, setSortMode] = useState('grouped');
   const [tab, setTab] = useState('Requests');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other', catOther: '' });
@@ -289,7 +289,28 @@ function Feedback({ me, access, flash }) {
 
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   // Requests = pending only. Completed/Declined move to History.
-  const sorted = items.slice().filter(i => i.status !== 'Complete' && i.status !== 'Declined').sort((a, b) => sortMode === 'new' ? (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : ((b.votes || 0) - (a.votes || 0)));
+  const now = Date.now();
+  const pending = items.filter(i => i.status !== 'Complete' && i.status !== 'Declined');
+  const ageMs = it => now - new Date(it.createdAt || 0).getTime();
+  const byNew = (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  const byVotes = (a, b) => (b.votes || 0) - (a.votes || 0) || byNew(a, b);
+  // Trending: net votes decayed by age (hours), reddit-style gravity.
+  const hot = it => (it.votes || 0) / Math.pow(ageMs(it) / 3.6e6 + 2, 1.5);
+  const byHot = (a, b) => hot(b) - hot(a);
+  const WEEK = 7 * 864e5;
+  let sections;
+  if (sortMode === 'grouped') {
+    const fresh = pending.filter(i => ageMs(i) <= WEEK).slice().sort(byNew);
+    const older = pending.filter(i => ageMs(i) > WEEK).slice().sort(byVotes);
+    sections = [{ label: 'New this week', items: fresh }, { label: 'Established', items: older }].filter(s => s.items.length);
+  } else {
+    const cmp = sortMode === 'trending' ? byHot : sortMode === 'newest' ? byNew : byVotes;
+    sections = [{ label: null, items: pending.slice().sort(cmp) }];
+  }
+  const totalCount = sections.reduce((n, s) => n + s.items.length, 0);
+  const SORTS = [['grouped', 'Grouped', 'sparkle'], ['trending', 'Trending', 'bolt'], ['top', 'Top voted', 'chevron'], ['newest', 'Newest', 'clock']];
+  const curSort = SORTS[Math.max(0, SORTS.findIndex(s => s[0] === sortMode))];
+  const nextSort = SORTS[(SORTS.indexOf(curSort) + 1) % SORTS.length];
 
   return (
     <div className="fade-in">
@@ -351,18 +372,22 @@ function Feedback({ me, access, flash }) {
           )}
           {!loading && !loadErr && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--gap)' }}>
-              <button onClick={() => setSortMode(m => m === 'top' ? 'new' : 'top')} title={sortMode === 'new' ? 'Sorted by newest — tap for top voted' : 'Sorted by top voted — tap for newest'}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-body)', border: '1px solid', borderColor: sortMode === 'new' ? 'var(--accent)' : 'var(--line)', background: sortMode === 'new' ? 'var(--accent-soft)' : 'var(--surface)', color: sortMode === 'new' ? 'var(--accent-strong)' : 'var(--ink-2)' }}>
-                <Icon name={sortMode === 'new' ? 'clock' : 'chevron'} style={{ width: 14, height: 14, transform: sortMode === 'new' ? 'none' : 'rotate(-90deg)' }} />
-                {sortMode === 'new' ? 'Newest' : 'Top voted'}
+              <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Sort:</span>
+              <button onClick={() => setSortMode(nextSort[0])} title={`Sorted by ${curSort[1]} — tap for ${nextSort[1]}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-body)', border: '1px solid', borderColor: 'var(--accent)', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
+                <Icon name={curSort[2]} style={{ width: 14, height: 14, transform: curSort[0] === 'top' ? 'rotate(-90deg)' : 'none' }} />
+                {curSort[1]}
               </button>
             </div>
           )}
           {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Loading…</div>}
           {!loading && loadErr && <div className="card" style={{ padding: 'var(--pad)', color: 'var(--ink-2)', fontSize: 13.5 }}>{loadErr}</div>}
-          {!loading && !loadErr && sorted.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {!loading && !loadErr && sorted.map(it => (
+          {!loading && !loadErr && totalCount === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
+          {!loading && !loadErr && sections.map(sec => (
+            <div key={sec.label || 'all'} style={{ marginBottom: sections.length > 1 ? 18 : 0 }}>
+              {sec.label && <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', margin: '4px 2px 10px' }}>{sec.label} · {sec.items.length}</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {sec.items.map(it => (
               <div key={it.id} data-fb-id={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'box-shadow .25s, border-color .25s', ...(focusId === it.id ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' } : null) }}>
                 <VoteBox value={it.votes || 0} mine={myVote[it.id] || 0} up={it.upCount || 0} down={it.downCount || 0} onUp={() => vote(it.id, 'up')} onDown={() => vote(it.id, 'down')} readOnly={!isAdmin} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -438,8 +463,10 @@ function Feedback({ me, access, flash }) {
                   )}
                 </div>
               </div>
-            ))}
-          </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </>
       )}
 
