@@ -69,7 +69,8 @@ function MySchedule({ me }) {
           list.map(s => (
             <div key={s.id} style={{ borderRadius: 'var(--r-md)', padding: '10px 10px', marginBottom: 6, textAlign: 'left', background: s.offered ? 'oklch(0.95 0.06 320)' : 'var(--accent-softer)', borderLeft: `3px solid ${s.offered ? 'oklch(0.6 0.16 320)' : 'var(--accent)'}` }}>
               <div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{shiftRange(s)}</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{shiftHrs(s)}h · {s._office}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{shiftHrs(s)}h{s.breakMins ? ` · ${breakLabel(s.breakMins)} unpaid break` : ''} · {s._office}</div>
+              {s.note && <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, fontSize: 11, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}><Icon name="chat" style={{ width: 11, height: 11, flex: 'none', marginTop: 1.5 }} /> {s.note}</div>}
               {s._published && !s.offered && !s.open && <button onClick={() => offer(s)} className="btn btn-ghost" style={{ marginTop: 7, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Can’t work — offer it</button>}
               {s.open && <span style={{ display: 'block', marginTop: 6, fontSize: 10.5, fontWeight: 700, color: 'oklch(0.45 0.12 65)' }}>Marked open — yours until a claim is approved</span>}
               {s.offered && (
@@ -106,7 +107,8 @@ function MySchedule({ me }) {
           <div style={{ flex: 1 }}>
             <div className="eyebrow" style={{ marginBottom: 2 }}>Next shift</div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{next.date} · {shiftRange(next)}</div>
-            <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{shiftHrs(next)}h · {next._office}</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{shiftHrs(next)}h{next.breakMins ? ` · ${breakLabel(next.breakMins)} unpaid break` : ''} · {next._office}</div>
+            {next.note && <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, fontSize: 12.5, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.45 }}><Icon name="chat" style={{ width: 13, height: 13, flex: 'none', marginTop: 1.5 }} /> {next.note}</div>}
           </div>
         </div>
       )}

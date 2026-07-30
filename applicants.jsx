@@ -94,19 +94,6 @@ const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pip
 
 /* Google Drive is not connected. Until it is, the Drive tabs show a "not connected"
    state and only device upload works — no hardcoded file list. */
-  { name: 'Front Desk Coordinator — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
-  { name: 'Insurance & Billing Specialist — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
-  { name: 'Dental Assistant — Job Description.pdf', drive: 'shared', loc: 'HR ▸ Job Descriptions' },
-  { name: 'Pure Dental — Benefits Summary 2026.pdf', drive: 'shared', loc: 'HR ▸ Benefits' },
-  { name: 'Offer Letter Template — Hourly.docx', drive: 'shared', loc: 'HR ▸ Templates' },
-  { name: 'Offer Letter Template — Salary.docx', drive: 'shared', loc: 'HR ▸ Templates' },
-  { name: 'Employee Handbook 2026.pdf', drive: 'shared', loc: 'HR ▸ Policies' },
-  { name: 'At-Will Employment Agreement.pdf', drive: 'shared', loc: 'HR ▸ Legal' },
-  { name: 'Working Interview Pay Policy.pdf', drive: 'shared', loc: 'HR ▸ Policies' },
-  { name: 'Direct Deposit Authorization.pdf', drive: 'shared', loc: 'Payroll ▸ Forms' },
-  { name: 'New Hire Checklist.pdf', drive: 'mydrive', loc: 'My Drive' },
-  { name: 'Recruiting — Candidate Scorecard.pdf', drive: 'mydrive', loc: 'My Drive' },
-];
 
 function AttachPicker({ driveOn, onPick, onClose }) {   // driveOn is inert: Drive is not connected, so the Drive tabs always show the not-connected state
   const [tab, setTab] = useState('device');

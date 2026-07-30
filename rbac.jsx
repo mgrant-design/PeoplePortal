@@ -15,6 +15,7 @@ function normLoc(l) {
   if (s.includes('wading')) return 'Wading River';
   if (s.includes('islandia')) return 'Islandia';
   if (s.includes('jersey')) return 'New Jersey';
+  if (s.includes('totowa')) return 'New Jersey';   /* Four Ever Smile Dental Spa — Totowa, NJ */
   if (s.includes('buffalo')) return 'Buffalo';
   return l;
 }

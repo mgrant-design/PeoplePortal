@@ -4,7 +4,7 @@
    the by-Department view groups on the employee record's department field.
    Publishing locks per office, per week (D5). Supervisor edits to a published
    week queue for manager approval; the server decides, never the client.
-   No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. This is not "no x feature" forever situation */
+   No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. */
 
 const SCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
 
@@ -20,23 +20,30 @@ function schedOffices() {
 function officeRoster(office) {
   return (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
     .filter(e => e.status === 'Active' && (e.loc || e.location) === office)
-    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office }));
+    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }));
 }
 const deptHue = (() => { const cache = {}; let i = 0; const hues = [220, 155, 280, 75, 195, 25, 320, 110]; return d => (d in cache ? cache[d] : (cache[d] = hues[i++ % hues.length])); })();
 
-/* one shift block in the grid */
-function SchedShift({ s, hue, multi, dim, hi, onClick }) {
-  const open = !!s.open, off = !!s.offered;
+/* one shift block in the grid.
+   `pub` = published (the committed green state); `ot` = this person's week is over
+   their overtime threshold; `note` shows under the time with a speech bubble. */
+function SchedShift({ s, hue, multi, dim, hi, ot, onClick }) {
+  const open = !!s.open, off = !!s.offered, pub = !!s.pub;
+  const tint = open ? 'oklch(0.7 0.14 75)' : off ? 'oklch(0.65 0.16 320)' : pub ? 'oklch(0.68 0.14 150)' : `oklch(0.65 0.13 ${hue})`;
+  const edge = open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})`;
+  const label = open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : pub ? 'oklch(0.44 0.13 150)' : `oklch(0.5 0.14 ${hue})`;
   return (
     <button onClick={onClick} className="sched-shift" style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', position: 'relative',
-      background: open ? `color-mix(in oklab, oklch(0.7 0.14 75) 18%, var(--surface))` : off ? `color-mix(in oklab, oklch(0.65 0.16 320) 16%, var(--surface))` : `color-mix(in oklab, oklch(0.65 0.13 ${hue}) 16%, var(--surface))`,
-      borderLeft: `3px solid ${open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : `oklch(0.58 0.14 ${hue})`}`,
+      background: `color-mix(in oklab, ${tint} ${pub && !open && !off ? 20 : open ? 18 : 16}%, var(--surface))`,
+      borderLeft: `3px solid ${edge}`,
+      boxShadow: ot ? 'inset 0 0 0 1.5px oklch(0.58 0.19 25)' : 'none',
       borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dim ? 0.35 : 1,
       outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
-      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : `oklch(0.5 0.14 ${hue})`} 60%, var(--ink))` }}>{shiftRange(s)}</span>
+      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}{ot ? <span title="Over their weekly hours" style={{ marginLeft: 4, color: 'oklch(0.55 0.19 25)' }}>⚠</span> : null}</span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
         {open ? 'Open shift' : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
       </span>
+      {s.note && <span style={{ display: 'flex', alignItems: 'flex-start', gap: 3, fontSize: 10, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.35 }}><Icon name="chat" style={{ width: 10, height: 10, flex: 'none', marginTop: 1 }} /> {s.note}</span>}
     </button>
   );
 }
@@ -58,6 +65,9 @@ function Scheduler({ me, access, onBack }) {
   const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
   const [menu, setMenu] = useState(null);         // 'copy' | 'options' | null
   const [tplModal, setTplModal] = useState(null); // 'save' | 'load'
+  const [regOpen, setRegOpen] = useState(false);  // regular-hours editor
+  const [impOpen, setImpOpen] = useState(false);  // Deputy import
+  const [regHours, setRegHours] = useState([]);   // standing weekly-hours profiles
   const [templates, setTemplates] = useState([]);
   const [toast, setToast] = useState(null);
   const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
@@ -69,6 +79,9 @@ function Scheduler({ me, access, onBack }) {
     return r;
   }, [offices, search]);
   const multi = offices.length > 1;
+  /* unfiltered team for the regular-hours picker (the search box scopes the grid, not this) */
+  const allRoster = useMemo(() => offices.flatMap(officeRoster), [offices]);
+  useEffect(() => { fetchRegHours().then(setRegHours).catch(() => setRegHours([])); }, []);
 
   /* every displayed shift, tagged with its office */
   const shifts = useMemo(() => offices.flatMap(o => ((docs[o] && docs[o].shifts) || []).map(s => ({ ...s, _office: o }))), [docs, offices]);
@@ -127,6 +140,8 @@ function Scheduler({ me, access, onBack }) {
   /* ---- shift form save / delete (incl. repeats §2.2) ---- */
   const saveShift = async (form) => {
     const base = { id: form.shift ? form.shift.id : newShiftId(), empId: form.empId, open: form.open || undefined, date: form.date, start: form.start, end: form.end };
+    if (Number(form.breakMins) > 0) base.breakMins = Math.round(Number(form.breakMins));
+    if (String(form.note || '').trim()) base.note = String(form.note).trim().slice(0, 280);
     setModal(null);
     await oneChange(form.office, { op: form.shift ? 'update' : 'add', shift: base }, list => [...list.filter(s => s.id !== base.id), base]);
     /* repeats: daily or weekly × N, each lands in its own week doc via the same
@@ -175,6 +190,33 @@ function Scheduler({ me, access, onBack }) {
     load(true);
   };
 
+  /* ---- fill empty cells from each person's standing regular hours (MH #2) ----
+     Replay only: never touches a cell that already has a shift, never invents times. */
+  const fillFromRegular = async () => {
+    setMenu(null);
+    let added = 0, skipped = 0;
+    for (const office of offices) {
+      const cur = (docs[office] && docs[office].shifts) || [];
+      const team = officeRoster(office);
+      const next = [];
+      team.forEach(p => {
+        if (!regHoursFor(regIndex, p)) { skipped++; return; }
+        days.forEach(d => {
+          const taken = cur.some(s => s.empId === p.id && s.date === d.date) || next.some(s => s.empId === p.id && s.date === d.date);
+          if (taken) return;
+          const reg = regHoursOnDate(regIndex, p, d.date);
+          if (!reg) return;
+          const sh = { id: newShiftId(), empId: p.id, date: d.date, start: reg.start, end: reg.end };
+          if (reg.breakMins > 0) sh.breakMins = reg.breakMins;
+          next.push(sh);
+        });
+      });
+      if (next.length) { await saveAll(office, [...cur, ...next]); added += next.length; }
+    }
+    if (!added) flash(skipped ? 'No regular hours set for anyone in view — set them under Options → Regular hours.' : 'Every slot with regular hours is already filled.');
+    else flash(`Filled ${added} empty slot${added === 1 ? '' : 's'} from regular hours — saved when you publish.`);
+  };
+
   /* ---- copy & templates (§3.3) ---- */
   const copyLastWeek = async () => {
     setMenu(null);
@@ -194,7 +236,7 @@ function Scheduler({ me, access, onBack }) {
   const saveTemplate = async (name) => {
     setTplModal(null);
     const office = offices[0];
-    const tShifts = ((docs[office] && docs[office].shifts) || []).map(s => ({ empId: s.empId, open: s.open, dow: Math.max(0, Math.round((parseISO(s.date) - parseISO(weekKey)) / 86400000)), start: s.start, end: s.end }));
+    const tShifts = ((docs[office] && docs[office].shifts) || []).map(s => ({ empId: s.empId, open: s.open, dow: Math.max(0, Math.round((parseISO(s.date) - parseISO(weekKey)) / 86400000)), start: s.start, end: s.end, breakMins: s.breakMins }));
     try { await schedAction({ action: 'template_save', office, name, shifts: tShifts }); flash(`Template “${name}” saved for ${office}.`); }
     catch (e) { flash('Template save failed: ' + e.message); }
   };
@@ -202,7 +244,7 @@ function Scheduler({ me, access, onBack }) {
     setTplModal(null);
     const office = offices[0];
     const cur = (docs[office] && docs[office].shifts) || [];
-    const added = (tpl.shifts || []).map(s => ({ id: newShiftId(), empId: s.empId, open: s.open || undefined, date: addDaysISO(weekKey, s.dow), start: s.start, end: s.end }));
+    const added = (tpl.shifts || []).map(s => ({ id: newShiftId(), empId: s.empId, open: s.open || undefined, date: addDaysISO(weekKey, s.dow), start: s.start, end: s.end, breakMins: Number(s.breakMins) || undefined }));
     await saveAll(office, [...cur, ...added]);
     flash(`Loaded “${tpl.name}” — ${added.length} shifts added.`);
   };
@@ -226,10 +268,17 @@ function Scheduler({ me, access, onBack }) {
 
   /* ---- per-person totals & sort ---- */
   const hoursOf = pid => shifts.filter(s => s.empId === pid && !s.open).reduce((a, s) => a + shiftHrs(s), 0);
+  /* overtime (MH #5): whose displayed week passes their threshold (own, else standard 40) */
+  const regIndex = useMemo(() => regHoursIndex(regHours), [regHours]);
+  const otIds = useMemo(() => {
+    const set = new Set();
+    allRoster.forEach(p => { if (hoursOf(p.id) > otThreshold(regIndex, p)) set.add(p.id); });
+    return set;
+  }, [allRoster, shifts, regIndex]);
   const sidebar = useMemo(() => {
-    const list = roster.map(p => ({ ...p, hours: Math.round(hoursOf(p.id) * 10) / 10 }));
+    const list = roster.map(p => ({ ...p, hours: Math.round(hoursOf(p.id) * 10) / 10, ot: otIds.has(p.id) }));
     return list.sort((a, b) => sortBy === 'hours' ? b.hours - a.hours : a.name.localeCompare(b.name));
-  }, [roster, shifts, sortBy]);
+  }, [roster, shifts, sortBy, otIds]);
 
   /* ---- row groups ----
      Dept view: one group per office+department ("Clinical Team — Islandia").
@@ -287,6 +336,7 @@ function Scheduler({ me, access, onBack }) {
             <button className="btn btn-ghost" onClick={() => setMenu(m => m === 'copy' ? null : 'copy')}><Icon name="doc" /> Copy <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(90deg)' }} /></button>
             {menu === 'copy' && <Dropdown onClose={() => setMenu(null)} items={[
               ['Copy last week', `Pull ${weekLabel(addWeeks(weekKey, -1))} into this week`, copyLastWeek],
+              ['Fill empties from regular hours', 'Lay each person’s standing hours onto their empty slots only', fillFromRegular],
               ['Save as template…', 'Keep this week as a named setup', () => openTpl('save')],
               ['Load template…', 'Apply a saved setup to this week', () => openTpl('load')],
             ]} />}
@@ -295,6 +345,8 @@ function Scheduler({ me, access, onBack }) {
             <button className="btn btn-ghost" onClick={() => setMenu(m => m === 'options' ? null : 'options')}><Icon name="dots" /> Options</button>
             {menu === 'options' && <Dropdown onClose={() => setMenu(null)} items={[
               ['Mark all shifts open', 'Every displayed shift stays in place but is flagged open — up for grabs', () => bulk('unassign')],
+              ['Regular hours…', 'Set someone’s standing weekly hours and overtime threshold', () => { setMenu(null); setRegOpen(true); }],
+              ['Import from Deputy…', 'Load a Deputy roster export into this week’s schedule', () => { setMenu(null); setImpOpen(true); }],
               ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }, true],
             ]} />}
           </div>
@@ -334,7 +386,7 @@ function Scheduler({ me, access, onBack }) {
             <button key={id} onClick={() => setView(id)} style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', fontSize: 12.5, fontWeight: 600, background: view === id ? 'var(--ink)' : 'var(--surface)', color: view === id ? 'var(--surface)' : 'var(--ink-2)' }}>{label}</button>
           ))}
         </div>
-        {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> Published{isSup ? ' — your edits need manager approval' : ''}</span>}
+        {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</span>}
       </div>
 
       {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
@@ -355,7 +407,7 @@ function Scheduler({ me, access, onBack }) {
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                   <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}</span>
                 </span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.hours ? 'var(--ink)' : 'var(--ink-3)' }}>{p.hours}h</span>
+                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.ot ? 'oklch(0.52 0.18 25)' : p.hours ? 'var(--ink)' : 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 4 }}>{p.ot && <span title={`Over ${otThreshold(regIndex, p)}h this week`} style={{ width: 6, height: 6, borderRadius: '50%', background: 'oklch(0.58 0.19 25)', flex: 'none' }} />}{p.hours}h</span>
               </button>
             ))}
             {sidebar.length === 0 && <div style={{ padding: 16, fontSize: 13, color: 'var(--ink-3)' }}>No one matches.</div>}
@@ -383,9 +435,20 @@ function Scheduler({ me, access, onBack }) {
                 return (
                 <React.Fragment key={gk}>
                   {group.dept && (
-                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `color-mix(in oklab, oklch(0.5 0.13 ${deptHue(group.dept)}) 65%, var(--ink))`, background: `color-mix(in oklab, oklch(0.65 0.1 ${deptHue(group.dept)}) 10%, var(--surface))`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }} title={closed ? 'Expand' : 'Collapse'}>
-                      <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
-                      {group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}
+                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `color-mix(in oklab, oklch(0.65 0.1 ${deptHue(group.dept)}) 10%, var(--surface))`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none' }} title={closed ? 'Expand' : 'Collapse'}>
+                      <div style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `color-mix(in oklab, oklch(0.5 0.13 ${deptHue(group.dept)}) 65%, var(--ink))`, display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minWidth: 0 }}>
+                        <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}</span>
+                      </div>
+                      {days.map(d => {
+                        const ids = new Set(group.people.map(p => p.id));
+                        const n = shifts.filter(s => s.date === d.date && !s.open && ids.has(s.empId) && (!group.office || s._office === group.office)).length;
+                        return (
+                          <div key={d.date} style={{ borderLeft: '1px solid var(--line)', display: 'grid', placeItems: 'center', padding: '4px 2px' }}>
+                            <span className="mono" title={`${n} scheduled`} style={{ fontSize: 10.5, fontWeight: 700, minWidth: 17, textAlign: 'center', padding: '1px 5px', borderRadius: 'var(--r-pill)', color: n ? `color-mix(in oklab, oklch(0.45 0.13 ${deptHue(group.dept)}) 70%, var(--ink))` : 'var(--ink-3)', background: n ? 'color-mix(in oklab, var(--surface) 70%, transparent)' : 'transparent' }}>{n || '·'}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {!closed && group.people.map((p, ri) => (
@@ -408,7 +471,7 @@ function Scheduler({ me, access, onBack }) {
                               background: bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
                               outline: statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
+                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)} onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
                             {isEmpty && <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: 0.3 }}><Icon name="plus" style={{ width: 13, height: 13 }} /></div>}
                           </div>
                         );
@@ -435,7 +498,11 @@ function Scheduler({ me, access, onBack }) {
         </div>
       </div>
 
-      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+      {impOpen && <DeputyImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
+      {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
+        onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
+        onClose={() => setRegOpen(false)} />}
       {tplModal === 'save' && <NameModal title="Save week as template" hint={`Saves ${offices[0]}'s currently displayed week as a reusable setup.`} onSave={saveTemplate} onClose={() => setTplModal(null)} />}
       {tplModal === 'load' && <LoadTplModal office={offices[0]} templates={templates} onPick={loadTemplate} onDelete={async t => { try { await schedAction({ action: 'template_delete', office: offices[0], id: t.id }); setTemplates(x => x.filter(y => y.id !== t.id)); } catch (e) { flash(e.message); } }} onClose={() => setTplModal(null)} />}
 
@@ -472,7 +539,7 @@ function SchedPortal({ children }) { return ReactDOM.createPortal(children, docu
 
 /* ---- the shift form (§2.1, §2.2, §2.3): presets + typed times, repeats,
         conflict warning that never blocks ---- */
-function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, onClose }) {
+function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
   const s = modal.shift;
   const [office, setOffice] = useState(modal.office);
   const [open, setOpen] = useState(s ? !!s.open : false);
@@ -480,12 +547,14 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
   const [date, setDate] = useState(modal.date);
   const [start, setStart] = useState(s ? s.start : '09:00');
   const [end, setEnd] = useState(s ? s.end : '17:00');
+  const [breakMins, setBreakMins] = useState(s ? (Number(s.breakMins) || 0) : DEFAULT_MEAL_BREAK);
+  const [note, setNote] = useState(s ? (s.note || '') : '');
   const [repeat, setRepeat] = useState('none');
   const [repeatN, setRepeatN] = useState(3);
   const team = officeRoster(office);
   const others = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
     .filter(e => e.status === 'Active' && (e.loc || e.location) !== office && !['', 'Unassigned'].includes(e.loc || e.location || ''))
-    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location }))
+    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const emp = team.find(p => p.id === empId) || others.find(p => p.id === empId);
 
@@ -496,6 +565,19 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
   const valid = date && start && end && timeMins(end) > timeMins(start) && empId;
 
   const preset = SHIFT_PRESETS.find(p => p.start === start && p.end === end);
+
+  /* regular hours (MH #2/#5): the person's standing hours for this weekday, and
+     whether this week's total would pass their overtime threshold */
+  const reg = useMemo(() => empId && emp ? regHoursOnDate(regIndex, emp, date) : null, [regIndex, empId, date, emp]);
+  const useReg = () => { if (reg) { setStart(reg.start); setEnd(reg.end); setBreakMins(reg.breakMins); } };
+  const ot = useMemo(() => {
+    if (!empId || open || !valid) return null;
+    const limit = otThreshold(regIndex, emp || { id: empId });
+    const others = (weekShifts || []).filter(x => x.empId === empId && !x.open && x.id !== (s && s.id));
+    const total = others.reduce((a, x) => a + shiftHrs(x), 0) + shiftHrs({ start, end, breakMins });
+    const over = Math.round((total - limit) * 10) / 10;
+    return over > 0 ? { over, limit, total: Math.round(total * 10) / 10 } : null;
+  }, [regIndex, empId, open, valid, weekShifts, start, end, breakMins, emp]);
   return (
     <SchedPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
@@ -508,6 +590,12 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
           <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
         </div>
         <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 13 }}>
+          {ot && (
+            <div style={{ border: '1.5px solid oklch(0.58 0.19 25)', background: 'color-mix(in oklab, oklch(0.6 0.19 25) 10%, var(--surface))', borderRadius: 'var(--r-md)', padding: '10px 13px', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.45 0.16 25)' }}>
+              <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Regular working hours exceeded by {ot.over} {ot.over === 1 ? 'hour' : 'hours'}</b>
+              <div style={{ marginTop: 3 }}>This week would total <b className="mono">{ot.total}h</b> against a {ot.limit}h limit. You can still save.</div>
+            </div>
+          )}
           {offices.length > 1 && !s && (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Office
               <select value={office} onChange={e => { setOffice(e.target.value); setEmpId(''); }} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
@@ -537,7 +625,15 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
           </label>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 6 }}>Time — pick a preset or type exact times</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Time — pick a preset or type exact times</div>
+              {reg && (
+                <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                  Regular hours <span className="mono">{fmt12(reg.start)}–{fmt12(reg.end)}</span>
+                  <button onClick={useReg} className="btn btn-quiet" style={{ marginLeft: 6, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Use</button>
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
               {SHIFT_PRESETS.map(p => (
                 <button key={p.label} onClick={() => { setStart(p.start); setEnd(p.end); }}
@@ -550,8 +646,12 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
               <input type="time" value={start} onChange={e => setStart(e.target.value)} style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
               <span style={{ color: 'var(--ink-3)' }}>→</span>
               <input type="time" value={end} onChange={e => setEnd(e.target.value)} style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
-              <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{valid ? shiftHrs({ start, end }) + 'h' : '—'}</span>
+              <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{valid ? shiftHrs({ start, end, breakMins }) + 'h' : '—'}</span>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 9, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Unpaid break
+              <input type="number" min="0" max="480" step="5" value={breakMins} onChange={e => setBreakMins(Math.max(0, Number(e.target.value) || 0))} className="mono" style={{ width: 68, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
+              <span style={{ fontWeight: 600, color: 'var(--ink-3)' }}>minutes — deducted from the total{breakMins ? ` (${fmt12(start)}–${fmt12(end)} less ${breakLabel(breakMins)})` : ''}</span>
+            </label>
           </div>
           {!s && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -569,6 +669,10 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
               )}
             </div>
           )}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chat" style={{ width: 13, height: 13 }} /> Note for this shift <span style={{ fontWeight: 600, color: 'var(--ink-3)' }}>— the employee sees it once published</span></span>
+            <textarea value={note} onChange={e => setNote(e.target.value.slice(0, 280))} rows="2" placeholder="e.g. Lab case manager — cover front desk at lunch" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)', resize: 'vertical', fontFamily: 'inherit' }}></textarea>
+          </label>
           {hasConflict && (
             <div style={{ border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', borderRadius: 'var(--r-md)', padding: '10px 13px', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.42 0.11 60)' }}>
               <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Conflict</b>
@@ -582,7 +686,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, onSave, onDelete, o
           {s && <button onClick={() => onDelete({ office, shift: s })} className="btn btn-ghost" style={{ color: 'oklch(0.55 0.15 25)' }}><Icon name="trash" /> Delete</button>}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button disabled={!valid} onClick={() => onSave({ office, empId, open, date, start, end, repeat, repeatN, shift: s })} className="btn btn-primary">
+          <button disabled={!valid} onClick={() => onSave({ office, empId, open, date, start, end, breakMins, note, repeat, repeatN, shift: s })} className="btn btn-primary">
             <Icon name="check" /> {hasConflict ? 'Save anyway' : 'Save shift'}
           </button>
         </div>

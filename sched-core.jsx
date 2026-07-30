@@ -2,8 +2,12 @@
    and notifications.jsx. Loaded right after data.jsx.
 
    Shift record (D4): a week doc holds a flat LIST of shifts —
-     { id, empId, date:'YYYY-MM-DD', start:'07:00', end:'15:00',
-       open?:true (unassigned), offered?:true, offeredBy?:empId }
+     { id, empId, date:'YYYY-MM-DD', start:'07:00', end:'15:00', breakMins?:30,
+       note?:'text shown to the employee', open?:true (unassigned),
+       offered?:true, offeredBy?:empId }
+   breakMins is an UNPAID break subtracted from the shift's hours (a 7:00–17:00
+   shift with a 30m meal is 9.5h, not 10h). Absent = 0, so shifts saved before the
+   field existed behave exactly as they did.
    Zero or more shifts per person-day. Times are 24h 'HH:MM' strings.
 
    Week doc (one per office+week, Cosmos `schedules`, partition /office):
@@ -50,7 +54,18 @@ function weekLabel(weekKey) {
 
 /* ---- time helpers ---- */
 function timeMins(t) { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
-function shiftHrs(s) { const len = timeMins(s.end) - timeMins(s.start); return Math.round(Math.max(0, len) / 6) / 10; }
+/* Paid hours for a shift: elapsed time minus the unpaid break. */
+function shiftHrs(s) {
+  const br = Math.max(0, Number(s && s.breakMins) || 0);
+  const len = timeMins(s.end) - timeMins(s.start) - br;
+  return Math.round(Math.max(0, len) / 6) / 10;
+}
+/* "9h 30m"-style label for a break, for places that show the deduction */
+function breakLabel(mins) {
+  const m = Math.max(0, Number(mins) || 0);
+  if (!m) return '';
+  return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ' ' + (m % 60) + 'm' : ''}` : `${m}m`;
+}
 function fmt12(t) {
   let [h, m] = String(t || '').split(':').map(Number);
   if (isNaN(h)) return t || '';
@@ -122,6 +137,6 @@ async function schedAction(body) {
 
 Object.assign(window, {
   SHIFT_PRESETS, weekKeyOf, addDaysISO, addWeeks, thisWeekKey, weekDaysFor, weekLabel, isoDate, parseISO,
-  timeMins, shiftHrs, fmt12, shiftRange, timesOverlap, shiftConflicts, newShiftId,
+  timeMins, shiftHrs, fmt12, shiftRange, timesOverlap, shiftConflicts, newShiftId, breakLabel,
   fetchSchedules, fetchSchedRequests, fetchSchedAccess, fetchSchedTemplates, schedAction,
 });

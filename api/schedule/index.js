@@ -142,6 +142,12 @@ function cleanShift(s) {
   const date = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
   const out = { id: t(s.id), empId: t(s.empId), date: date(s.date), start: time(s.start), end: time(s.end) };
   if (!out.id || !out.date || !out.start || !out.end || (!out.empId && !s.open)) return null;
+  /* unpaid break, subtracted from the shift's hours; absent/0 = no deduction */
+  const br = Number(s.breakMins);
+  if (isFinite(br) && br > 0) out.breakMins = Math.min(480, Math.round(br));
+  /* free-text note on the shift; visible to the employee once the week is published */
+  const note = String(s.note || '').trim().slice(0, 280);
+  if (note) out.note = note;
   if (s.open) out.open = true; /* open = flagged up-for-grabs; it keeps its row's empId as the anchor */
   if (s.pub) out.pub = true; /* stamped at publish; cleared by edits so the Publish button can count unpublished changes */
   if (s.offered) { out.offered = true; out.offeredBy = t(s.offeredBy); }
@@ -370,7 +376,11 @@ module.exports = async function (context, req) {
       const saved = await putWeek({ ...doc, shifts: (doc.shifts || []).map(s => ({ ...s, pub: true })), published: true, publishedBy: identity.email, publishedAt: new Date().toISOString() });
       const shifts = saved.shifts || [];
       const ids = new Set(shifts.filter(s => s.empId).map(s => s.empId));
-      const hours = Math.round(shifts.reduce((a, s) => a + Math.max(0, (parseInt(s.end, 10) * 60 + Number(s.end.split(':')[1]) - parseInt(s.start, 10) * 60 - Number(s.start.split(':')[1]))) / 60, 0));
+      /* paid hours: elapsed minus each shift's unpaid break (same rule as shiftHrs) */
+      const hours = Math.round(shifts.reduce((a, s) => {
+        const mins = (parseInt(s.end, 10) * 60 + Number(s.end.split(':')[1])) - (parseInt(s.start, 10) * 60 + Number(s.start.split(':')[1])) - (Number(s.breakMins) || 0);
+        return a + Math.max(0, mins) / 60;
+      }, 0));
       const scheduled = employees.filter(e => ids.has(e.id));
       const recipients = scheduled.map(e => normPhone(e.mobile || e.personalPhone || e.phone || e.cell)).filter(Boolean);
       let notify = { gchat: false, sms: 0, simulated: true, errors: [] };
@@ -519,6 +529,7 @@ module.exports = async function (context, req) {
         start: /^\d{1,2}:\d{2}$/.test(String(s.start)) ? String(s.start) : '09:00',
         end: /^\d{1,2}:\d{2}$/.test(String(s.end)) ? String(s.end) : '17:00',
         open: !!s.open,
+        breakMins: Math.min(480, Math.max(0, Math.round(Number(s.breakMins) || 0))),
       })).filter(s => s.empId || s.open).slice(0, 400);
       const doc = { id: 'template__' + office.replace(/[^\w-]/g, '_') + '__' + name.toLowerCase().replace(/[^\w-]/g, '_'), template: true, office, name, shifts, savedBy: identity.email, savedAt: new Date().toISOString() };
       const r = await cosmos({ verb: 'POST', resId: SCHEDULES, path: `/${SCHEDULES}/docs`, body: doc, partitionKey: office, upsert: true });
