@@ -92,12 +92,11 @@ const JD_TEMPLATES = {
 const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
 const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR — only this address may approve+send, enforced server-side too
 
-/* Google Drive is not connected. Until it is, the Drive tabs show a "not connected"
-   state and only device upload works — no hardcoded file list. */
+/* Google Drive is not connected — attachments are local uploads only. */
 
-function AttachPicker({ driveOn, onPick, onClose }) {   // driveOn is inert: Drive is not connected, so the Drive tabs always show the not-connected state
-  const [tab, setTab] = useState('device');
-  const TABS = [['device', 'This device', 'upload'], ['mydrive', 'My Drive', 'doc'], ['shared', 'Shared Drives', 'users']];
+/* Attach a document to an offer. Local upload only — there is no Drive integration
+   behind this, so there are no Drive tabs pretending otherwise. */
+function AttachPicker({ onPick, onClose }) {
   const onFile = (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; onPick({ name: f.name, kind: 'file', source: 'Upload' }); };
 
   return (
@@ -106,33 +105,15 @@ function AttachPicker({ driveOn, onPick, onClose }) {   // driveOn is inert: Dri
         <h2 style={{ fontSize: 18 }}>Attach a document</h2>
         <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
       </div>
-      <div style={{ display: 'flex', gap: 4, padding: '10px var(--pad) 0', borderBottom: '1px solid var(--line)' }}>
-        {TABS.map(([id, label, icon]) => (
-          <button key={id} onClick={() => setTab(id)} style={{ border: 'none', background: 'none', padding: '8px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7,
-            color: tab === id ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === id ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>
-            <Icon name={icon} style={{ width: 15, height: 15 }} /> {label}
-          </button>
-        ))}
-      </div>
-
       <div style={{ padding: 'var(--pad)' }}>
-        {tab === 'device' ? (
-          <label style={{ display: 'block', cursor: 'pointer' }}>
-            <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={onFile} style={{ display: 'none' }} />
-            <div style={{ border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '26px 18px', textAlign: 'center', background: 'var(--surface-2)' }}>
-              <Icon name="upload" style={{ width: 24, height: 24, color: 'var(--accent)', margin: '0 auto 8px', display: 'block' }} />
-              <div style={{ fontWeight: 600, fontSize: 14 }}>Drop a file or choose from this device</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3 }}>PDF, Word, or image</div>
-            </div>
-          </label>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '24px 16px' }}>
-            <div style={{ width: 46, height: 46, borderRadius: 'var(--r-md)', margin: '0 auto 12px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center' }}><Icon name="link" style={{ width: 22, height: 22 }} /></div>
-            <h3 style={{ fontSize: 15.5 }}>Google Drive isn’t connected yet</h3>
-            <p style={{ color: 'var(--ink-2)', fontSize: 13, marginTop: 6, lineHeight: 1.5, maxWidth: 360, marginInline: 'auto' }}>Once an admin connects Google Drive in <b>Admin → Modules</b>, you can search {tab === 'shared' ? 'Shared Drives' : 'My Drive'} for job descriptions, offer templates and forms. For now, upload from this device.</p>
-            <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={() => setTab('device')}><Icon name="upload" /> Upload from device</button>
+        <label style={{ display: 'block', cursor: 'pointer' }}>
+          <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={onFile} style={{ display: 'none' }} />
+          <div style={{ border: '1.5px dashed var(--line)', borderRadius: 'var(--r-md)', padding: '26px 18px', textAlign: 'center', background: 'var(--surface-2)' }}>
+            <Icon name="upload" style={{ width: 24, height: 24, color: 'var(--accent)', margin: '0 auto 8px', display: 'block' }} />
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Drop a file or choose from this device</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3 }}>PDF, Word, or image</div>
           </div>
-        )}
+        </label>
       </div>
     </ModalShell>
   );
@@ -366,7 +347,7 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI
 }
 
 /* ------- Offer letter ------- */
-function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, flash }) {
+function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, flash }) {
   const o = a.offer;
   const [sig, setSig] = useState('');
   const [picker, setPicker] = useState(false);
@@ -462,7 +443,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
               : <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Draft ready — {OFFER_EXECUTOR} (HR) will review &amp; send.</span>}
             {canExecute && canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
           </div>
-          {picker && <AttachPicker driveOn={driveOn} onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
+          {picker && <AttachPicker onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
         </>
       ) : pending ? (
         <>
@@ -505,7 +486,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, driveOn, onOffer, onDr
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
+function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
   const myFb = (a.feedback || []).find(f => f.byId === me.id);
   const [fbOpen, setFbOpen] = useState(false);
   const [fbEditing, setFbEditing] = useState(false);
@@ -620,7 +601,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, driveOn, onClose, 
         {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
 
         {/* offer letter */}
-        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} driveOn={driveOn} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} flash={flash} />}
+        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} flash={flash} />}
 
         {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
         {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
@@ -726,7 +707,7 @@ function ApplicantCard({ a, onOpen }) {
 }
 
 /* ------- Main board ------- */
-function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, openApplicantId, onOpenedApplicant }) {
+function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplicantId, onOpenedApplicant }) {
   const offices = useMemo(() => Array.from(new Set([...(window.HR.offices || []).map(o => o.name), me.loc].filter(Boolean))), [me]);
   const [list, setList] = useState(null);
   const [sel, setSel] = useState(null);
@@ -937,7 +918,7 @@ function Applicants({ me, access, parseOn, paychexOn, driveOn, onHire, flash, op
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} driveOn={driveOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
     </div>
   );
 }

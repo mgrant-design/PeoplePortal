@@ -40,9 +40,8 @@ const FLAG_DEFS = [
   { id: 'paychex', label: 'Paychex integration — payroll sync, export & pay rules', group: 'Integrations', note: 'Phase 2 · enable when Paychex API is live' },
   { id: 'provisionApi', label: 'Auto-provision accounts via API — Google, Denticon, NexHealth, DoseSpot', group: 'Integrations', note: 'Off = IT/HR creates accounts manually and records logins. Turn on once the provisioning APIs are connected.' },
   { id: 'resumeParse', label: 'Résumé parsing & import — auto-extract applicant details from uploaded résumés', group: 'Integrations', note: 'Off = enter applicants manually (résumés still attach). Turn on once the parsing service is connected.' },
-  { id: 'gdrive', label: 'Google Drive — browse & attach documents from My Drive and Shared Drives', group: 'Integrations', note: 'Off = attach by local upload only. Turn on once Google Drive is connected to search Drive & Shared Drives for offer letters, job descriptions and forms.' },
 ];
-const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true, gdrive: false };
+const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true };
 const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', automations: 'automations', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
 
 function ComingSoon({ label }) {
@@ -474,7 +473,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
       case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
-      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
+      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
       case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
       case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />; }
