@@ -8,6 +8,75 @@
 
 const SCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
 
+/* How the week grid should be sized, MEASURED rather than guessed from a media query.
+   A viewport breakpoint is wrong here: [data-textsize] is a `zoom` on .main (styles.css),
+   which changes the layout width the grid actually gets by ±10% while the viewport — and
+   so every media query — reads unchanged. Density moves --gap, and [data-font="bold"]
+   uppercases the whole app, widening every label. So we measure the real thing: probe the
+   live font for the width of a shift label and a name, add the chrome around them, and
+   compare against the width .main actually offers.
+
+   Returns px: { narrow, side, name, day, need }. Defaults are today's values, so the
+   first paint before measurement is identical to the current desktop grid. */
+const SCHED_FIT_DEFAULT = { narrow: false, side: 250, name: 200, day: 96, need: 872 };
+function useSchedFit() {
+  const [fit, setFit] = useState(SCHED_FIT_DEFAULT);
+  useEffect(() => {
+    const host = document.querySelector('.main') || document.body;
+    const mk = (css, text) => {
+      const s = document.createElement('span');
+      s.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;' + css;
+      s.textContent = text;
+      host.appendChild(s);
+      return s;
+    };
+    /* widest ordinary shift label, in whatever font is currently active */
+    const chip = mk("font:700 11.5px var(--font-mono,'JetBrains Mono',ui-monospace,monospace)", '11a–7p');
+    let last = null, tid = 0;
+    const decide = () => {
+      tid = 0;
+      const cs = getComputedStyle(host);
+      const avail = host.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap')) || 18;
+      const forced = document.documentElement.classList.contains('pd-mobile-view');
+      /* Two desktop layouts plus the phone one. The name column keeps its original
+         200px in every case — narrowing it was an unannounced regression. Only the day
+         floor and the sidebar give, and only when the measured width demands it. */
+      const dayMin = Math.ceil(chip.offsetWidth) + 27;
+      const WIDE = { narrow: false, side: 250, name: 200, day: 96, need: 200 + 7 * 96 };
+      const TIGHT = { narrow: false, side: 210, name: 200, day: dayMin, need: 200 + 7 * dayMin };
+      const PHONE = { narrow: true, side: 210, name: 200, day: dayMin, need: 200 + 7 * dayMin };
+      const roomFor = c => c.need + c.side + gap;
+      /* Hysteresis (HYST_UP): each switch changes the layout, which changes the available
+         width — without a dead band the states oscillate forever and hang the tab. Moving
+         DOWN to a smaller layout uses the bare threshold; moving back UP needs 40px more. */
+      const prev = last ? JSON.parse(last) : SCHED_FIT_DEFAULT;
+      const rank = f => f.narrow ? 0 : f.side === 250 ? 2 : 1;
+      const HYST_UP = 40;
+      const up = c => avail >= roomFor(c) + HYST_UP;
+      let next;
+      if (forced) next = PHONE;
+      else if (rank(prev) === 2) next = avail >= roomFor(WIDE) ? WIDE : (avail >= roomFor(TIGHT) ? TIGHT : PHONE);
+      else if (rank(prev) === 1) next = up(WIDE) ? WIDE : (avail >= roomFor(TIGHT) ? TIGHT : PHONE);
+      else next = up(WIDE) ? WIDE : (up(TIGHT) ? TIGHT : PHONE);
+      const key = JSON.stringify(next);
+      if (key !== last) { last = key; setFit(next); }
+    };
+    /* coalesce to one measurement per tick — RO can fire several times per layout pass.
+       A timer, not requestAnimationFrame: rAF never fires in a hidden or non-painting tab,
+       which would latch this guard permanently and freeze the layout at its first answer. */
+    const measure = () => { if (!tid) tid = setTimeout(decide, 0); };
+    decide();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    /* appearance.jsx flips these attributes on <html>; each can change the answer */
+    const mo = new MutationObserver(measure);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-textsize', 'data-density', 'data-font', 'data-theme'] });
+    return () => { if (tid) clearTimeout(tid); ro.disconnect(); mo.disconnect(); chip.remove(); };
+  }, []);
+  return fit;
+}
+
 function schedOffices() {
   const out = [];
   (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []).forEach(e => {
@@ -70,6 +139,10 @@ function Scheduler({ me, access, onBack }) {
   const [regHours, setRegHours] = useState([]);   // standing weekly-hours profiles
   const [templates, setTemplates] = useState([]);
   const [toast, setToast] = useState(null);
+  /* phone layout (see useSchedFit): which day is showing, and which sheet is open */
+  const fit = useSchedFit();
+  const narrow = fit.narrow;
+  const [mDay, setMDay] = useState(null);       // ISO date | null = auto (today, else Mon)
   const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
 
   const days = useMemo(() => weekDaysFor(weekKey), [weekKey]);
@@ -320,10 +393,198 @@ function Scheduler({ me, access, onBack }) {
   const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
-  const colTemplate = `200px repeat(7, minmax(96px, 1fr))`;
+  const colTemplate = `${fit.name}px repeat(7, minmax(${fit.day}px, 1fr))`;
   const dim = s => statusHi === 'unpub' ? !!s.pub : statusHi === 'open' ? !(s.open || s.offered) : false;
 
   const toggleOffice = (o) => setOffices(cur => cur.length === OFFICES.length ? [o] : cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
+
+  /* ================= PHONE LAYOUT =================
+     A separate render path, reached only when useSchedFit() says the week grid cannot fit. The desktop
+     return below is untouched: same state, same handlers, same ShiftModal. One axis at a
+     time — a week strip picks the day, the body lists that day's people in one column.
+     Everything here is namespaced .schm-* in styles.css so it cannot reach the desktop. */
+  if (narrow) {
+    const today = isoDate(new Date());
+    const dayISO = mDay && days.some(d => d.date === mDay) ? mDay
+      : (days.some(d => d.date === today) ? today : days[0].date);
+    const dayShifts = (pid, office) => cellShifts(pid, dayISO, office);
+    const nOn = iso => shifts.filter(s => s.date === iso && !s.open).length;
+    const nOpenOn = iso => shifts.filter(s => s.date === iso && (s.open || s.offered)).length;
+    const dayGroups = rows.map(g => {
+      const people = g.people.map(p => ({ p, list: dayShifts(p.id, g.office) }));
+      return { ...g, on: people.filter(x => x.list.length), off: people.filter(x => !x.list.length) };
+    }).filter(g => g.on.length || g.off.length);
+    const dayTotal = dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.filter(s => !s.open).length, 0), 0);
+    const dayHrs = Math.round(dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.reduce((c, s) => c + (s.open ? 0 : shiftHrs(s)), 0), 0), 0) * 10) / 10;
+    const openSlot = (office, empId) => setModal({ office: office || offices[0], empId: empId || null, date: dayISO, shift: null });
+
+    return (
+      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder" onBack={onBack}
+        subtitle="Pick a day, then tap a shift to edit it or Add to create one. Publish saves and notifies.">
+
+        {/* Week: name, back, forward, refresh. No menus anywhere on this screen — every
+           control from the desktop screen is drawn where it belongs. */}
+        <div className="schm-weekrow">
+          <button className="schm-nav" onClick={() => setWeekKey(k => addWeeks(k, -1))} aria-label="Previous week"><Icon name="chevron" style={{ width: 18, height: 18, transform: 'rotate(180deg)' }} /></button>
+          <button className="schm-weeknow" onClick={() => setWeekKey(thisWeekKey())}>
+            <b>{weekLabel(weekKey)}</b>
+            <small>{weekKey === thisWeekKey() ? 'This week' : 'Tap for this week'}</small>
+          </button>
+          <button className="schm-nav" onClick={() => setWeekKey(k => addWeeks(k, 1))} aria-label="Next week"><Icon name="chevron" style={{ width: 18, height: 18 }} /></button>
+          <button className="schm-nav" onClick={load} aria-label="Refresh"><Icon name="refresh" style={{ width: 18, height: 18 }} /></button>
+        </div>
+
+        {/* the four ways to fill a week in from something else */}
+        <div className="schm-acts">
+          <button onClick={copyLastWeek}>Copy last week</button>
+          <button onClick={fillFromRegular}>Fill empties from regular hours</button>
+          <button onClick={() => openTpl('save')}>Save as template</button>
+          <button onClick={() => openTpl('load')}>Load template</button>
+        </div>
+
+        <div className="schm-acts">
+          <button onClick={() => setOffices(OFFICES)} className={offices.length === OFFICES.length ? 'on' : ''}>All</button>
+          {OFFICES.map(o => (
+            <button key={o} onClick={() => toggleOffice(o)} className={offices.length !== OFFICES.length && offices.includes(o) ? 'on' : ''}>{o}</button>
+          ))}
+        </div>
+
+        <div className="schm-seg">
+          {SCHED_VIEWS.map(([id, label]) => (
+            <button key={id} onClick={() => setView(id)} className={view === id ? 'on' : ''}>{label}</button>
+          ))}
+        </div>
+
+        {/* the week, as seven tap targets — the second axis without rendering it */}
+        <div className="schm-strip">
+          {days.map(d => {
+            const on = d.date === dayISO, n = nOn(d.date), o = nOpenOn(d.date);
+            return (
+              <button key={d.date} onClick={() => setMDay(d.date)} className={on ? 'schm-day on' : 'schm-day'}>
+                <span className="schm-day-dow">{d.dname.slice(0, 1)}</span>
+                <span className="schm-day-num">{d.dnum}</span>
+                <span className="schm-day-n">{n || '·'}{o ? <i /> : null}</span>
+                {d.date === today && <span className="schm-day-today" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="schm-status">
+          {[['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open']].map(([id, n, label]) => (
+            <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)} className={statusHi === id ? 'on' : ''}>
+              <b className="mono">{n}</b> {label}
+            </button>
+          ))}
+          <span className="mono schm-status-tot">{dayTotal} today · {dayHrs}h</span>
+        </div>
+
+        {published && anySaved && <div className="schm-note"><Icon name="check" style={{ width: 14, height: 14 }} /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</div>}
+        {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
+
+        {loading ? <div className="schm-empty">Loading…</div> : dayGroups.length === 0 ? (
+          <div className="schm-empty">No one on the roster for this selection.</div>
+        ) : dayGroups.map(g => {
+          const gk = g.office + '|' + g.dept;
+          const closed = !!collapsed[gk];
+          const hue = deptHue(g.dept || 'Unassigned');
+          return (
+            <div className="schm-group" key={gk || 'all'}>
+              <button className="schm-group-head" onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))}
+                style={{ background: `color-mix(in oklab, oklch(0.65 0.1 ${hue}) 8%, var(--surface))`, color: `color-mix(in oklab, oklch(0.5 0.13 ${hue}) 70%, var(--ink))` }}>
+                <Icon name="chevron" style={{ width: 13, height: 13, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
+                <span>{g.dept ? `${g.dept}${multi ? ' — ' + g.office : ''}` : (multi ? offices.length + ' offices' : offices[0])}</span>
+                <small>{g.on.length} on{g.off.length ? ` · ${g.off.length} off` : ''}</small>
+              </button>
+              {!closed && (
+                <>
+                  {g.on.map(({ p, list }) => list.map(s => {
+                    const bo = boFor(p.id, dayISO);
+                    return (
+                      <button key={s.id} className="schm-row" onClick={() => setModal({ office: s._office, empId: p.id, date: dayISO, shift: s })}
+                        style={{ opacity: dim(s) ? 0.35 : 1, borderLeftColor: s.open ? 'var(--warn)' : s.offered ? 'oklch(0.6 0.16 320)' : s.pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})` }}>
+                        <Avatar name={p.name} size={38} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${deptHue(p.dept)}), oklch(0.55 0.12 ${deptHue(p.dept)}))` }} />
+                        <span className="schm-row-txt">
+                          <span className="schm-row-name">{p.name}{otIds.has(p.id) && <em className="schm-ot">OT</em>}</span>
+                          <span className="schm-row-time mono">{shiftRange(s)}</span>
+                          <span className="schm-row-sub">
+                            {s.open ? 'Open shift' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
+                            {multi ? ` · ${s._office}` : ''}{!s.pub && !s.open ? ' · new' : ''}{bo ? ' · blackout' : ''}
+                          </span>
+                          {s.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s.note}</span>}
+                        </span>
+                        <Icon name="chevron" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
+                      </button>
+                    );
+                  }))}
+                  {g.off.length > 0 && (
+                    <div className="schm-off">
+                      {g.off.map(({ p }) => (
+                        <button key={p.id} onClick={() => openSlot(g.office, p.id)} className={boFor(p.id, dayISO) ? 'bo' : ''}
+                          title={boFor(p.id, dayISO) ? 'Approved blackout — this person can’t work this day' : 'Not scheduled — tap to add'}>
+                          {p.name}{boFor(p.id, dayISO) ? ' ⃰' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button className="schm-add" onClick={() => openSlot(g.office, null)}>+ Add shift</button>
+                </>
+              )}
+            </div>
+          );
+        })}
+
+        {/* staff list, with the search and sort that act on it sitting directly on top */}
+        <div className="schm-team">
+          <div className="schm-search">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" />
+            <button onClick={() => setSortBy(s2 => s2 === 'name' ? 'hours' : 'name')}>{sortBy === 'name' ? 'A–Z' : 'Hrs'}</button>
+          </div>
+          {focusEmp && (
+            <button className="schm-clear" onClick={() => setFocusEmp(null)}>Showing one person — show everyone again</button>
+          )}
+          {sidebar.map(p => (
+            <div key={p.id + p.office} className={focusEmp === p.id ? 'schm-teamrow on' : 'schm-teamrow'}>
+              <button className="schm-teamname" onClick={() => setFocusEmp(focusEmp === p.id ? null : p.id)}>
+                <Avatar name={p.name} size={34} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${deptHue(p.dept)}), oklch(0.55 0.12 ${deptHue(p.dept)}))` }} />
+                <span><b>{p.name}</b><small>{p.dept}</small></span>
+                <span className="mono">{p.hours}h{p.ot ? <em className="schm-ot">OT</em> : null}</span>
+              </button>
+              <button className="schm-teamreg" onClick={() => setRegOpen(true)}>Regular hours</button>
+            </div>
+          ))}
+        </div>
+
+        {/* acts on the whole displayed week, so it sits below the week's content */}
+        <div className="schm-danger">
+          <button onClick={() => bulk('unassign')}>Mark all shifts open</button>
+          <button className="d" onClick={() => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }}>Delete all shifts</button>
+          <button onClick={() => setImpOpen(true)}>Import from Deputy</button>
+        </div>
+
+        {/* Publish is the one thing you are always about to do — pinned, never scrolled away */}
+        <div className="schm-pubbar">
+          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={publish}>
+            <Icon name="check" /> Publish{unpubCount ? ` (${unpubCount})` : ''}
+          </button>
+        </div>
+
+        {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+        {impOpen && <DeputyImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
+        {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
+          onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
+          onClose={() => setRegOpen(false)} />}
+        {tplModal === 'save' && <NameModal title="Save week as template" hint={`Saves ${offices[0]}'s currently displayed week as a reusable setup.`} onSave={saveTemplate} onClose={() => setTplModal(null)} />}
+        {tplModal === 'load' && <LoadTplModal office={offices[0]} templates={templates} onPick={loadTemplate} onDelete={async t => { try { await schedAction({ action: 'template_delete', office: offices[0], id: t.id }); setTemplates(x => x.filter(y => y.id !== t.id)); } catch (e) { flash(e.message); } }} onClose={() => setTplModal(null)} />}
+
+        {toast && (
+          <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 95, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
+          </div>
+        )}
+      </StepShell>
+    );
+  }
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
@@ -391,7 +652,7 @@ function Scheduler({ me, access, onBack }) {
 
       {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(210px, 250px) 1fr', gap: 'var(--gap)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${fit.side}px minmax(0, 1fr)`, gap: 'var(--gap)', alignItems: 'start' }}>
         {/* team sidebar (§3.2 — hours, search, sort; no cost per D2) */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
@@ -414,10 +675,11 @@ function Scheduler({ me, access, onBack }) {
           </div>
         </div>
 
-        {/* the grid */}
-        <div className="card" style={{ padding: 0 }}>
+        {/* the grid — minWidth:0 lets the 1fr track shrink below the 900px inner min-content,
+            so the overflowX:auto scroller below actually scrolls instead of pushing the page */}
+        <div className="card" style={{ padding: 0, minWidth: 0 }}>
           <div style={{ overflowX: 'auto' }}>
-            <div style={{ minWidth: 900 }}>
+            <div style={{ minWidth: fit.need }}>
               <div style={{ display: 'grid', gridTemplateColumns: colTemplate, borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' }}>
                 <div style={{ padding: '10px 14px', fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em', display: 'flex', alignItems: 'center', gap: 7 }}>
                   <Icon name="users" style={{ width: 15, height: 15 }} /> {multi ? offices.length + ' offices' : offices[0]}

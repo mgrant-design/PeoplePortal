@@ -504,6 +504,86 @@ button { font-family: inherit; cursor: pointer; }
   .dir-dept, .dir-loc { display: none; }
 }
 
+/* ===== DEV/TEST: portrait phone clamp =====
+   Toggled by the admin "Mobile view" row in the Switch view pane (app.jsx), which adds
+   .pd-mobile-view to <html>. This clamps the shell to a 390x844 portrait box so mobile
+   layout work has real phone geometry to iterate against. It does NOT trigger the
+   max-width:800px breakpoints above — media queries read the browser window, not this box.
+   Fixed-position overlays (menus, panels, the switcher itself) still escape the box. */
+html.pd-mobile-view body { background: oklch(0.22 0.015 240); }
+html.pd-mobile-view .app { width: 390px; height: 844px; min-height: 0; max-height: 844px; margin: 26px auto; overflow: auto; background: var(--bg); border-radius: 22px; box-shadow: 0 0 0 5px oklch(0.16 0.01 240), 0 24px 60px rgba(0,0,0,0.45); }
+
+/* ===== Scheduler phone layout (.schm-*) =====
+   Reached only via useSchedNarrow() in scheduler.jsx — a real <=800px viewport or the admin
+   dev clamp. Every selector here is .schm-prefixed and unreachable from the desktop grid. */
+.schm-weekrow { display: grid; grid-template-columns: 52px 1fr 52px 52px; gap: 6px; margin-bottom: 10px; }
+.schm-nav { min-height: 52px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.schm-weeknow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 52px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); cursor: pointer; font-family: var(--font-body); min-width: 0; }
+.schm-weeknow b { font-size: 16px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.schm-weeknow small { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.schm-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.schm-acts button { flex: 1 1 auto; min-height: 46px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); font-family: var(--font-body); font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: center; }
+.schm-acts button.on { border-color: var(--accent); border-width: 1.5px; background: var(--accent-soft); color: var(--accent-strong); }
+.schm-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+.schm-seg button { min-height: 46px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); font-family: var(--font-body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.schm-seg button.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.schm-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
+.schm-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; min-height: 62px; justify-content: center; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); cursor: pointer; padding: 4px 0; font-family: var(--font-body); }
+.schm-day.on { border-color: var(--accent); border-width: 1.5px; background: var(--accent-soft); }
+.schm-day-dow { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.schm-day-num { font-family: var(--font-display); font-size: 17px; font-weight: 700; line-height: 1; color: var(--ink); }
+.schm-day.on .schm-day-num, .schm-day.on .schm-day-dow { color: var(--accent-strong); }
+.schm-day-n { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: var(--ink-3); display: inline-flex; align-items: center; gap: 2px; }
+.schm-day-n i { width: 5px; height: 5px; border-radius: 99px; background: var(--warn); display: inline-block; }
+.schm-day-today { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 99px; background: var(--accent); }
+
+.schm-status { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.schm-status button { min-height: 34px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-pill); padding: 4px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; font-family: var(--font-body); }
+.schm-status button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.schm-status-tot { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+.schm-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: oklch(0.45 0.12 155); background: var(--ok-soft, var(--surface-2)); border-radius: var(--r-md); padding: 8px 12px; margin-bottom: 12px; }
+.schm-empty { text-align: center; color: var(--ink-3); font-size: 13.5px; padding: 34px 12px; }
+
+.schm-group { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; margin-bottom: 12px; background: var(--surface); }
+.schm-group-head { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; padding: 8px 12px; border: none; border-bottom: 1px solid var(--line); cursor: pointer; font-family: var(--font-body); font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; text-align: left; }
+.schm-group-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schm-group-head small { font-size: 10.5px; font-weight: 700; letter-spacing: 0; text-transform: none; opacity: .75; white-space: nowrap; }
+
+.schm-row { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 62px; padding: 11px 13px; border: none; border-bottom: 1px solid var(--line-soft); border-left: 4px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; font-family: var(--font-body); }
+.schm-row:last-of-type { border-bottom: none; }
+.schm-row-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.schm-row-name { font-size: 14.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schm-row-time { font-size: 14px; font-weight: 700; color: var(--ink); }
+.schm-row-sub { font-size: 12px; color: var(--ink-3); }
+.schm-row-note { display: flex; align-items: flex-start; gap: 4px; font-size: 12px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; }
+.schm-ot { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; font-style: normal; color: #fff; background: oklch(0.58 0.19 25); border-radius: 4px; padding: 1px 4px; margin-left: 6px; vertical-align: 1px; }
+
+.schm-off { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft); }
+.schm-off button { min-height: 34px; border: 1px dashed var(--line); background: none; border-radius: var(--r-pill); padding: 5px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; font-family: var(--font-body); }
+.schm-off button.bo { border-style: solid; border-color: oklch(0.55 0.15 25); color: oklch(0.55 0.15 25); }
+.schm-add { display: block; width: 100%; min-height: 48px; border: none; background: var(--surface-2); color: var(--accent-strong); font-family: var(--font-body); font-size: 14px; font-weight: 700; cursor: pointer; }
+
+/* staff list — search and sort sit on the thing they act on */
+.schm-team { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); overflow: hidden; margin-bottom: 12px; }
+.schm-search { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); }
+.schm-search input { flex: 1; min-width: 0; min-height: 46px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 12px; font-size: 16px; font-family: var(--font-body); background: var(--surface); color: var(--ink); }
+.schm-search button { min-width: 62px; min-height: 46px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); font-size: 13px; font-weight: 700; color: var(--ink-2); cursor: pointer; font-family: var(--font-body); }
+.schm-clear { display: block; width: 100%; min-height: 44px; border: none; border-bottom: 1px solid var(--line-soft); background: var(--accent-soft); color: var(--accent-strong); font-family: var(--font-body); font-size: 13px; font-weight: 600; cursor: pointer; }
+.schm-teamrow { display: grid; grid-template-columns: minmax(0,1fr) auto; border-bottom: 1px solid var(--line-soft); }
+.schm-teamrow:last-child { border-bottom: none; }
+.schm-teamrow.on { background: var(--accent-softer); }
+.schm-teamname { display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 12px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--font-body); min-width: 0; }
+.schm-teamname > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.schm-teamname b { font-size: 14.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schm-teamname small { font-size: 11.5px; color: var(--ink-3); }
+.schm-teamname .mono { flex: none; flex-direction: row; align-items: center; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.schm-teamreg { min-height: 58px; padding: 0 14px; border: none; border-left: 1px solid var(--line-soft); background: var(--surface-2); color: var(--accent-strong); font-family: var(--font-body); font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.schm-danger { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.schm-danger button { flex: 1 1 auto; min-height: 46px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); font-family: var(--font-body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.schm-danger button.d { border-color: oklch(0.55 0.15 25); color: oklch(0.55 0.15 25); }
+.schm-pubbar { position: sticky; bottom: 0; z-index: 25; padding: 10px 0 14px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+.schm-pubbar button { width: 100%; min-height: 52px; justify-content: center; font-size: 16px; }
+
 /* scrollbar */
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; border: 3px solid var(--bg); }

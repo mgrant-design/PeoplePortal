@@ -143,7 +143,7 @@ const VIEW_LEVELS = [
   ['employee', 'Employee', 'Just their own stuff'],
 ];
 
-function ViewSwitcher({ current, onPick, onClose }) {
+function ViewSwitcher({ current, onPick, onClose, mobileView, onToggleMobile }) {
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
@@ -154,6 +154,15 @@ function ViewSwitcher({ current, onPick, onClose }) {
           <button onClick={onClose} style={{ position: 'absolute', top: -3, right: -3, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}><Icon name="x" style={{ width: 16, height: 16 }} /></button>
         </div>
         <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-3)', textAlign: 'center', padding: '0 4px 12px' }}>Preview the portal at another access level. Your real access is unchanged.</div>
+        <button onClick={() => onToggleMobile(!mobileView)}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '9px 11px', marginBottom: 8, fontFamily: 'var(--font-body)',
+            border: mobileView ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: mobileView ? 'var(--accent-softer)' : 'var(--surface)' }}>
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>Mobile view</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>Clamp to a portrait phone box. Geometry only — the mobile CSS breakpoints still read the real window width.</span>
+          </span>
+          {mobileView && <Icon name="check" style={{ width: 16, height: 16, color: 'var(--accent-strong)' }} />}
+        </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {VIEW_LEVELS.map(([val, label, desc]) => {
             const on = current === val;
@@ -222,6 +231,13 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     setView('dashboard');
     window.scrollTo({ top: 0 });
   };
+  // DEV/TEST: clamp the shell to a portrait phone box so mobile layout work has something to
+  // iterate against. Adds .pd-mobile-view to <html>; styles.css does the clamping.
+  const [mobileView, setMobileView] = useState(false);
+  useEffect(() => {
+    document.documentElement.classList.toggle('pd-mobile-view', mobileView);
+    return () => document.documentElement.classList.remove('pd-mobile-view');
+  }, [mobileView]);
   const chipHold = useRef({ t: null, fired: false, x: 0, y: 0 });
   const chipDown = (e) => {
     if (!canSwitchView) return;
@@ -723,7 +739,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
       {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: true } : n)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onRestore={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: false } : n)); if (typeof restoreNotice === 'function') restoreNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } else if (dl && (dl.view === 'scheduler' || dl.view === 'myschedule')) { go(dl.view); } else if (dl && dl.view === 'feedback') { go('feedback'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
-      {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
+      {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} mobileView={mobileView} onToggleMobile={setMobileView} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{(modulesAllReady || view === 'dashboard') ? renderView() : (
