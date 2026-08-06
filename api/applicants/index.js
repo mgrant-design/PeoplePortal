@@ -80,7 +80,7 @@ function recruitingAccess(me, usersByEmail, employees) {
   const isAdmin = !!perms.admin;
   const viewAll = isAdmin || isHR || isExec;
   const viewTeam = isManager || isSupervisor;
-  return { viewAll, viewTeam, canRecruit: viewAll || viewTeam };
+  return { isAdmin, viewAll, viewTeam, canRecruit: viewAll || viewTeam };
 }
 
 module.exports = async function (context, req) {
@@ -110,7 +110,7 @@ module.exports = async function (context, req) {
     const usersByEmail = {};
     ((support && support.users) || []).forEach(u => { if (u && u.email) usersByEmail[u.email.toLowerCase()] = u; });
     const access = recruitingAccess(me, usersByEmail, employees);
-    if (!access.canRecruit) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to view applicants' }) }; return; }
+    if (!access.isAdmin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to view applicants' }) }; return; }
     const myLoc = normLoc(me.location);
 
     /* ---------- READ ---------- */

@@ -30,26 +30,8 @@ const MGMT_TRAINING = [
   { title: 'Building a Healthy Team Culture', category: 'Leadership & Management', type: 'article', source: 'Harvard Business Review', required: false, assign: 'Management', dueDays: null, url: 'https://hbr.org/topic/subject/organizational-culture' },
 ];
 
-/* seed courses; assign:'all' = every new hire. type: video|doc|link */
-function seedLibrary() {
-  const out = [];
-  let n = 1;
-  INTRANET_LINKS['New Employee Onboarding'].forEach(t => out.push({ id: 'lib' + n++, title: t, category: 'New Employee Onboarding', type: 'link', source: 'Intranet', required: true, assign: 'all', dueDays: 5 }));
-  INTRANET_LINKS['Dental Procedures / Terminology'].forEach(t => out.push({ id: 'lib' + n++, title: t, category: 'Dental Procedures / Terminology', type: 'link', source: 'Intranet', required: true, assign: 'all', dueDays: 14 }));
-  out.push(
-    { id: 'lib' + n++, title: 'Sexual Harassment Prevention Training', category: 'Compliance', type: 'video', source: 'Intranet', required: true, assign: 'all', dueDays: 3 },
-    { id: 'lib' + n++, title: 'OSHA & Compliance', category: 'Compliance', type: 'video', source: 'Intranet', required: true, assign: 'all', dueDays: 3 },
-    { id: 'lib' + n++, title: 'HIPAA Privacy & Security', category: 'Compliance', type: 'video', source: 'Intranet', required: true, assign: 'all', dueDays: 3 },
-    { id: 'lib' + n++, title: 'Conflict Resolution in the Workplace', category: 'Conflict Resolution', type: 'video', source: 'Drive', required: false, assign: 'all', dueDays: null },
-    { id: 'lib' + n++, title: 'Basic Dental: Oral Anatomy', category: 'Basic Dental', type: 'video', source: 'Drive', required: false, assign: 'all', dueDays: null },
-    { id: 'lib' + n++, title: 'Customer Service & Phone Expectations', category: 'Basic Dental', type: 'doc', source: 'Drive', required: false, assign: 'Front Desk', dueDays: null },
-    { id: 'lib' + n++, title: 'Advanced Dental: Implant & Surgical Assisting', category: 'Advanced Dental', type: 'video', source: 'Drive', required: false, assign: 'Clinical Team', dueDays: null },
-    { id: 'lib' + n++, title: 'Advanced Dental: TRIOS Scanning', category: 'Advanced Dental', type: 'video', source: 'Drive', required: false, assign: 'Clinical Team', dueDays: null },
-    { id: 'lib' + n++, title: 'Denticon University — Clerical Track', category: 'Software', type: 'link', source: 'Denticon', required: true, assign: 'Front Desk', dueDays: 14 },
-  );
-  MGMT_TRAINING.forEach(m => out.push({ id: 'lib' + n++, ...m }));
-  return out;
-}
+/* Seed course catalog REMOVED. The Learning Library starts empty; real courses are added
+   in-app. INTRANET_LINKS below is kept as the link reference it always was. */
 
 /* ---- Orientation timelines (from the guides) ---- */
 const CLINICAL_TIMELINE = [
@@ -119,6 +101,6 @@ function trainingSourceFallback(topic) {
 }
 
 Object.assign(window, {
-  INTRANET_LINKS, LIBRARY_CATEGORIES, seedLibrary, CLINICAL_TIMELINE, CLERICAL_TIMELINE,
+  INTRANET_LINKS, LIBRARY_CATEGORIES, CLINICAL_TIMELINE, CLERICAL_TIMELINE,
   MGMT_TRAINING, MGMT_TOPICS, TRUSTED_SOURCES, SOURCE_FINDER_PROMPT, trainingSourceFallback,
 });

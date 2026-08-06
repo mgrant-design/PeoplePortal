@@ -843,7 +843,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
   return (
     <SchedPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: 'calc(64px + 16px)', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: 'calc(100vh - 64px - 32px)', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>{s ? 'Edit shift' : 'New shift'}</div>
@@ -1001,9 +1001,9 @@ function ApprovalsPanel({ me, access, requests, onActed, flash }) {
 function NameModal({ title, hint, onSave, onClose }) {
   const [name, setName] = useState('');
   return (
-    <SchedPortal>
+<>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: 'calc(64px + 16px)', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(380px, 92vw)', maxHeight: 'calc(100vh - 64px - 32px)', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(380px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>{title}</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>{hint}</p>
         <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Template name" onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onSave(name.trim()); }}
@@ -1013,15 +1013,15 @@ function NameModal({ title, hint, onSave, onClose }) {
           <button disabled={!name.trim()} onClick={() => onSave(name.trim())} className="btn btn-primary"><Icon name="check" /> Save</button>
         </div>
       </div>
-    </SchedPortal>
+</>
   );
 }
 
 function LoadTplModal({ office, templates, onPick, onDelete, onClose }) {
   return (
-    <SchedPortal>
+<>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: 'calc(64px + 16px)', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(420px, 92vw)', maxHeight: 'calc(100vh - 64px - 32px)', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>Load a template</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>Adds the template’s shifts to {office}’s displayed week.</p>
         {templates.length === 0 && <div style={{ fontSize: 13.5, color: 'var(--ink-3)', padding: '10px 0' }}>No templates saved for {office} yet.</div>}
@@ -1039,7 +1039,7 @@ function LoadTplModal({ office, templates, onPick, onDelete, onClose }) {
           <button onClick={onClose} className="btn btn-ghost">Close</button>
         </div>
       </div>
-    </SchedPortal>
+</>
   );
 }
 

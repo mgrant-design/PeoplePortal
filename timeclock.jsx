@@ -15,13 +15,7 @@ function fmtDur(ms) { const t = Math.max(0, Math.floor(ms / 1000)); const h = Ma
 function hoursOf(p) { const gross = (p.out - p.in) / 3600000; return Math.max(0, gross - (p.breakMins || 0) / 60); }
 function dayLabel(iso) { return new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
 
-/* seed a couple of prior shifts for the demo timesheet */
-function seedFor(empId, loc) {
-  const mk = (daysAgo, inH, outH, br) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(inH, 0, 0, 0); const o = new Date(d); o.setHours(outH, 0, 0, 0); return { id: 'p' + empId + daysAgo, date: d.toISOString(), location: loc, in: d.getTime(), out: o.getTime(), breakMins: br, status: 'approved' }; };
-  return [mk(3, 8, 16, 30), mk(2, 8, 17, 45), mk(1, 9, 15, 30)];
-}
-/* Prefer the Paychex-style generator (with late detection) when available. */
-function genShifts(id, loc) { return (typeof paychexSeed === 'function') ? paychexSeed(id, loc) : seedFor(id, loc); }
+/* NO SEED DATA. Timesheets start empty and fill only from real clock-ins. */
 
 function StatusPill({ s }) {
   const map = { pending: ['badge-warn', 'clock', 'Pending'], approved: ['badge-ok', 'check', 'Approved'], exported: ['badge-prog', 'link', 'Exported'] };
@@ -174,15 +168,14 @@ function TimeClock({ me, access, offices, teamList, flash, paychexOn }) {
   const TABS = ['Clock', 'My timesheet', ...(isLeader ? ['Team timesheets'] : [])];
   const [tab, setTab] = useState('Clock');
 
-  // ensure my own timesheet has seed data once
   useEffect(() => {
-    if (!loadPunches()[me.id]) { const np = { ...loadPunches(), [me.id]: genShifts(me.id, me.loc) }; persistPunches(np); setPunches(np); }
+    if (!loadPunches()[me.id]) { const np = { ...loadPunches(), [me.id]: [] }; persistPunches(np); setPunches(np); }
   }, []);
 
   const approve = (empId, pid) => { const np = { ...punches, [empId]: (punches[empId] || []).map(p => p.id === pid ? { ...p, status: 'approved' } : p) }; setPunches(np); persistPunches(np); };
   const exportPaychex = (empId) => { const np = { ...punches, [empId]: (punches[empId] || []).map(p => ({ ...p, status: 'exported' })) }; setPunches(np); persistPunches(np); flash('Timesheet exported to Paychex.'); };
 
-  const teamWithData = (teamList || []).map(e => { if (!punches[e.id]) return { ...e, _p: genShifts(e.id, e.loc) }; return { ...e, _p: punches[e.id] }; });
+  const teamWithData = (teamList || []).map(e => ({ ...e, _p: punches[e.id] || [] }));
 
   return (
     <div className="fade-in">

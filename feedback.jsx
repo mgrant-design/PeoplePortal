@@ -1,23 +1,67 @@
 /* feedback.jsx — Feature requests + visual roadmap.
-   Everyone can submit & view; admin sets status / approves / adds planned features.
+   Everyone can submit & view; admin sets status / approves requests.
    Persisted in Cosmos via /api/feedback (see data.jsx: fetchFeedback/feedbackAction). */
 
 const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
-const FB_CATS = ['Scheduling', 'Onboarding', 'Time clock', 'Reports', 'Learning', 'Mobile', 'Other'];
+const FB_CATS = ['Dashboard', 'Applicants', 'My onboarding', 'Directory', 'Scheduling', 'My schedule', 'Time clock', 'Reviews', 'Reports', 'Agent Automations', 'Offboarding', 'Offices', 'Organization', 'Security', 'Modules', 'Roadmap', 'Ask Riley', 'Ask HR', 'Learning Library', 'Scrubs', 'Other'];
 
-const ROADMAP_COLS = [['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
+const ROADMAP_COLS = [['Submitted', 'Submitted'], ['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
+
+/* Up/down vote control. A person's ballot is one signed value: up moves +1 (cap +2), down
+   moves −1 (floor −1). Net score in the middle; hovering an arrow shows that side's count. */
+function VoteBox({ value, mine, up, down, onUp, onDown, readOnly }) {
+  const [hover, setHover] = useState(null);
+  const dn = 'oklch(0.55 0.16 25)';
+  const arrow = (dir) => {
+    const active = dir === 'up' ? mine > 0 : mine < 0;
+    const disabled = dir === 'up' ? mine === 2 : mine === -1;
+    return (
+      <button onClick={dir === 'up' ? onUp : onDown} disabled={disabled} onMouseEnter={() => setHover(dir)} onMouseLeave={() => setHover(null)} aria-label={dir === 'up' ? 'Upvote' : 'Downvote'}
+        style={{ border: 'none', background: 'none', cursor: disabled ? 'default' : 'pointer', color: active ? (dir === 'up' ? 'var(--accent-strong)' : dn) : 'var(--ink-3)', opacity: disabled ? 0.4 : 1, padding: 2, display: 'inline-flex', lineHeight: 0 }}>
+        <Icon name="chevron" style={{ width: 16, height: 16, transform: dir === 'up' ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
+      </button>
+    );
+  };
+  return (
+    <div style={{ position: 'relative', flex: 'none', width: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '6px 0', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface)' }}>
+      {!readOnly && arrow('up')}
+      <div style={{ fontWeight: 700, fontSize: 14, color: value > 0 ? 'var(--accent-strong)' : value < 0 ? dn : 'var(--ink-2)' }}>{value}</div>
+      {!readOnly && arrow('down')}
+      {hover && (
+        <div style={{ position: 'absolute', left: '100%', top: hover === 'up' ? 4 : 'auto', bottom: hover === 'down' ? 4 : 'auto', marginLeft: 8, whiteSpace: 'nowrap', background: 'var(--ink)', color: 'var(--surface)', fontSize: 11.5, fontWeight: 600, padding: '4px 8px', borderRadius: 6, zIndex: 5, pointerEvents: 'none' }}>
+          {hover === 'up' ? `${up} upvote${up === 1 ? '' : 's'}` : `${down} downvote${down === 1 ? '' : 's'}`}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Feedback({ me, access, flash }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState(null);
-  const [myVotes, setMyVotes] = useState({});
+  const [myVote, setMyVote] = useState({});
+  const [sortMode, setSortMode] = useState('grouped');
   const [tab, setTab] = useState('Requests');
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other' });
-  const [plan, setPlan] = useState({ title: '', desc: '', cat: 'Scheduling', eta: '' });
-  const [planning, setPlanning] = useState(false);
+  const [draft, setDraft] = useState({ title: '', desc: '', cat: 'Other', catOther: '' });
+  const [attachFiles, setAttachFiles] = useState([]);
+  const [attachErr, setAttachErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [gif, setGif] = useState(null);
+  const [gifOpen, setGifOpen] = useState(false);
+  const [gifTarget, setGifTarget] = useState('draft');
+  const [commentGif, setCommentGif] = useState(null);
+  const [openComments, setOpenComments] = useState(null);
+  const [commentsById, setCommentsById] = useState({});
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [reactFor, setReactFor] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const pressTimer = React.useRef(null);
+  const [focusId, setFocusId] = useState(null);
   const isAdmin = access.caps.manageUsers;
   const myEmail = (me.workEmail || me.email || '').toLowerCase();
 
@@ -39,7 +83,7 @@ function Feedback({ me, access, flash }) {
         // Restore "already voted" from the server (voters stays server-only, but each
         // item now carries a per-caller `voted` flag) — otherwise this resets to {} on
         // every refresh and a returning voter could re-click and desync the local count.
-        setMyVotes(Object.fromEntries(list.filter(i => i.voted).map(i => [i.id, 1])));
+        setMyVote(Object.fromEntries(list.map(i => [i.id, i.myVote || 0])));
       })
       .catch(e => setLoadErr(e.message || 'Could not load feature requests.'))
       .finally(() => setLoading(false));
@@ -47,16 +91,146 @@ function Feedback({ me, access, flash }) {
   useEffect(load, []);
 
   const submit = () => {
-    if (!draft.title.trim()) return;
-    window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat })
-      .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other' }); flash && flash('Feature request submitted — thanks!'); })
-      .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'));
+    if (!draft.title.trim() || submitting) return;
+    setSubmitting(true);
+    const send = (attachments) => {
+      window.feedbackAction({ action: 'submit', title: draft.title.trim(), desc: draft.desc.trim(), cat: draft.cat, ...(draft.cat === 'Other' && (draft.catOther || '').trim() ? { catOther: draft.catOther.trim() } : {}), ...(attachments.length ? { attachments } : {}), ...(gif ? { gif } : {}) })
+        .then(({ item }) => { setItems(list => [item, ...list]); setAdding(false); setDraft({ title: '', desc: '', cat: 'Other', catOther: '' }); setAttachFiles([]); setAttachErr(''); setGif(null); flash && flash('Feature request submitted — thanks!'); })
+        .catch(e => flash && flash('Couldn’t submit (' + e.message + ')'))
+        .finally(() => setSubmitting(false));
+    };
+    if (!attachFiles.length) return send([]);
+    const readOne = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ name: f.name, size: f.size, type: f.type || 'application/octet-stream', contentBase64: String(r.result).split(',')[1] || '' }); r.onerror = rej; r.readAsDataURL(f); });
+    Promise.all(attachFiles.map(readOne)).then(send).catch(() => { setSubmitting(false); flash && flash('Couldn’t read an attachment.'); });
   };
-  const addPlanned = () => {
-    if (!plan.title.trim()) return;
-    window.feedbackAction({ action: 'addPlanned', title: plan.title.trim(), desc: plan.desc.trim(), cat: plan.cat, eta: plan.eta })
-      .then(({ item }) => { setItems(list => [item, ...list]); setPlanning(false); setPlan({ title: '', desc: '', cat: 'Scheduling', eta: '' }); flash && flash('Planned feature added to the roadmap.'); })
-      .catch(e => flash && flash('Couldn’t add (' + e.message + ')'));
+
+  // ~1.4 MB raw ceiling per file: base64 inflates ~37% and a Cosmos doc caps at 2 MB. Up to 5
+  // files per request (silently capped — the add control just stops appearing).
+  const MAX_ATTACH = 1.4 * 1024 * 1024;
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    setAttachErr('');
+    setAttachFiles(cur => {
+      let next = cur.slice();
+      for (const f of incoming) {
+        if (next.length >= 5) break;
+        if (f.size > MAX_ATTACH) { setAttachErr('“' + f.name + '” is too large — max 1.4 MB.'); continue; }
+        if (next.some(x => x.name === f.name && x.size === f.size)) continue;
+        next = [...next, f];
+      }
+      return next;
+    });
+  };
+  const removeFile = (idx) => setAttachFiles(cur => cur.filter((_, i) => i !== idx));
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  // Secret gif picker: typing "/gif" anywhere in the description strips the token and opens
+  // the Giphy search. Not surfaced in the UI — for those in the know.
+  const onDescChange = (val) => {
+    const m = val.match(/\/gif\b/i);
+    if (m) { setDraft({ ...draft, desc: val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart() }); setGifTarget('draft'); setGifOpen(true); return; }
+    setDraft({ ...draft, desc: val });
+  };
+  // Same secret trigger inside a comment box.
+  const onCommentChange = (val) => {
+    const m = val.match(/\/gif\b/i);
+    if (m) { setCommentDraft(val.replace(/\/gif\b/i, '').replace(/\s{2,}/g, ' ').trimStart()); setGifTarget('comment'); setGifOpen(true); return; }
+    setCommentDraft(val);
+  };
+
+  const toggleComments = (id) => {
+    if (openComments === id) { setOpenComments(null); return; }
+    setOpenComments(id); setCommentDraft('');
+    if (commentsById[id]) return; // already loaded this session
+    setCommentLoading(true);
+    window.feedbackAction({ action: 'getComments', id })
+      .then(({ comments }) => setCommentsById(m => ({ ...m, [id]: comments || [] })))
+      .catch(e => { flash && flash('Couldn’t load comments (' + e.message + ')'); setCommentsById(m => ({ ...m, [id]: [] })); })
+      .finally(() => setCommentLoading(false));
+  };
+  const postComment = (id) => {
+    if (!isAdmin) return;
+    const text = commentDraft.trim();
+    if ((!text && !commentGif) || commentBusy) return;
+    setCommentBusy(true);
+    const parentId = (replyTo && replyTo.id === id) ? replyTo.commentId : undefined;
+    window.feedbackAction({ action: 'addComment', id, text, ...(parentId ? { parentId } : {}), ...(commentGif ? { gif: commentGif } : {}) })
+      .then(({ comments }) => {
+        setCommentsById(m => ({ ...m, [id]: comments || [] }));
+        setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
+        setCommentDraft(''); setCommentGif(null); setReplyTo(null);
+      })
+      .catch(e => flash && flash('Couldn’t post comment (' + e.message + ')'))
+      .finally(() => setCommentBusy(false));
+  };
+  const deleteComment = (id, commentId) => {
+    window.feedbackAction({ action: 'deleteComment', id, commentId })
+      .then(({ comments }) => {
+        setCommentsById(m => ({ ...m, [id]: comments || [] }));
+        setItems(list => list.map(i => i.id === id ? { ...i, commentCount: (comments || []).length } : i));
+      })
+      .catch(e => flash && flash('Couldn’t delete comment (' + e.message + ')'));
+  };
+  const fmtWhen = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } };
+  // Reactions: one per person per comment (server-enforced), stored on the comment inside the
+  // one comments doc — no new container. Long-press / sustained click (or right-click) opens the bar.
+  const REACTION_DEFS = [['heart', '❤️'], ['up', '👍'], ['down', '👎'], ['laugh', '😂'], ['fire', '🔥']];
+  const reactComment = (id, commentId, emoji) => {
+    if (!isAdmin) return;
+    setReactFor(null);
+    window.feedbackAction({ action: 'reactComment', id, commentId, emoji })
+      .then(({ comments }) => setCommentsById(m => ({ ...m, [id]: comments || [] })))
+      .catch(e => flash && flash('Couldn’t react (' + e.message + ')'));
+  };
+  const renderComment = (postId, c, isReply) => {
+    const mine = (c.byEmail || '').toLowerCase() === myEmail;
+    const reactions = c.reactions || {};
+    const has = (k) => (reactions[k] || []).some(e => (e || '').toLowerCase() === myEmail);
+    const startPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); pressTimer.current = setTimeout(() => setReactFor(c.id), 450); };
+    const endPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+    return (
+      <div style={{ position: 'relative' }}>
+        <div onPointerDown={isAdmin ? startPress : undefined} onPointerUp={isAdmin ? endPress : undefined} onPointerLeave={isAdmin ? endPress : undefined} onContextMenu={isAdmin ? (e => { e.preventDefault(); setReactFor(c.id); }) : undefined}
+          style={{ display: 'flex', gap: 8, alignItems: 'flex-start', touchAction: 'pan-y' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{c.by}</span> · {fmtWhen(c.createdAt)}</div>
+            <p style={{ fontSize: 13.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
+            {c.gif && c.gif.url && <img src={c.gif.url} alt={c.gif.title || 'gif'} style={{ maxWidth: 220, maxHeight: 170, borderRadius: 'var(--r-md)', display: 'block', marginTop: 6, border: '1px solid var(--line)' }} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {REACTION_DEFS.filter(([k]) => (reactions[k] || []).length).map(([k, e]) => (
+                <button key={k} onClick={isAdmin ? () => reactComment(postId, c.id, k) : undefined}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: '1px solid', borderColor: has(k) ? 'var(--accent)' : 'var(--line)', background: has(k) ? 'var(--accent-soft)' : 'var(--surface)', color: 'var(--ink-2)', borderRadius: 999, padding: '1px 8px', fontSize: 12, cursor: isAdmin ? 'pointer' : 'default', lineHeight: 1.7 }}>
+                  <span>{e}</span><span className="mono">{(reactions[k] || []).length}</span>
+                </button>
+              ))}
+              {!isReply && isAdmin && <button onClick={() => setReplyTo({ id: postId, commentId: c.id, name: c.by })} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>Reply</button>}
+            </div>
+          </div>
+          {mine && isAdmin && <button onClick={() => deleteComment(postId, c.id)} title="Delete" style={{ flex: 'none', border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 2, display: 'inline-flex' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>}
+        </div>
+        {reactFor === c.id && (<>
+          {ReactDOM.createPortal(<div onClick={() => setReactFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />, document.body)}
+          <div style={{ position: 'relative', zIndex: 41, display: 'inline-flex', gap: 2, marginTop: 6, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 999, background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
+            {REACTION_DEFS.map(([k, e]) => (
+              <button key={k} onClick={() => reactComment(postId, c.id, k)} title={k}
+                style={{ border: 'none', background: has(k) ? 'var(--accent-soft)' : 'none', borderRadius: 8, cursor: 'pointer', fontSize: 19, padding: '3px 6px', lineHeight: 1 }}>{e}</button>
+            ))}
+          </div>
+        </>)}
+      </div>
+    );
+  };
+  const downloadAttachment = (it, file) => {
+    window.feedbackAction({ action: 'getAttachment', ...(file && file.fileId ? { fileId: file.fileId } : { id: it.id }) })
+      .then(r => {
+        const bin = atob(r.contentBase64 || '');
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: r.type || 'application/octet-stream' }));
+        const a = document.createElement('a'); a.href = url; a.download = r.name || (file && file.name) || (it.attachment && it.attachment.name) || 'attachment'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      })
+      .catch(e => flash && flash('Couldn’t download (' + e.message + ')'));
   };
   const setStatus = (id, status) => {
     setItems(list => list.map(i => i.id === id ? { ...i, status } : i));
@@ -71,24 +245,72 @@ function Feedback({ me, access, flash }) {
     setItems(list => list.filter(i => i.id !== id));
     window.feedbackAction({ action: 'delete', id }).catch(e => { flash && flash('Couldn’t delete (' + e.message + ')'); load(); });
   };
-  const vote = (id) => {
-    if (myVotes[id]) return;
-    setMyVotes(v => ({ ...v, [id]: 1 }));
-    setItems(list => list.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + 1 } : i));
-    window.feedbackAction({ action: 'vote', id })
-      // Reconcile with the server's real count instead of trusting the optimistic +1 —
-      // covers the case where this vote was already recorded in an earlier session.
-      .then(({ item }) => item && setItems(list => list.map(i => i.id === id ? { ...i, votes: item.votes } : i)))
+  const vote = (id, dir) => {
+    if (!isAdmin) return;
+    const cur = myVote[id] || 0;
+    const nv = dir === 'up' ? Math.min(cur + 1, 2) : Math.max(cur - 1, -1);
+    if (nv === cur) return;
+    const delta = nv - cur;
+    const upDelta = (nv > 0 ? nv : 0) - (cur > 0 ? cur : 0);
+    const dnDelta = (nv < 0 ? -nv : 0) - (cur < 0 ? -cur : 0);
+    setMyVote(v => ({ ...v, [id]: nv }));
+    setItems(list => list.map(i => i.id === id ? { ...i, votes: (i.votes || 0) + delta, upCount: Math.max(0, (i.upCount || 0) + upDelta), downCount: Math.max(0, (i.downCount || 0) + dnDelta) } : i));
+    window.feedbackAction({ action: 'vote', id, dir })
+      .then(({ item }) => { if (item) { setItems(list => list.map(i => i.id === id ? { ...i, votes: item.votes, upCount: item.upCount, downCount: item.downCount } : i)); setMyVote(v => ({ ...v, [id]: item.myVote })); } })
       .catch(e => {
-        setMyVotes(v => { const n = { ...v }; delete n[id]; return n; });
-        setItems(list => list.map(i => i.id === id ? { ...i, votes: Math.max(0, (i.votes || 1) - 1) } : i));
+        setMyVote(v => ({ ...v, [id]: cur }));
+        setItems(list => list.map(i => i.id === id ? { ...i, votes: (i.votes || 0) - delta, upCount: Math.max(0, (i.upCount || 0) - upDelta), downCount: Math.max(0, (i.downCount || 0) - dnDelta) } : i));
         flash && flash('Couldn’t record vote (' + e.message + ')');
       });
   };
 
+  /* Roadmap card → the real post. Complete/Declined live in History, everything else in
+     Requests. Switch tab, scroll the card into view, ring it briefly. */
+  const openPost = (it) => {
+    const target = (it.status === 'Complete' || it.status === 'Declined') ? 'History' : 'Requests';
+    setTab(target); setFocusId(it.id);
+  };
+  useEffect(() => {
+    if (!focusId) return;
+    let t2;
+    const t = setTimeout(() => {
+      const el = document.querySelector('[data-fb-id="' + focusId + '"]');
+      if (el) {
+        let sc = el.parentElement;
+        while (sc && sc !== document.body && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        const top = el.getBoundingClientRect().top;
+        if (sc && sc !== document.body) sc.scrollTo({ top: sc.scrollTop + top - sc.getBoundingClientRect().top - 24, behavior: 'smooth' });
+        else window.scrollTo({ top: window.scrollY + top - 90, behavior: 'smooth' });
+      }
+      t2 = setTimeout(() => setFocusId(null), 2200);
+    }, 60);
+    return () => { clearTimeout(t); clearTimeout(t2); };
+  }, [focusId]);
+
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   // Requests = pending only. Completed/Declined move to History.
-  const sorted = items.slice().filter(i => i.status !== 'Complete' && i.status !== 'Declined').sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const now = Date.now();
+  const pending = items.filter(i => i.status !== 'Complete' && i.status !== 'Declined');
+  const ageMs = it => now - new Date(it.createdAt || 0).getTime();
+  const byNew = (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  const byVotes = (a, b) => (b.votes || 0) - (a.votes || 0) || byNew(a, b);
+  // Trending: net votes decayed by age (hours), reddit-style gravity.
+  const hot = it => (it.votes || 0) / Math.pow(ageMs(it) / 3.6e6 + 2, 1.5);
+  const byHot = (a, b) => hot(b) - hot(a);
+  const WEEK = 7 * 864e5;
+  let sections;
+  if (sortMode === 'grouped') {
+    const fresh = pending.filter(i => ageMs(i) <= WEEK).slice().sort(byNew);
+    const older = pending.filter(i => ageMs(i) > WEEK).slice().sort(byVotes);
+    sections = [{ label: 'New this week', items: fresh }, { label: 'Established', items: older }].filter(s => s.items.length);
+  } else {
+    const cmp = sortMode === 'trending' ? byHot : sortMode === 'newest' ? byNew : byVotes;
+    sections = [{ label: null, items: pending.slice().sort(cmp) }];
+  }
+  const totalCount = sections.reduce((n, s) => n + s.items.length, 0);
+  const SORTS = [['grouped', 'Grouped', 'sparkle'], ['trending', 'Trending', 'bolt'], ['top', 'Top voted', 'chevron'], ['newest', 'Newest', 'clock']];
+  const curSort = SORTS[Math.max(0, SORTS.findIndex(s => s[0] === sortMode))];
+  const nextSort = SORTS[(SORTS.indexOf(curSort) + 1) % SORTS.length];
 
   return (
     <div className="fade-in">
@@ -98,8 +320,7 @@ function Feedback({ me, access, flash }) {
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Suggest improvements and see what’s coming next.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {isAdmin && tab === 'Roadmap' && <button className="btn btn-ghost" onClick={() => setPlanning(p => !p)}><Icon name="plus" /> Add planned feature</button>}
-          <button className="btn btn-primary" onClick={() => { setTab('Requests'); setAdding(a => !a); }}><Icon name="plus" /> Submit a request</button>
+          {isAdmin && <button className="btn btn-primary" onClick={() => { setTab('Requests'); setAdding(a => !a); }}><Icon name="plus" /> Submit a request</button>}
         </div>
       </div>
 
@@ -109,30 +330,66 @@ function Feedback({ me, access, flash }) {
 
       {tab === 'Requests' && (
         <>
-          {adding && (
+          {isAdmin && adding && (
             <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', borderColor: 'var(--accent)' }}>
               <h3 style={{ fontSize: 15.5, marginBottom: 12 }}>Suggest an update</h3>
               <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Short title" style={{ ...inp, marginBottom: 10, fontWeight: 600 }} />
-              <textarea value={draft.desc} onChange={e => setDraft({ ...draft, desc: e.target.value })} rows={3} placeholder="What would you like to see, and why?" style={{ ...inp, resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }} />
+              <textarea value={draft.desc} onChange={e => onDescChange(e.target.value)} rows={3} placeholder="What would you like to see, and why?" style={{ ...inp, resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }} />
+              {gif && (
+                <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+                  <img src={gif.url} alt={gif.title} style={{ maxWidth: 260, maxHeight: 200, borderRadius: 'var(--r-md)', display: 'block', border: '1px solid var(--line)' }} />
+                  <button onClick={() => setGif(null)} title="Remove gif" style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" style={{ width: 13, height: 13 }} /></button>
+                </div>
+              )}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  {attachFiles.map((f, i) => (
+                    <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', fontSize: 12.5, color: 'var(--ink-2)' }}>
+                      <Icon name="doc" style={{ width: 13, height: 13 }} />
+                      <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                      <span className="mono" style={{ color: 'var(--ink-3)' }}>{fmtSize(f.size)}</span>
+                      <button onClick={() => removeFile(i)} title="Remove" style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 0, display: 'inline-flex' }}><Icon name="x" style={{ width: 13, height: 13 }} /></button>
+                    </div>
+                  ))}
+                  {attachFiles.length < 5 && (
+                    <label className="btn btn-quiet" style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                      <Icon name="plus" style={{ width: 13, height: 13 }} /> Attach {attachFiles.length ? 'another' : 'a file'}
+                      <input type="file" multiple onChange={e => { addFiles(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg" />
+                    </label>
+                  )}
+                </div>
+                {attachErr && <div style={{ fontSize: 12, color: 'oklch(0.55 0.16 25)', marginTop: 6 }}>{attachErr}</div>}
+              </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={draft.cat} onChange={e => setDraft({ ...draft, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
+                {draft.cat === 'Other' && <input value={draft.catOther || ''} onChange={e => setDraft({ ...draft, catOther: e.target.value })} placeholder="Specify a category…" style={{ ...inp, width: 200 }} />}
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                  <button className="btn btn-quiet" onClick={() => setAdding(false)}>Cancel</button>
-                  <button className="btn btn-primary" disabled={!draft.title.trim()} onClick={submit}><Icon name="check" /> Submit</button>
+                  <button className="btn btn-quiet" onClick={() => { setAdding(false); setAttachFiles([]); setAttachErr(''); setGif(null); }}>Cancel</button>
+                  <button className="btn btn-primary" disabled={!draft.title.trim() || submitting} onClick={submit}><Icon name="check" /> {submitting ? 'Submitting…' : 'Submit'}</button>
                 </div>
               </div>
             </div>
           )}
+          {!loading && !loadErr && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--gap)' }}>
+              <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Sort:</span>
+              <button onClick={() => setSortMode(nextSort[0])} title={`Sorted by ${curSort[1]} — tap for ${nextSort[1]}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-body)', border: '1px solid', borderColor: 'var(--accent)', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
+                <Icon name={curSort[2]} style={{ width: 14, height: 14, transform: curSort[0] === 'top' ? 'rotate(-90deg)' : 'none' }} />
+                {curSort[1]}
+              </button>
+            </div>
+          )}
           {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Loading…</div>}
           {!loading && loadErr && <div className="card" style={{ padding: 'var(--pad)', color: 'var(--ink-2)', fontSize: 13.5 }}>{loadErr}</div>}
-          {!loading && !loadErr && sorted.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {!loading && !loadErr && sorted.map(it => (
-              <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <button onClick={() => vote(it.id)} disabled={!!myVotes[it.id]} style={{ flex: 'none', width: 50, padding: '8px 0', borderRadius: 'var(--r-md)', border: '1px solid', borderColor: myVotes[it.id] ? 'var(--accent)' : 'var(--line)', background: myVotes[it.id] ? 'var(--accent-soft)' : 'var(--surface)', color: myVotes[it.id] ? 'var(--accent-strong)' : 'var(--ink-2)', cursor: myVotes[it.id] ? 'default' : 'pointer', textAlign: 'center' }}>
-                  <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(-90deg)' }} />
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{it.votes || 0}</div>
-                </button>
+          {!loading && !loadErr && totalCount === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No requests yet — be the first to suggest something.</div>}
+          {!loading && !loadErr && sections.map(sec => (
+            <div key={sec.label || 'all'} style={{ marginBottom: sections.length > 1 ? 18 : 0 }}>
+              {sec.label && <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', margin: '4px 2px 10px' }}>{sec.label} · {sec.items.length}</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {sec.items.map(it => (
+              <div key={it.id} data-fb-id={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'box-shadow .25s, border-color .25s', ...(focusId === it.id ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' } : null) }}>
+                <VoteBox value={it.votes || 0} mine={myVote[it.id] || 0} up={it.upCount || 0} down={it.downCount || 0} onUp={() => vote(it.id, 'up')} onDown={() => vote(it.id, 'down')} readOnly={!isAdmin} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 600, fontSize: 15 }}>{it.title}</span>
@@ -140,7 +397,63 @@ function Feedback({ me, access, flash }) {
                     {it.eta && <span className="badge badge-prog"><Icon name="calendar" /> {it.eta}</span>}
                   </div>
                   <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>{it.desc}</p>
+                  {it.gif && it.gif.url && <img src={it.gif.url} alt={it.gif.title || 'gif'} style={{ maxWidth: 300, maxHeight: 220, borderRadius: 'var(--r-md)', display: 'block', marginTop: 8, border: '1px solid var(--line)' }} />}
                   <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>{it.cat} · suggested by {it.by}</div>
+                  <button onClick={() => toggleComments(it.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '6px 10px', border: '1px solid', borderColor: openComments === it.id ? 'var(--accent)' : 'var(--line)', borderRadius: 'var(--r-md)', background: openComments === it.id ? 'var(--accent-soft)' : 'var(--surface)', color: openComments === it.id ? 'var(--accent-strong)' : 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
+                    <Icon name="comment" style={{ width: 14, height: 14 }} />
+                    {it.commentCount ? 'Comments' : 'Comment'}
+                    {it.commentCount > 0 && <span className="mono" style={{ minWidth: 18, textAlign: 'center', padding: '1px 6px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 700 }}>{it.commentCount}</span>}
+                  </button>
+                  {openComments === it.id && (
+                    <div style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+                      {commentLoading && !commentsById[it.id] && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {(commentsById[it.id] || []).filter(c => !c.parentId).map(c => {
+                          const replies = (commentsById[it.id] || []).filter(r => r.parentId === c.id);
+                          return (
+                            <div key={c.id}>
+                              {renderComment(it.id, c, false)}
+                              {replies.length > 0 && (
+                                <div style={{ marginLeft: 13, paddingLeft: 13, borderLeft: '2px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                                  {replies.map(r => renderComment(it.id, r, true))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {commentsById[it.id] && commentsById[it.id].length === 0 && !commentLoading && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>No comments yet.</div>}
+                      </div>
+                      {isAdmin && (<>
+                      {replyTo && replyTo.id === it.id && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 12.5, color: 'var(--ink-2)' }}>
+                          <Icon name="comment" style={{ width: 12, height: 12 }} /> Replying to <b>{replyTo.name}</b>
+                          <button onClick={() => setReplyTo(null)} style={{ border: 'none', background: 'none', color: 'var(--ink-3)', cursor: 'pointer', display: 'inline-flex', padding: 2 }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 8, marginTop: (replyTo && replyTo.id === it.id) ? 6 : 12 }}>
+                        <input value={commentDraft} onChange={e => onCommentChange(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(it.id); } }} placeholder={(replyTo && replyTo.id === it.id) ? `Reply to ${replyTo.name}…` : 'Add a comment…'} style={{ ...inp, flex: 1, padding: '8px 12px', fontSize: 13.5 }} />
+                        <button className="btn btn-primary" disabled={(!commentDraft.trim() && !commentGif) || commentBusy} onClick={() => postComment(it.id)}>{(replyTo && replyTo.id === it.id) ? 'Reply' : 'Post'}</button>
+                      </div>
+                      {commentGif && (
+                        <div style={{ position: 'relative', display: 'inline-block', marginTop: 8 }}>
+                          <img src={commentGif.url} alt={commentGif.title} style={{ maxWidth: 200, maxHeight: 150, borderRadius: 'var(--r-md)', display: 'block', border: '1px solid var(--line)' }} />
+                          <button onClick={() => setCommentGif(null)} title="Remove gif" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" style={{ width: 12, height: 12 }} /></button>
+                        </div>
+                      )}
+                      </>)}
+                    </div>
+                  )}
+                  {(() => { const files = (it.attachments && it.attachments.length) ? it.attachments : (it.attachment ? [it.attachment] : []); return files.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      {files.map((f, i) => (
+                        <button key={i} onClick={() => downloadAttachment(it, f)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', color: 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer' }}>
+                          <Icon name="doc" style={{ width: 13, height: 13 }} />
+                          <span style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                          {f.size ? <span className="mono" style={{ color: 'var(--ink-3)' }}>{fmtSize(f.size)}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ); })()}
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <select value={it.status} onChange={e => setStatus(it.id, e.target.value)} style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: 12.5 }}>{FB_STATUSES.map(s => <option key={s}>{s}</option>)}</select>
@@ -150,8 +463,10 @@ function Feedback({ me, access, flash }) {
                   )}
                 </div>
               </div>
-            ))}
-          </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </>
       )}
 
@@ -163,7 +478,7 @@ function Feedback({ me, access, flash }) {
             {archived.map(it => {
               const declined = it.status === 'Declined';
               return (
-              <div key={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div key={it.id} data-fb-id={it.id} className="card" style={{ padding: 'var(--pad)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'box-shadow .25s, border-color .25s', ...(focusId === it.id ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' } : null) }}>
                 <Icon name={declined ? 'x' : 'check'} style={{ width: 18, height: 18, color: declined ? 'var(--ink-3)' : 'var(--ok)', flex: 'none', marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -183,39 +498,28 @@ function Feedback({ me, access, flash }) {
 
       {tab === 'Roadmap' && (
         <>
-          {planning && isAdmin && (
-            <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', borderColor: 'var(--accent)' }}>
-              <h3 style={{ fontSize: 15.5, marginBottom: 12 }}>Add a planned feature</h3>
-              <input value={plan.title} onChange={e => setPlan({ ...plan, title: e.target.value })} placeholder="Feature name" style={{ ...inp, marginBottom: 10, fontWeight: 600 }} />
-              <textarea value={plan.desc} onChange={e => setPlan({ ...plan, desc: e.target.value })} rows={2} placeholder="Description" style={{ ...inp, resize: 'vertical', marginBottom: 10 }} />
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select value={plan.cat} onChange={e => setPlan({ ...plan, cat: e.target.value })} style={{ ...inp, width: 'auto', appearance: 'auto' }}>{FB_CATS.map(c => <option key={c}>{c}</option>)}</select>
-                <input value={plan.eta} onChange={e => setPlan({ ...plan, eta: e.target.value })} placeholder="Est. timeline" style={{ ...inp, width: 160 }} />
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button className="btn btn-quiet" onClick={() => setPlanning(false)}>Cancel</button><button className="btn btn-primary" disabled={!plan.title.trim()} onClick={addPlanned}><Icon name="check" /> Add</button></div>
-              </div>
-            </div>
-          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 'var(--gap)' }}>
             {ROADMAP_COLS.map(([status, label]) => {
               const col = items.filter(i => i.status === status).sort((a, b) => (b.votes || 0) - (a.votes || 0));
               return (
                 <div key={status}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 2px 12px' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: status === 'Complete' ? 'var(--ok)' : status === 'In progress' ? 'var(--warn)' : 'var(--accent)' }} />
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: status === 'Complete' ? 'var(--ok)' : status === 'In progress' ? 'var(--warn)' : status === 'Submitted' ? 'var(--ink-3)' : 'var(--accent)' }} />
                     <h3 style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-3)', fontFamily: 'var(--font-body)' }}>{label}</h3>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>{col.length}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {col.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', padding: '14px', textAlign: 'center', border: '1px dashed var(--line)', borderRadius: 'var(--r-md)' }}>Nothing here yet</div>}
                     {col.map(it => (
-                      <div key={it.id} className="card" style={{ padding: '14px var(--pad)' }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{it.title}</div>
-                        <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}>{it.desc}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      <div key={it.id} onClick={() => openPost(it)} className="card" style={{ padding: '14px var(--pad)', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = ''}>
+                        <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.title}</div>
+                        <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4, minHeight: '2.8em', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.desc}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 10, flexWrap: 'wrap' }}>
                           <span className="badge badge-todo" style={{ fontSize: 10.5 }}>{it.cat}</span>
                           {it.eta && <span className="badge badge-prog" style={{ fontSize: 10.5 }}><Icon name="calendar" /> {it.eta}</span>}
-                          {!it.planned && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>}
-                          {isAdmin && <button onClick={() => removeItem(it.id)} title="Delete" style={{ border: 'none', background: 'none', color: 'oklch(0.55 0.16 25)', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>}
+                          <span className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginLeft: !isAdmin ? 'auto' : 0 }}>▲ {it.votes}</span>
+                          {isAdmin && <button onClick={(e) => { e.stopPropagation(); removeItem(it.id); }} title="Delete" style={{ border: 'none', background: 'none', color: 'oklch(0.55 0.16 25)', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>}
                         </div>
                       </div>
                     ))}
@@ -226,6 +530,48 @@ function Feedback({ me, access, flash }) {
           </div>
         </>
       )}
+
+      {gifOpen && <GifPicker onPick={g => { if (gifTarget === 'comment') setCommentGif(g); else setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
+    </div>
+  );
+}
+
+function GifPicker({ onPick, onClose, flash }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      window.searchGifs(q)
+        .then(gifs => { if (live) setResults(gifs); })
+        .catch(e => { if (live) { setResults([]); flash && flash('Gif search failed (' + e.message + ')'); } })
+        .finally(() => { if (live) setLoading(false); });
+    }, q ? 300 : 0); // debounce typed queries; load trending immediately
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
+  const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(560px,100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 'var(--pad)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIPHY…" style={{ ...inp, flex: 1 }} />
+          <button onClick={onClose} className="btn btn-quiet"><Icon name="x" style={{ width: 14, height: 14 }} /></button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, minHeight: 120 }}>
+          {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>Loading…</div>}
+          {!loading && results.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>No gifs found.</div>}
+          {!loading && results.length > 0 && (
+            <div style={{ columnCount: 3, columnGap: 8 }}>
+              {results.map(g => (
+                <img key={g.id} src={g.previewUrl} alt={g.title} onClick={() => onPick(g)} style={{ width: '100%', marginBottom: 8, borderRadius: 'var(--r-sm)', cursor: 'pointer', display: 'block' }} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '.04em', marginTop: 10 }}>POWERED BY GIPHY</div>
+      </div>
     </div>
   );
 }

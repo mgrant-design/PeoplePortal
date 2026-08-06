@@ -160,7 +160,7 @@ function DeputyImportModal({ offices, flash, onDone, onClose }) {
   return (
     <RegPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: 'calc(64px + 16px)', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(620px, 94vw)', maxHeight: 'calc(100vh - 64px - 32px)', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(620px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Migration</div>

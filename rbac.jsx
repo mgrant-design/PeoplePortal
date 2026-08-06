@@ -15,6 +15,7 @@ function normLoc(l) {
   if (s.includes('wading')) return 'Wading River';
   if (s.includes('islandia')) return 'Islandia';
   if (s.includes('jersey')) return 'New Jersey';
+  if (s.includes('totowa')) return 'New Jersey';   /* Four Ever Smile Dental Spa — Totowa, NJ */
   if (s.includes('buffalo')) return 'Buffalo';
   return l;
 }
@@ -107,6 +108,8 @@ function deriveAccess(me) {
     relations: isAdmin || isHR || isManager,
     askHR: isAdmin || isHR || isExec || isManager || isSupervisor,
     recruiting: isAdmin || isHR || isExec || isManager,
+    feedbackView: isAdmin || isHR || isExec || isManager,
+    feedbackManage: isAdmin,
   };
   return { level, label: LABELS[level], flags: { isExec, isHR, isAccounting, isManager, isSupervisor, isAdmin, isDirector }, caps, perms };
 }

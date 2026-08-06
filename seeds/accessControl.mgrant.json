@@ -1,9 +1,0 @@
-{
-  "id": "mgrant@puredental.com",
-  "email": "mgrant@puredental.com",
-  "admin": true,
-  "canPrint": true,
-  "canSuspend": true,
-  "canTerminate": true,
-  "canDelete": true
-}

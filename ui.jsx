@@ -26,6 +26,7 @@ const ICON = {
   pin: 'M10 17s5-4.2 5-8a5 5 0 10-10 0c0 3.8 5 8 5 8zm0-6.2a2 2 0 100-4 2 2 0 000 4z',
   building: 'M4 17V4h8v13M12 8h4v9M6.5 7h2M6.5 10h2M6.5 13h2',
   bell: 'M10 3a4 4 0 00-4 4c0 4-1.5 5-1.5 5h11S14 11 14 7a4 4 0 00-4-4zM8.5 15.5a1.5 1.5 0 003 0',
+  chat: 'M4 4h12v8H8l-4 3.5V4z',
   chevron: 'M7 4l6 6-6 6',
   dots: 'M5 10h.01M10 10h.01M15 10h.01',
   trash: 'M4 6h12M8 6V4h4v2M5.5 6l.7 10h7.6l.7-10',
@@ -43,6 +44,7 @@ const ICON = {
   play: 'M7 5l8 5-8 5z',
   search: 'M9 3a6 6 0 104.5 10l3.5 3.5M9 3a6 6 0 010 12',
   download: 'M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 15v1.5h12V15',
+  comment: 'M3.5 4.5h13v9h-7l-3.5 3v-3h-2.5z',
 };
 
 function Icon({ name, style, className }) {

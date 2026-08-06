@@ -40,9 +40,8 @@ const FLAG_DEFS = [
   { id: 'paychex', label: 'Paychex integration — payroll sync, export & pay rules', group: 'Integrations', note: 'Phase 2 · enable when Paychex API is live' },
   { id: 'provisionApi', label: 'Auto-provision accounts via API — Google, Denticon, NexHealth, DoseSpot', group: 'Integrations', note: 'Off = IT/HR creates accounts manually and records logins. Turn on once the provisioning APIs are connected.' },
   { id: 'resumeParse', label: 'Résumé parsing & import — auto-extract applicant details from uploaded résumés', group: 'Integrations', note: 'Off = enter applicants manually (résumés still attach). Turn on once the parsing service is connected.' },
-  { id: 'gdrive', label: 'Google Drive — browse & attach documents from My Drive and Shared Drives', group: 'Integrations', note: 'Off = attach by local upload only. Turn on once Google Drive is connected to search Drive & Shared Drives for offer letters, job descriptions and forms.' },
 ];
-const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true, gdrive: false };
+const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true };
 const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', automations: 'automations', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
 
 function ComingSoon({ label }) {
@@ -59,7 +58,7 @@ function ComingSoon({ label }) {
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', show: () => true },
-  { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
+  { id: 'applicants', label: 'Applicants', show: a => a.flags.isAdmin, flag: 'applicants' },
   { id: 'onboarding', label: 'My onboarding', show: () => true },
   { id: 'people', label: 'Directory', show: () => true },
   { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
@@ -75,7 +74,7 @@ const NAV = [
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
   { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
   { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
-  { id: 'feedback', label: 'Roadmap', show: () => true },
+  { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
   { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
   { id: 'askhr', label: 'Ask HR', show: a => a.caps.askHR, flag: 'askhr' },
 ];
@@ -98,7 +97,7 @@ const NAV_GROUPS = [
   ] },
   { id: 'g_people', label: 'People', children: [
     { id: 'people', label: 'Directory', show: () => true },
-    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
+    { id: 'applicants', label: 'Applicants', show: a => a.flags.isAdmin, flag: 'applicants' },
   ] },
   { id: 'g_manage', label: 'Manage', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
@@ -107,7 +106,7 @@ const NAV_GROUPS = [
     { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
-    { id: 'feedback', label: 'Roadmap', show: () => true },
+    { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
   ] },
   { id: 'g_settings', label: 'Settings', children: [
     { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
@@ -144,7 +143,7 @@ const VIEW_LEVELS = [
   ['employee', 'Employee', 'Just their own stuff'],
 ];
 
-function ViewSwitcher({ current, onPick, onClose }) {
+function ViewSwitcher({ current, onPick, onClose, mobileView, onToggleMobile }) {
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
@@ -155,6 +154,15 @@ function ViewSwitcher({ current, onPick, onClose }) {
           <button onClick={onClose} style={{ position: 'absolute', top: -3, right: -3, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}><Icon name="x" style={{ width: 16, height: 16 }} /></button>
         </div>
         <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-3)', textAlign: 'center', padding: '0 4px 12px' }}>Preview the portal at another access level. Your real access is unchanged.</div>
+        <button onClick={() => onToggleMobile(!mobileView)}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '9px 11px', marginBottom: 8, fontFamily: 'var(--font-body)',
+            border: mobileView ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: mobileView ? 'var(--accent-softer)' : 'var(--surface)' }}>
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>Mobile view</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>Clamp to a portrait phone box. Geometry only — the mobile CSS breakpoints still read the real window width.</span>
+          </span>
+          {mobileView && <Icon name="check" style={{ width: 16, height: 16, color: 'var(--accent-strong)' }} />}
+        </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {VIEW_LEVELS.map(([val, label, desc]) => {
             const on = current === val;
@@ -223,6 +231,13 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     setView('dashboard');
     window.scrollTo({ top: 0 });
   };
+  // DEV/TEST: clamp the shell to a portrait phone box so mobile layout work has something to
+  // iterate against. Adds .pd-mobile-view to <html>; styles.css does the clamping.
+  const [mobileView, setMobileView] = useState(false);
+  useEffect(() => {
+    document.documentElement.classList.toggle('pd-mobile-view', mobileView);
+    return () => document.documentElement.classList.remove('pd-mobile-view');
+  }, [mobileView]);
   const chipHold = useRef({ t: null, fired: false, x: 0, y: 0 });
   const chipDown = (e) => {
     if (!canSwitchView) return;
@@ -266,7 +281,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     const key = 'pd_seen_notifs_' + me.id;
     const sigs = [
       ...(typeof myNotifSignatures === 'function' ? myNotifSignatures(notifReqs, me, access) : []),
-      ...notices.map(n => 'notice:' + n.id),   // a direct notice is terminal — one ding when it first appears
+      ...notices.filter(n => !n.dismissed && n.category !== 'social').map(n => 'notice:' + n.id),   // direct notices ding once when they appear; reactions (social) never ding
     ];
     let seen = seenNotifRef.current;
     if (seen === null) {
@@ -298,8 +313,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     const onNotice = (n) => {
       if (!n || !n.id) return;
       if (seenNotifRef.current instanceof Set) seenNotifRef.current.add('notice:' + n.id);
-      setNotices(list => list.some(x => x.id === n.id) ? list : [n, ...list]);
-      if (window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
+      setNotices(list => { const i = list.findIndex(x => x.id === n.id); if (i >= 0) { const next = list.slice(); next[i] = n; return next; } return [n, ...list]; });
+      if (n.category !== 'social' && window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
     };
     connectNotifications(me.workEmail, onNotice).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
     return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };
@@ -307,7 +322,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
-  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read).length;
+  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
@@ -456,7 +471,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
     // The Agent Automations section (console + runs + add-hire) is Admin-only. autodetail is
     // NOT gated — it's the post-hire pipeline the ATS and manager pre-hire flows land on.
-    const view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole'].includes(view)) ? 'dashboard' : view;
+    let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole', 'applicants'].includes(view)) ? 'dashboard' : view;
+    if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />;
       case 'people': return <Directory employees={EMPLOYEES} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
@@ -473,7 +489,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
       case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
-      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} driveOn={flagOn('gdrive')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
+      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
       case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
       case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />; }
@@ -482,7 +498,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'security': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
       case 'modules': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
-      case 'scheduler': return <Scheduler onBack={() => go('dashboard')} />;
+      case 'scheduler': return <Scheduler me={me} access={access} onBack={() => go('dashboard')} />;
       case 'myschedule': return <MySchedule me={me} />;
       // ---- onboarding sub-flow ----
       case 'onboarding':
@@ -721,9 +737,9 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       )}
 
       {helpOpen && <HelpPanel view={view} onClose={closeHelp} onStartTour={startTour} />}
-      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.filter(n => n.id !== id)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
+      {notifOpen && <NotificationsPanel me={me} access={access} flash={flash} notices={notices} onSend={(body) => sendNotice(body)} onMarkRead={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, read: true } : n)); if (typeof markNoticeRead === 'function') markNoticeRead(id).catch(() => {}); }} onDelete={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: true } : n)); if (typeof deleteNotice === 'function') deleteNotice(id).catch(() => {}); }} onRestore={(id) => { setNotices(list => list.map(n => n.id === id ? { ...n, dismissed: false } : n)); if (typeof restoreNotice === 'function') restoreNotice(id).catch(() => {}); }} onOpenDeepLink={(dl) => { if (dl && dl.view === 'applicants' && dl.applicantId) { setOpenApplicantId(dl.applicantId); go('applicants'); } else if (dl && (dl.view === 'scheduler' || dl.view === 'myschedule')) { go(dl.view); } else if (dl && dl.view === 'feedback') { go('feedback'); } setNotifOpen(false); }} onClose={() => { setNotifOpen(false); refreshNotifs(); }} />}
       {appearanceOpen && <AppearanceMenu me={me} onClose={() => setAppearanceOpen(false)} onNav={setNavMode} />}
-      {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} />}
+      {viewSwitchOpen && canSwitchView && <ViewSwitcher current={viewOverride || ''} onPick={applyViewOverride} onClose={() => setViewSwitchOpen(false)} mobileView={mobileView} onToggleMobile={setMobileView} />}
       {tourOpen && tourSteps.length > 0 && <GuidedTour steps={tourSteps} onNavigate={go} onClose={endTour} />}
       {celebs.length > 0 && <CelebrationOverlay emp={me} celebrations={celebs} onClose={() => setCelebs([])} />}
       <main className="main">{(modulesAllReady || view === 'dashboard') ? renderView() : (
