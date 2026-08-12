@@ -74,6 +74,10 @@ function Login({ onSignedIn, loading, error }) {
             Protected sign-in · company Google accounts only · domain-restricted.
           </div>
         </div>
+
+        {/* deployed commit — readable without signing in, so a push can be confirmed
+            from here before anyone logs in */}
+        <BuildTag style={{ textAlign: 'center', marginTop: 14 }} />
       </div>
     </div>
   );

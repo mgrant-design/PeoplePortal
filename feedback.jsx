@@ -532,6 +532,10 @@ function Feedback({ me, access, flash }) {
       )}
 
       {gifOpen && <GifPicker onPick={g => { if (gifTarget === 'comment') setCommentGif(g); else setGif(g); setGifOpen(false); }} onClose={() => setGifOpen(false)} flash={flash} />}
+
+      {/* deployed commit — the one place it appears inside the app, at the very bottom
+          of this page only, for whoever knows to look for it */}
+      <BuildTag style={{ textAlign: 'center', marginTop: 32, paddingTop: 4 }} />
     </div>
   );
 }

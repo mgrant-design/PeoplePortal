@@ -59,6 +59,9 @@
        → /api/agentconfig (Cosmos appState/riley-config). Seeds from riley-data.jsx. -->
   <script type="text/babel" src="agentconfig.jsx"></script>
   <script type="text/babel" src="hrseed.jsx"></script>
+  <!-- Critical, not deferred: login.jsx renders <BuildTag/>, so this must be defined
+       before it. feedback.jsx is deferred and finds it on window by the time it loads. -->
+  <script type="text/babel" src="version.jsx"></script>
   <script type="text/babel" src="login.jsx"></script>
   <!-- Appearance is critical (not deferred) so the LAST theme used on this device paints the
        login screen + favicon before login renders — no default-blue flash, and the bookmark
