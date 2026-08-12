@@ -128,7 +128,10 @@ function Scheduler({ me, access, onBack }) {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);       // { office, empId|null, date, shift|null }
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState('name');   // name | hours
+  const [dept, setDept] = useState('');           // '' = every department
+  /* hours-first by default: Deputy ranks the team by hours so whoever is closest to
+     overtime is at the top, which is the reason to look at the list at all */
+  const [sortBy, setSortBy] = useState('hours');  // name | hours
   const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
   const [focusEmp, setFocusEmp] = useState(null);
   const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
@@ -149,11 +152,15 @@ function Scheduler({ me, access, onBack }) {
   const roster = useMemo(() => {
     let r = offices.flatMap(officeRoster);
     if (search.trim()) { const q = search.trim().toLowerCase(); r = r.filter(p => p.name.toLowerCase().includes(q)); }
+    if (dept) r = r.filter(p => p.dept === dept);
     return r;
-  }, [offices, search]);
+  }, [offices, search, dept]);
   const multi = offices.length > 1;
   /* unfiltered team for the regular-hours picker (the search box scopes the grid, not this) */
   const allRoster = useMemo(() => offices.flatMap(officeRoster), [offices]);
+  /* every department present across the selected offices — "only the Dental Assistants
+     in the offices I pick", which the name-only search box could never do */
+  const DEPTS = useMemo(() => [...new Set(allRoster.map(p => p.dept).filter(Boolean))].sort(), [allRoster]);
   useEffect(() => { fetchRegHours().then(setRegHours).catch(() => setRegHours([])); }, []);
 
   /* every displayed shift, tagged with its office */
@@ -238,10 +245,15 @@ function Scheduler({ me, access, onBack }) {
   /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
   const unpubCount = shifts.filter(s => !s.pub).length;
   const publish = async () => {
-    /* save-then-publish, per office: this is the ONLY write path for drafts */
+    /* save-then-publish, per office: this is the ONLY write path for drafts.
+       An office whose shifts were emptied locally (Options → Delete all shifts) must
+       still be saved — skipping it left the deletion unwritten and load() pulled the
+       old shifts straight back, so "delete all" silently did nothing. Only skip an
+       office with nothing saved AND nothing to save. */
     for (const office of offices) {
       const doc = docsRef.current[office];
-      if (!doc || !(doc.shifts || []).length) continue;
+      if (!doc) continue;
+      if (!(doc.shifts || []).length && !doc._dirty) continue;
       if (doc._dirty) {
         try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
         catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
@@ -381,12 +393,14 @@ function Scheduler({ me, access, onBack }) {
       if (!e || (e.loc || e.location) === s._office) return;
       if (q && !(e.name || '').toLowerCase().includes(q)) return;
       if (focusEmp && e.id !== focusEmp) return;
-      put(s._office, { id: e.id, name: e.name, dept: e.department || 'Unassigned', office: s._office });
+      const d = e.department || 'Unassigned';
+      if (dept && d !== dept) return;   /* guests obey the department filter too */
+      put(s._office, { id: e.id, name: e.name, dept: d, office: s._office });
     });
     return Object.values(groups)
       .sort((a, b) => a.dept.localeCompare(b.dept) || a.office.localeCompare(b.office))
       .map(g => ({ ...g, people: g.people.sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [roster, view, focusEmp, shifts, search]);
+  }, [roster, view, focusEmp, shifts, search, dept]);
 
   /* dept view rows show only that group's office; person view shows all selected */
   const cellShifts = (pid, date, office) => shifts.filter(s => s.empId === pid && s.date === date && (!office || s._office === office));
@@ -454,6 +468,13 @@ function Scheduler({ me, access, onBack }) {
             <button key={id} onClick={() => setView(id)} className={view === id ? 'on' : ''}>{label}</button>
           ))}
         </div>
+
+        {DEPTS.length > 1 && (
+          <div className="schm-acts">
+            <button onClick={() => setDept('')} className={dept ? '' : 'on'}>All roles</button>
+            {DEPTS.map(d => <button key={d} onClick={() => setDept(dept === d ? '' : d)} className={dept === d ? 'on' : ''}>{d}</button>)}
+          </div>
+        )}
 
         {/* the week, as seven tap targets — the second axis without rendering it */}
         <div className="schm-strip">
@@ -647,6 +668,11 @@ function Scheduler({ me, access, onBack }) {
             <button key={id} onClick={() => setView(id)} style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', fontSize: 12.5, fontWeight: 600, background: view === id ? 'var(--ink)' : 'var(--surface)', color: view === id ? 'var(--surface)' : 'var(--ink-2)' }}>{label}</button>
           ))}
         </div>
+        <select value={dept} onChange={e => setDept(e.target.value)} title="Show only one role"
+          style={{ border: '1px solid', borderColor: dept ? 'var(--accent)' : 'var(--line)', background: dept ? 'var(--accent-soft)' : 'var(--surface)', color: dept ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+          <option value="">All roles</option>
+          {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
         {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</span>}
       </div>
 
