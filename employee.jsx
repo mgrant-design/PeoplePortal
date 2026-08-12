@@ -107,8 +107,10 @@ function Row({ k, v }) {
 const REL_FILTERS = ['All', 'Positive', 'Disciplinary', 'Status change'];
 
 function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
-  const [emp, setEmp] = useState(() => (typeof mergeEmp === 'function' ? mergeEmp(rawEmp) : rawEmp));
-  useEffect(() => { setEmp(typeof mergeEmp === 'function' ? mergeEmp(rawEmp) : rawEmp); }, [rawEmp]);
+  /* the roster is the source of truth — no override layer to fold in. A save returns
+     the updated record and setEmp renders it straight away. */
+  const [emp, setEmp] = useState(rawEmp);
+  useEffect(() => { setEmp(rawEmp); }, [rawEmp]);
   const [editing, setEditing] = useState(false);
   const canEdit = access && (access.caps.viewAll || (access.caps.viewTeam && (canRelations != null ? canRelations : access.caps.relations)));
   const showRelations = canRelations != null ? canRelations : (access && access.caps.relations);
@@ -142,7 +144,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
 
   return (
     <div className="fade-in">
-      {editing && <EditRecordModal emp={emp} fields={ADMIN_FIELDS} title="Edit employee record" scope="admin" onSaved={setEmp} onClose={() => setEditing(false)} />}
+      {editing && <EditRecordModal emp={emp} fields={ADMIN_FIELDS} title="Edit employee record" onSaved={setEmp} onClose={() => setEditing(false)} />}
       {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to people</button>}
       {/* header */}
       <div className="card" style={{ padding: 'clamp(18px,3vw,26px)', marginBottom: 'var(--gap)' }}>

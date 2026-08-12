@@ -27,16 +27,14 @@ function Field2({ k, v }) {
   return <div><div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', fontWeight: 700 }}>{k}</div><div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>{v || '—'}</div></div>;
 }
 
-function Profile({ emp: rawEmp, access, onNav }) {
-  const [emp, setEmp] = useState(() => (typeof mergeEmp === 'function' ? mergeEmp(rawEmp) : rawEmp));
-  const [editing, setEditing] = useState(false);
+/* Read-only by design: employees don't edit their own roster record. Changes go
+   through HR/managers via the directory, which writes /api/roster. */
+function Profile({ emp, access, onNav }) {
   const [photoNudge, setPhotoNudge] = useState(!empPhoto(emp));
   return (
     <div className="fade-in">
-      {editing && <EditRecordModal emp={emp} fields={SELF_FIELDS} title="Edit my info" scope="self" onSaved={setEmp} onClose={() => setEditing(false)} />}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>My profile</h1>
-        <button className="btn btn-ghost" onClick={() => setEditing(true)}><Icon name="pen" /> Edit my info</button>
       </div>
 
       {photoNudge && (
