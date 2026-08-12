@@ -157,7 +157,7 @@ function AF({ label, req, children, hint }) {
 
 function ModalShell({ onClose, width = 560, children }) {
   return ReactDOM.createPortal((
-    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.2 0.03 250 / 0.45)', display: 'grid', placeItems: 'center', padding: '4vh 16px' }}>
+    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.2 0.03 250 / 0.45)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: '4vh 16px' }}>
       <div onClick={e => e.stopPropagation()} className="card" style={{ width: `min(${width}px, 96vw)`, maxHeight: '92vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         {children}
       </div>

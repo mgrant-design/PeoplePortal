@@ -557,7 +557,7 @@ function GifPicker({ onPick, onClose, flash }) {
   }, [q]);
   const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '3vh 20px 24px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(560px,100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 'var(--pad)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIPHY…" style={{ ...inp, flex: 1 }} />

@@ -16,7 +16,7 @@ function ContactCard({ emp, onClose, canRecord, onRecord, sensitive }) {
       : <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>{inner}</div>;
   };
   return ReactDOM.createPortal((
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'center', padding: 20 }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
       <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -10 }}><button className="btn btn-quiet" style={{ padding: 7 }} onClick={onClose}><Icon name="x" /></button></div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 4 }}>

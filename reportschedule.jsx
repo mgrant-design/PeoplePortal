@@ -106,7 +106,7 @@ function ScheduleModal({ def, me, onClose, onSave }) {
   };
 
   return ReactDOM.createPortal((
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.42)', display: 'grid', placeItems: 'center', padding: 20 }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.42)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
       <div onClick={e => e.stopPropagation()} className="card fade-in" style={{ width: 'min(560px, 96vw)', maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 11 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}><Icon name="mail" style={{ width: 17, height: 17 }} /></div>

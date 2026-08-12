@@ -264,7 +264,7 @@ function LimitModal({ info, onClose }) {
         ? `You’re not yet at your 90-day mark, so this ${c} is at your own expense for now.`
         : `You’ve reached your company-paid allowance for ${c}s. Any additional ${c}s are at your own expense — payroll deduction or pay now at checkout.`;
   return (
-    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'grid', placeItems: 'center', background: 'oklch(0.2 0.04 240 / 0.45)', backdropFilter: 'blur(3px)', padding: 20 }}>
+    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'grid', placeItems: 'start center', overflowY: 'auto', background: 'oklch(0.2 0.04 240 / 0.45)', backdropFilter: 'blur(3px)', padding: 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ maxWidth: 380, width: '100%', background: 'var(--surface)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 26, textAlign: 'center' }}>
         <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'var(--warn-soft)', color: 'oklch(0.55 0.13 60)', display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}><Icon name="bell" style={{ width: 22, height: 22 }} /></div>
         <h3 style={{ fontSize: 17 }}>Heads up</h3>

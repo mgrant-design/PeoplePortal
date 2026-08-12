@@ -87,7 +87,7 @@ function CelebrationOverlay({ emp, celebrations, onClose }) {
       : `${anniv.years} year${anniv.years === 1 ? '' : 's'} at Pure Dental today — thank you for everything you bring to the team. 💙`;
 
   return (
-    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'center', background: 'oklch(0.2 0.04 240 / 0.5)', backdropFilter: 'blur(4px)', padding: 20 }}>
+    <div className="fade-in" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'start center', overflowY: 'auto', background: 'oklch(0.2 0.04 240 / 0.5)', backdropFilter: 'blur(4px)', padding: 20 }}>
       <Confetti />
       <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: 440, width: '100%', background: 'var(--surface)', borderRadius: 'var(--r-lg, 20px)', boxShadow: 'var(--shadow-lg)', padding: 'clamp(24px,4vw,38px)', textAlign: 'center', animation: 'celebPop .4s cubic-bezier(.2,1.2,.3,1)' }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, border: 'none', background: 'var(--surface-2)', color: 'var(--ink-3)', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 16 }}>×</button>

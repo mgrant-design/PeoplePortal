@@ -181,7 +181,7 @@ function MySchedule({ me }) {
       {confirmClaim && (
         <>
           <div onClick={() => setConfirmClaim(null)} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-          <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(400px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(400px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
             <h3 style={{ fontSize: 16, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="bell" style={{ width: 16, height: 16, color: 'var(--warn)' }} /> Heads up — conflict</h3>
             <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)' }}>
               {confirmClaim.conflict.shifts.map(c => <p key={c.id} style={{ margin: '0 0 6px' }}>You already work {shiftRange(c)} on {c.date}.</p>)}
@@ -214,7 +214,7 @@ function BlackoutModal({ onClose, onSubmit }) {
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>Blackout dates</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12, lineHeight: 1.5 }}>Days you can’t work. HR confirms you have the PTO to cover them, then your manager approves — only then do they take effect on the schedule.</p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
