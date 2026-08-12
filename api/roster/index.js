@@ -28,6 +28,17 @@ const WRITE_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com
 const cleanStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n || 120);
 const emailOk = e => /^[^@\s]+@[^@\s]+$/.test(e) && WRITE_DOMAINS.includes(e.split('@')[1].toLowerCase());
 
+/* Compare two written names for equality without demanding an exact keystroke match.
+   NFD splits an accented letter into base + combining mark, so stripping the marks folds
+   Guzmán onto Guzman for COMPARISON only — nothing stored is ever altered, because the
+   spelling of someone's name is theirs. Also ignores case, punctuation and spacing. */
+const foldName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/* statuses that deactivate someone. Both need a permission AND a signature: the
+   signature is friction, not proof — the Google token already establishes identity —
+   so its job is to make the action deliberate and leave a record of who did it. */
+const SIGNED_STATUSES = ['Terminated', 'Suspended'];
+
 /* 8 hex chars — the same shape as the existing generated ids — retried on collision.
    Ids are opaque everywhere (shifts reference employees by id), so the only requirement
    is that one is never reused. */
@@ -109,7 +120,15 @@ function deriveAccess(me, usersByEmail, managerEmails, employees) {
 
   const viewAll = isAdmin || isHR || isExec;
   const viewTeam = isManager || isSupervisor;
-  return { viewAll, viewTeam };
+  /* canWrite / terminate / suspend mirror rbac.jsx:99-101 exactly, so the server enforces
+     the same permissions the HR Admin screen hands out. They are returned alongside the
+     view flags rather than recomputed by callers. */
+  return {
+    viewAll, viewTeam, isAdmin, isHR, isExec, isManager, isSupervisor, isAccounting,
+    canWrite: isAdmin || isHR || isExec || isManager,
+    terminate: !!perms.canTerminate || isAdmin || isHR,
+    suspend: !!perms.canSuspend || isAdmin || isHR,
+  };
 }
 
 function scopedEmployees(me, access, employees) {
@@ -205,9 +224,7 @@ module.exports = async function (context, req) {
       const send = (status, body) => { context.res = { status, headers, body: JSON.stringify(body) }; };
       /* "managers or above" — supervisors are deliberately excluded; deriveAccess()
          already treats isManager and isSupervisor as mutually exclusive. */
-      if (!(access.isAdmin || access.isManager || access.isHR || access.isExec)) {
-        return send(403, { error: 'Managers and above only' });
-      }
+      if (!access.canWrite) return send(403, { error: 'Managers and above only' });
 
       let input = req.body;
       if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
@@ -258,10 +275,46 @@ module.exports = async function (context, req) {
         const { patch, error } = takePatch(input.patch || {}, false, id);
         if (error) return send(400, { error });
         if (!Object.keys(patch).length) return send(400, { error: 'nothing to update' });
+
+        /* deactivating someone: separate permission, and a signature that must match
+           the signer's own name. Checked here rather than trusted from the client. */
+        let auditDoc = null;
+        const to = patch.status;
+        if (to && SIGNED_STATUSES.includes(to) && to !== existing.status) {
+          const need = to === 'Terminated' ? 'terminate' : 'suspend';
+          if (!access[need]) return send(403, { error: `You don't have permission to set someone to ${to}.`, needsPermission: need });
+          const signature = cleanStr(input.signature, 120);
+          const myName = `${me.first || ''} ${me.last || ''}`.trim();
+          if (!signature) return send(400, { error: 'A signature is required to set someone to ' + to, needsSignature: true, signAs: myName });
+          if (foldName(signature) !== foldName(myName)) {
+            return send(400, { error: `The signature must match your own name (${myName}).`, needsSignature: true, signAs: myName });
+          }
+          const at = new Date().toISOString();
+          const date = at.slice(0, 10);
+          auditDoc = {
+            id: 'aud-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex'),
+            date, kind: 'status-change',
+            targetId: existing.id, targetName: `${existing.first || ''} ${existing.last || ''}`.trim(),
+            targetEmail: (existing.workEmail || '').toLowerCase(),
+            from: existing.status || '', to,
+            reason: cleanStr(input.reason, 1000),
+            signature, byEmail: identity.email, byName: myName, at,
+          };
+        }
+
         const doc = { ...existing, ...patch, ...stamp };
         const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: true });
         if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
-        return send(200, { ok: true, employee: strip(r.body) });
+        /* audit AFTER the record is safely written — a failed audit must not lose the
+           change, but an unrecorded deactivation is worth surfacing, so it is reported */
+        let audited = null;
+        if (auditDoc) {
+          try {
+            const a = await cosmos({ verb: 'POST', resId: collPath('audit'), path: `/${collPath('audit')}/docs`, body: auditDoc, partitionKey: auditDoc.date, upsert: true });
+            audited = (a.status === 200 || a.status === 201);
+          } catch (e) { audited = false; }
+        }
+        return send(200, { ok: true, employee: strip(r.body), ...(auditDoc ? { audited } : {}) });
       }
 
       return send(400, { error: 'unknown action — expected create or update' });

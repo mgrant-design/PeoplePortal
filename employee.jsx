@@ -144,7 +144,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
 
   return (
     <div className="fade-in">
-      {editing && <EditRecordModal emp={emp} fields={ADMIN_FIELDS} title="Edit employee record" onSaved={setEmp} onClose={() => setEditing(false)} />}
+      {editing && <EditRecordModal emp={emp} fields={ADMIN_FIELDS} title="Edit employee record" me={me} onSaved={setEmp} onClose={() => setEditing(false)} />}
       {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to people</button>}
       {/* header */}
       <div className="card" style={{ padding: 'clamp(18px,3vw,26px)', marginBottom: 'var(--gap)' }}>
