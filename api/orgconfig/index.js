@@ -17,6 +17,8 @@ const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = requ
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding'];
+/* scalar settings, saved through the same endpoint but not array-shaped */
+const WEEK_STARTS = [0, 1, 2];
 
 /* Admin / HR / Leadership only — compact port of deriveAccess(viewAll) from rbac.jsx */
 function canManageOrg(me, usersByEmail) {
@@ -59,6 +61,7 @@ module.exports = async function (context, req) {
       context.res = { status: 200, headers, body: JSON.stringify({
         offices: s.offices || [], departments: s.departments || [], titles: s.titles || [],
         managers: s.managers || [], users: s.users || [], offboarding: s.offboarding || [],
+        weekStart: Number.isFinite(s.weekStart) ? s.weekStart : 1,
       }) };
       return;
     }
@@ -73,14 +76,18 @@ module.exports = async function (context, req) {
 
     let input = req.body;
     if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
-    if (!input || !SECTIONS.includes(input.section) || !Array.isArray(input.value)) {
+    const isWeekStart = input && input.section === 'weekStart';
+    if (isWeekStart && !WEEK_STARTS.includes(Number(input.value))) {
+      context.res = { status: 400, headers, body: JSON.stringify({ error: 'weekStart must be 0 (Sunday), 1 (Monday) or 2 (Tuesday)' }) }; return;
+    }
+    if (!isWeekStart && (!input || !SECTIONS.includes(input.section) || !Array.isArray(input.value))) {
       context.res = { status: 400, headers, body: JSON.stringify({ error: 'Body must be { section: one of ' + SECTIONS.join('|') + ', value: [...] }' }) }; return;
     }
 
     // read-modify-write: start from the current doc (or a fresh skeleton), patch the section.
     // appState is partitioned by /type, so the doc must carry a `type` and we partition by it.
     const base = support || { id: 'roster-support', type: 'roster-support' };
-    const next = { ...base, type: base.type || 'roster-support', [input.section]: input.value, updatedBy: identity.email, updatedAt: new Date().toISOString() };
+    const next = { ...base, type: base.type || 'roster-support', [input.section]: isWeekStart ? Number(input.value) : input.value, updatedBy: identity.email, updatedAt: new Date().toISOString() };
 
     // optimistic concurrency: only write if the doc hasn't changed since we read it
     const up = await cosmos({

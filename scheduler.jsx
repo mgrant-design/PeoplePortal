@@ -120,6 +120,9 @@ function SchedShift({ s, hue, multi, dim, hi, ot, onClick }) {
 function Scheduler({ me, access, onBack }) {
   const OFFICES = useMemo(() => schedOffices(), []);
   const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
+  /* org config is Admin / HR / Leadership on the server; mirror it so the menu entry only
+     shows to someone whose save would actually be accepted */
+  const canOrg = !!(access && access.flags && (access.flags.isAdmin || access.flags.isHR || access.flags.isExec));
   const [offices, setOffices] = useState(() => OFFICES); // "All" is the default view
   const [weekKey, setWeekKey] = useState(() => thisWeekKey());
   const [view, setView] = useState('dept');
@@ -245,6 +248,7 @@ function Scheduler({ me, access, onBack }) {
   /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
   const unpubCount = shifts.filter(s => !s.pub).length;
   const [pubAsk, setPubAsk] = useState(false);   // publish-type step
+  const [wkAsk, setWkAsk] = useState(false);     // which weekday a week starts on
   const publish = async (notifyMode) => {
     setPubAsk(false);
     /* save-then-publish, per office: this is the ONLY write path for drafts.
@@ -620,6 +624,7 @@ function Scheduler({ me, access, onBack }) {
           </button>
         </div>
 
+        {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
         {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
         {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
         {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
@@ -660,6 +665,7 @@ function Scheduler({ me, access, onBack }) {
             {menu === 'options' && <Dropdown onClose={() => setMenu(null)} items={[
               ['Mark all shifts open', 'Every displayed shift stays in place but is flagged open — up for grabs', () => bulk('unassign')],
               ['Regular hours…', 'Set someone’s standing weekly hours and overtime threshold', () => { setMenu(null); setRegOpen(true); }],
+              ...(canOrg ? [['Week starts on…', 'Which weekday a schedule week begins — currently ' + (WEEK_STARTS.find(([k]) => k === weekStart()) || [,'Monday'])[1], () => { setMenu(null); setWkAsk(true); }]] : []),
               ['Import a schedule CSV…', 'Load a roster CSV export into this week’s schedule', () => { setMenu(null); setImpOpen(true); }],
               ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }, true],
             ]} />}
@@ -818,6 +824,7 @@ function Scheduler({ me, access, onBack }) {
         </div>
       </div>
 
+      {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
       {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
       {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
       {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
@@ -833,6 +840,57 @@ function Scheduler({ me, access, onBack }) {
         </div>
       )}
     </StepShell>
+  );
+}
+
+/* Which weekday a schedule week starts on. Saved to org config, so it is one setting for
+   everyone rather than a per-person view preference — a week has to mean the same thing to
+   the manager building it and the employee reading it.
+
+   The warning is not decoration: a week document's id IS its start date, so changing this
+   makes today's date resolve to a different document. Weeks already saved don't move, and
+   nothing looks for them at the old id any more. */
+function WeekStartModal({ onSaved, onClose, flash }) {
+  const [pick, setPick] = useState(weekStart());
+  const [saving, setSaving] = useState(false);
+  const changed = pick !== weekStart();
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await saveOrgSection('weekStart', pick);
+      setWeekStart(pick);
+      flash('Week now starts on ' + (WEEK_STARTS.find(([k]) => k === pick) || [, ''])[1] + '.');
+      onSaved();
+    } catch (e) { flash('Could not save: ' + e.message); setSaving(false); }
+  };
+  return (
+    <SchedPortal>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
+      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 89, width: 'min(430px, 94vw)', maxHeight: '94vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <h3 style={{ fontSize: 17, marginBottom: 3 }}>Week starts on</h3>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>Applies to everyone — the schedule builder, My schedule and notifications.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {WEEK_STARTS.map(([k, label]) => (
+            <label key={k} style={{ display: 'flex', gap: 9, alignItems: 'center', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: pick === k ? 'var(--accent)' : 'var(--line)', background: pick === k ? 'var(--accent-softer)' : 'transparent' }}>
+              <input type="radio" name="wkstart" checked={pick === k} onChange={() => setPick(k)} />
+              <b style={{ fontSize: 13.5 }}>{label}</b>
+              {k === 1 && <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>default</span>}
+            </label>
+          ))}
+        </div>
+        {changed && (
+          <div style={{ marginTop: 13, padding: '10px 13px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.42 0.11 60)' }}>
+            <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> This re-buckets saved weeks</b>
+            <div style={{ marginTop: 3 }}>A week is stored under its start date. Weeks already built stay where they are, but they'll no longer line up with the new week boundaries — expect to rebuild any week that spans the change.</div>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={save} disabled={!changed || saving} className="btn btn-primary"><Icon name="check" /> {saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </SchedPortal>
   );
 }
 

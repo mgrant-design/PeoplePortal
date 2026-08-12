@@ -29,10 +29,27 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function isoDate(d) { const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
 function parseISO(s) { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); }
-/* Monday of the week containing `date` (Date or ISO string) */
+
+/* Which weekday a schedule week begins on — 1 Monday (the default), 0 Sunday, 2 Tuesday.
+   Set once from org config at sign-in; every week calculation reads it.
+
+   CHANGING THIS RE-BUCKETS EXISTING WEEKS. A week document's id is its start date, so a
+   week saved while Monday-start lives under a Monday. Switch to Sunday-start and a date
+   now resolves to the Sunday before, which is a DIFFERENT document id — the old week is
+   still in Cosmos but nothing looks there any more. It is a deliberate, announced change,
+   not a display preference. */
+const WEEK_STARTS = [[1, 'Monday'], [2, 'Tuesday'], [0, 'Sunday']];
+let SCHED_WEEK_START = 1;
+function setWeekStart(n) {
+  const v = Number(n);
+  if (WEEK_STARTS.some(([k]) => k === v)) SCHED_WEEK_START = v;
+  return SCHED_WEEK_START;
+}
+const weekStart = () => SCHED_WEEK_START;
+/* the start date of the week containing `date` (Date or ISO string) */
 function weekKeyOf(date) {
   const d = date instanceof Date ? new Date(date) : parseISO(date);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  d.setDate(d.getDate() - ((d.getDay() - SCHED_WEEK_START + 7) % 7));
   return isoDate(d);
 }
 function addDaysISO(iso, n) { const d = parseISO(iso); d.setDate(d.getDate() + n); return isoDate(d); }
@@ -136,7 +153,8 @@ async function schedAction(body) {
 }
 
 Object.assign(window, {
-  SHIFT_PRESETS, weekKeyOf, addDaysISO, addWeeks, thisWeekKey, weekDaysFor, weekLabel, isoDate, parseISO,
+  SHIFT_PRESETS, WEEK_STARTS, setWeekStart, weekStart,
+  weekKeyOf, addDaysISO, addWeeks, thisWeekKey, weekDaysFor, weekLabel, isoDate, parseISO,
   timeMins, shiftHrs, fmt12, shiftRange, timesOverlap, shiftConflicts, newShiftId, breakLabel,
   fetchSchedules, fetchSchedRequests, fetchSchedAccess, fetchSchedTemplates, schedAction,
 });

@@ -190,12 +190,12 @@ module.exports = async function (context, req) {
     const allEmployees = (rosterRes.body.Documents || []).map(strip);
 
     // reference data (optional)
-    let ref = { offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
+    let ref = { offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [], weekStart: 1 };
     try {
       const appRes = await cosmosGetAll(endpoint, key, `dbs/${db}/colls/appState`);
       if (appRes.status === 200) {
         const sup = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
-        if (sup) ref = { offices: sup.offices||[], departments: sup.departments||[], titles: sup.titles||[], managers: sup.managers||[], users: sup.users||[], offboarding: sup.offboarding||[] };
+        if (sup) ref = { offices: sup.offices||[], departments: sup.departments||[], titles: sup.titles||[], managers: sup.managers||[], users: sup.users||[], offboarding: sup.offboarding||[], weekStart: Number.isFinite(sup.weekStart) ? sup.weekStart : 1 };
       }
     } catch (e) {}
 

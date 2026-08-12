@@ -30,6 +30,8 @@ let managerEmails = new Set();
 
 function buildFromHRDATA() {
   HR = window.HRDATA || { employees: [], offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
+  /* week-start comes down with the roster so it is set before any view computes a week key */
+  if (typeof setWeekStart === 'function' && HR.weekStart != null) setWeekStart(HR.weekStart);
 
   // EMPLOYEES: clear and repopulate in place (keep same array reference)
   EMPLOYEES.length = 0;
