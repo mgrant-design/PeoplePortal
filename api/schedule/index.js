@@ -373,22 +373,48 @@ module.exports = async function (context, req) {
       if (lvl(office) !== 'edit') return send(403, { error: 'No edit access to ' + office });
       const doc = await getWeek(office, weekKey);
       if (!doc) return send(404, { error: 'nothing saved for that week yet' });
-      const saved = await putWeek({ ...doc, shifts: (doc.shifts || []).map(s => ({ ...s, pub: true })), published: true, publishedBy: identity.email, publishedAt: new Date().toISOString() });
+
+      /* Who to tell. 'all' = everyone with a shift this week (the default, and what this
+         always did). 'updates' = only people whose week actually changed, which is three
+         groups: a shift that is not yet stamped `pub` (added or edited — edits clear the
+         stamp), and anyone who WAS published last time but has no shift now (their shift
+         was deleted). That last group is why the published id list is stored on the doc:
+         a removed shift leaves no trace in the document to compare against. */
+      const onlyUpdates = String(input.notify || 'all') === 'updates';
+      const before = new Set(doc.pubEmpIds || []);
+      const nowIds = new Set((doc.shifts || []).filter(s => s.empId).map(s => s.empId));
+      const changedIds = new Set();
+      (doc.shifts || []).forEach(s => { if (s.empId && !s.pub) changedIds.add(s.empId); });
+      before.forEach(id => { if (!nowIds.has(id)) changedIds.add(id); });
+
+      const saved = await putWeek({ ...doc, shifts: (doc.shifts || []).map(s => ({ ...s, pub: true })), published: true, pubEmpIds: [...nowIds], publishedBy: identity.email, publishedAt: new Date().toISOString() });
       const shifts = saved.shifts || [];
-      const ids = new Set(shifts.filter(s => s.empId).map(s => s.empId));
+      const ids = onlyUpdates ? changedIds : new Set(shifts.filter(s => s.empId).map(s => s.empId));
       /* paid hours: elapsed minus each shift's unpaid break (same rule as shiftHrs) */
       const hours = Math.round(shifts.reduce((a, s) => {
         const mins = (parseInt(s.end, 10) * 60 + Number(s.end.split(':')[1])) - (parseInt(s.start, 10) * 60 + Number(s.start.split(':')[1])) - (Number(s.breakMins) || 0);
         return a + Math.max(0, mins) / 60;
       }, 0));
+      /* filter the roster, not the shift list — someone whose only shift was deleted has
+         no shift to filter by, and they are exactly who needs telling */
       const scheduled = employees.filter(e => ids.has(e.id));
       const recipients = scheduled.map(e => normPhone(e.mobile || e.personalPhone || e.phone || e.cell)).filter(Boolean);
       let notify = { gchat: false, sms: 0, simulated: true, errors: [] };
-      try { notify = await sendPublishNotifications({ office, weekKey, publishedBy: identity.email, shiftCount: shifts.length, hours, recipients }); }
-      catch (e) { notify.errors = [e.message]; }
-      for (const e of scheduled) await notice((e.workEmail || '').toLowerCase(), 'Your schedule is published', `The ${office} schedule for the week of ${weekKey} is published. See your shifts under My schedule.`, { view: 'myschedule' });
+      if (scheduled.length) {
+        try { notify = await sendPublishNotifications({ office, weekKey, publishedBy: identity.email, shiftCount: shifts.length, hours, recipients }); }
+        catch (e) { notify.errors = [e.message]; }
+      }
+      for (const e of scheduled) {
+        const gone = !nowIds.has(e.id);
+        await notice((e.workEmail || '').toLowerCase(),
+          gone ? 'Your shifts changed' : 'Your schedule is published',
+          gone
+            ? `You are no longer scheduled at ${office} for the week of ${weekKey}. Check My schedule.`
+            : `The ${office} schedule for the week of ${weekKey} is published. See your shifts under My schedule.`,
+          { view: 'myschedule' });
+      }
       flushPushes();
-      return send(200, { ok: true, schedule: saved, notify });
+      return send(200, { ok: true, schedule: saved, notify, notified: scheduled.length, mode: onlyUpdates ? 'updates' : 'all' });
     }
 
     /* ---- offer / retract: employee flags their own published shift (§2.6 step 1) ---- */

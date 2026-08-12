@@ -129,8 +129,8 @@ function Scheduler({ me, access, onBack }) {
   const [modal, setModal] = useState(null);       // { office, empId|null, date, shift|null }
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState('');           // '' = every department
-  /* hours-first by default: Deputy ranks the team by hours so whoever is closest to
-     overtime is at the top, which is the reason to look at the list at all */
+  /* hours-first by default: whoever is closest to overtime belongs at the top, which is
+     the reason to look at this list at all */
   const [sortBy, setSortBy] = useState('hours');  // name | hours
   const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
   const [focusEmp, setFocusEmp] = useState(null);
@@ -138,7 +138,7 @@ function Scheduler({ me, access, onBack }) {
   const [menu, setMenu] = useState(null);         // 'copy' | 'options' | null
   const [tplModal, setTplModal] = useState(null); // 'save' | 'load'
   const [regOpen, setRegOpen] = useState(false);  // regular-hours editor
-  const [impOpen, setImpOpen] = useState(false);  // Deputy import
+  const [impOpen, setImpOpen] = useState(false);  // CSV schedule import
   const [regHours, setRegHours] = useState([]);   // standing weekly-hours profiles
   const [templates, setTemplates] = useState([]);
   const [toast, setToast] = useState(null);
@@ -244,7 +244,9 @@ function Scheduler({ me, access, onBack }) {
 
   /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
   const unpubCount = shifts.filter(s => !s.pub).length;
-  const publish = async () => {
+  const [pubAsk, setPubAsk] = useState(false);   // publish-type step
+  const publish = async (notifyMode) => {
+    setPubAsk(false);
     /* save-then-publish, per office: this is the ONLY write path for drafts.
        An office whose shifts were emptied locally (Options → Delete all shifts) must
        still be saved — skipping it left the deletion unwritten and load() pulled the
@@ -259,10 +261,12 @@ function Scheduler({ me, access, onBack }) {
         catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
       }
       try {
-        const res = await schedAction({ action: 'publish', office, weekKey });
+        const res = await schedAction({ action: 'publish', office, weekKey, notify: notifyMode });
         const n = res.notify; const parts = [];
         if (n && !n.simulated) { if (n.gchat) parts.push('Google Chat'); if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`); }
-        flash(`${office} week published${parts.length ? ' — team notified via ' + parts.join(' + ') : ''}.`);
+        const who = res.notified === 0 ? 'nobody to notify'
+          : `${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified${res.mode === 'updates' ? ' (changes only)' : ''}`;
+        flash(`${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`);
       } catch (e) { flash(office + ' publish failed: ' + e.message); }
     }
     /* write the held repeat copies into their future weeks (saved, not published —
@@ -580,18 +584,19 @@ function Scheduler({ me, access, onBack }) {
         <div className="schm-danger">
           <button onClick={() => bulk('unassign')}>Mark all shifts open</button>
           <button className="d" onClick={() => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }}>Delete all shifts</button>
-          <button onClick={() => setImpOpen(true)}>Import from Deputy</button>
+          <button onClick={() => setImpOpen(true)}>Import a schedule CSV</button>
         </div>
 
         {/* Publish is the one thing you are always about to do — pinned, never scrolled away */}
         <div className="schm-pubbar">
-          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={publish}>
+          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={() => setPubAsk(true)}>
             <Icon name="check" /> Publish{unpubCount ? ` (${unpubCount})` : ''}
           </button>
         </div>
 
+        {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
         {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
-        {impOpen && <DeputyImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
+        {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
         {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
           onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
           onClose={() => setRegOpen(false)} />}
@@ -628,11 +633,11 @@ function Scheduler({ me, access, onBack }) {
             {menu === 'options' && <Dropdown onClose={() => setMenu(null)} items={[
               ['Mark all shifts open', 'Every displayed shift stays in place but is flagged open — up for grabs', () => bulk('unassign')],
               ['Regular hours…', 'Set someone’s standing weekly hours and overtime threshold', () => { setMenu(null); setRegOpen(true); }],
-              ['Import from Deputy…', 'Load a Deputy roster export into this week’s schedule', () => { setMenu(null); setImpOpen(true); }],
+              ['Import a schedule CSV…', 'Load a roster CSV export into this week’s schedule', () => { setMenu(null); setImpOpen(true); }],
               ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }, true],
             ]} />}
           </div>
-          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={publish}>
+          <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={() => setPubAsk(true)}>
             <Icon name="check" /> Publish{unpubCount ? ` (${unpubCount})` : ''}
           </button>
         </div>
@@ -786,8 +791,9 @@ function Scheduler({ me, access, onBack }) {
         </div>
       </div>
 
+      {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
       {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
-      {impOpen && <DeputyImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
+      {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
       {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
         onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
         onClose={() => setRegOpen(false)} />}
@@ -800,6 +806,36 @@ function Scheduler({ me, access, onBack }) {
         </div>
       )}
     </StepShell>
+  );
+}
+
+/* Publish-type step: notify everyone with a shift, or only the people whose
+   week actually changed. Shown on both layouts so the choice is never desktop-only. */
+function PublishAsk({ unpubCount, onPick, onClose }) {
+  const [mode, setMode] = useState('all');
+  return (
+    <SchedPortal>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
+      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 89, width: 'min(430px, 94vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <h3 style={{ fontSize: 17, marginBottom: 3 }}>Publish schedule</h3>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>
+          {unpubCount ? `${unpubCount} unpublished change${unpubCount === 1 ? '' : 's'}. ` : ''}Team members only see shifts once they're published.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {[['all', 'Publish all', 'Everyone with a shift this week is notified'],
+            ['updates', 'Publish updates', 'Only people whose shifts were added, changed or removed']].map(([id, label, hint]) => (
+            <label key={id} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: mode === id ? 'var(--accent)' : 'var(--line)', background: mode === id ? 'var(--accent-softer)' : 'transparent' }}>
+              <input type="radio" name="pubmode" checked={mode === id} onChange={() => setMode(id)} style={{ marginTop: 2 }} />
+              <span><b style={{ fontSize: 13.5 }}>{label}</b><span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)' }}>{hint}</span></span>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={() => onPick(mode)} className="btn btn-primary"><Icon name="check" /> Publish</button>
+        </div>
+      </div>
+    </SchedPortal>
   );
 }
 
