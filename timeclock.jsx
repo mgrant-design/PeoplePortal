@@ -1,4 +1,4 @@
-/* timeclock.jsx — Deputy-style time clock. Employees clock in/out by location
+/* timeclock.jsx — time clock. Employees clock in/out by location
    (aligned to Paychex company settings), with live timer, breaks, timesheets,
    manager/HR approval, and export to Paychex. Persists to localStorage. */
 

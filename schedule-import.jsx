@@ -1,6 +1,6 @@
-/* deputy-import.jsx — one-way migration loader: a Deputy roster export (CSV) into our
-   own week documents. Deputy is never read at runtime; this exists to get the history
-   across once, and is free to be removed after the migration.
+/* schedule-import.jsx — one-way migration loader: a roster CSV export into our own week
+   documents. Nothing is read from the previous system at runtime; this exists to carry the
+   history across once, and is free to be removed after the migration.
 
    The export is a ROSTER — one row per person-day shift — not a regular-hours profile.
    So this writes actual shifts only; it never touches `regularHours` (those are entered
@@ -15,7 +15,7 @@
    (no wage data, SCHEDULER.md D2).
 
    Two matching rules the file forces:
-     1. Deputy's long location strings don't match our short office names — normLoc()
+     1. The export's long location strings don't match our short office names — normLoc()
         maps them (including the Totowa spa → New Jersey).
      2. Some rows carry personal (gmail) addresses that can't join our roster on
         workEmail, so we fall back to matching the Team Member name, and REPORT every
@@ -70,16 +70,16 @@ function toISODate(raw) {
 }
 const normName = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
 
-/* Parse + resolve a Deputy export against our roster.
+/* Parse + resolve a roster CSV export against our roster.
    Returns { shifts:[{office, weekKey, shift}], unresolved:[...], weeks:[...], offices:[...] } */
-function parseDeputyExport(text) {
+function parseScheduleExport(text) {
   const rows = parseCSV(text);
   if (!rows.length) return { error: 'That file has no rows.' };
   const head = rows[0].map(h => String(h).trim());
   const col = name => head.findIndex(h => h.toLowerCase() === name.toLowerCase());
   const need = ['Location', 'Team Member', 'Start Date', 'Start Time', 'End Time'];
   const missing = need.filter(n => col(n) < 0);
-  if (missing.length) return { error: 'This doesn\'t look like a Deputy roster export — missing column(s): ' + missing.join(', ') + '.' };
+  if (missing.length) return { error: 'This doesn\'t look like a roster export — missing column(s): ' + missing.join(', ') + '.' };
 
   const iLoc = col('Location'), iArea = col('Area'), iName = col('Team Member');
   const iDate = col('Start Date'), iStart = col('Start Time'), iEnd = col('End Time');
@@ -129,7 +129,7 @@ function parseDeputyExport(text) {
 }
 
 /* ---- the import screen: pick a file, review what resolved, then load ---- */
-function DeputyImportModal({ offices, flash, onDone, onClose }) {
+function ScheduleImportModal({ offices, flash, onDone, onClose }) {
   const [parsed, setParsed] = useState(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -140,7 +140,7 @@ function DeputyImportModal({ offices, flash, onDone, onClose }) {
     if (!file) return;
     setFileName(file.name); setParsed(null); setResult(null);
     const fr = new FileReader();
-    fr.onload = () => { const p = parseDeputyExport(String(fr.result || '')); setParsed(p); if (p.error) flash(p.error); };
+    fr.onload = () => { const p = parseScheduleExport(String(fr.result || '')); setParsed(p); if (p.error) flash(p.error); };
     fr.onerror = () => flash('Couldn\'t read that file.');
     fr.readAsText(file);
   };
@@ -164,8 +164,8 @@ function DeputyImportModal({ offices, flash, onDone, onClose }) {
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Migration</div>
-            <h3 style={{ fontSize: 17, margin: '2px 0 0' }}>Import from Deputy</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '4px 0 0', lineHeight: 1.5 }}>Loads a Deputy roster export (CSV) into our own schedule. One-way — nothing reads Deputy afterwards.</p>
+            <h3 style={{ fontSize: 17, margin: '2px 0 0' }}>Import a schedule CSV</h3>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '4px 0 0', lineHeight: 1.5 }}>Loads a roster CSV export into our own schedule. One-way — nothing is read back afterwards.</p>
           </div>
           <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, flex: 'none', justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
         </div>
@@ -247,7 +247,7 @@ function DeputyImportModal({ offices, flash, onDone, onClose }) {
 
 /* ---- client for the import endpoint ---- */
 async function schedImport(body) {
-  const res = await fetch('/api/deputyimport', {
+  const res = await fetch('/api/scheduleimport', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Google-Token': (window.PD_GOOGLE_TOKEN || '') },
     body: JSON.stringify(body),
@@ -257,4 +257,4 @@ async function schedImport(body) {
   return data;
 }
 
-Object.assign(window, { parseCSV, to24h, breakToMins, toISODate, parseDeputyExport, DeputyImportModal, schedImport });
+Object.assign(window, { parseCSV, to24h, breakToMins, toISODate, parseScheduleExport, ScheduleImportModal, schedImport });

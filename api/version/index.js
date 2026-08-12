@@ -10,7 +10,7 @@
 
    `unregistered` is the self-check. An endpoint folder with an index.js but no
    function.json is invisible to the Functions runtime and 404s at runtime, which is
-   exactly how /api/reghours and /api/deputyimport silently failed. This lists them
+   exactly how /api/reghours and /api/scheduleimport silently failed. This lists them
    instead of waiting for someone to notice a broken feature. */
 
 const fs = require('fs');

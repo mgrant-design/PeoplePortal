@@ -1,7 +1,7 @@
-/* api/deputyimport/index.js — one-way migration: write a parsed Deputy roster export
+/* api/scheduleimport/index.js — one-way migration: write a parsed roster CSV export
    into our own week documents, and record a receipt in `importLog`.
 
-   POST /api/deputyimport { mode:'merge'|'replace', fileName, shifts:[{office,weekKey,shift}],
+   POST /api/scheduleimport { mode:'merge'|'replace', fileName, shifts:[{office,weekKey,shift}],
                             unresolved:[...] }
 
    Admin-only. The client parses and resolves the CSV against the roster (it has the
@@ -9,7 +9,7 @@
    week docs, and writes them UNPUBLISHED so a human reviews before anyone is notified.
 
    It does NOT touch `regularHours` — standing weekly hours are entered by managers,
-   never derived from an import. Deputy is not read at runtime by anything.
+   never derived from an import. Nothing reads the previous system at runtime.
 
    Disposable: once the migration is done this endpoint can be deleted. */
 
@@ -111,7 +111,7 @@ module.exports = async function (context, req) {
         id, office: g.office, weekKey: g.weekKey, shifts,
         published: false, publishedBy: null, publishedAt: null,
         updatedBy: identity.email, updatedAt: new Date().toISOString(),
-        importedFrom: 'deputy', importedAt: new Date().toISOString(),
+        importedFrom: 'csv', importedAt: new Date().toISOString(),
       };
       const up = await cosmos({ verb: 'POST', resId: SCHEDULES, path: `/${SCHEDULES}/docs`, body: doc, partitionKey: g.office, upsert: true });
       if (up.status !== 200 && up.status !== 201) return send(500, { error: 'write failed for ' + id, status: up.status, detail: up.body });
@@ -131,7 +131,7 @@ module.exports = async function (context, req) {
       await cosmos({
         verb: 'POST', resId: IMPORTLOG, path: `/${IMPORTLOG}/docs`, partitionKey: logId, upsert: true,
         body: {
-          id: logId, source: 'deputy', fileName: String(input.fileName || '').slice(0, 200),
+          id: logId, source: 'roster-csv', fileName: String(input.fileName || '').slice(0, 200),
           mode: replace ? 'replace' : 'merge', ranBy: identity.email, ranAt: new Date().toISOString(),
           rowsSubmitted: input.shifts.length, shiftsWritten: written, rejected,
           weeks, offices: [...new Set(keys.map(k => groups[k].office))], unresolved,
