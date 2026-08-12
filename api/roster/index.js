@@ -21,7 +21,8 @@ const ROSTER_PK = {};
    provider/credential and system fields (npi, dea, license, paychexId, denticonId,
    windowsLogin) that must not be settable from a generic edit form. */
 const WRITABLE = ['first', 'middle', 'last', 'jobTitle', 'department', 'location', 'manager',
-  'managerEmail', 'workEmail', 'personalEmail', 'mobile', 'startDate', 'status'];
+  'managerEmail', 'workEmail', 'personalEmail', 'mobile', 'startDate', 'status', 'employmentType'];
+const EMPLOYMENT_TYPES = ['', 'Full-time', 'Part-time', 'Per diem'];
 const STATUSES = ['Active', 'Suspended', 'Terminated'];
 const WRITE_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 
@@ -236,6 +237,7 @@ module.exports = async function (context, req) {
         const patch = {};
         for (const k of WRITABLE) if (Object.prototype.hasOwnProperty.call(src, k)) patch[k] = cleanStr(src[k], k === 'workEmail' || k === 'personalEmail' ? 160 : 120);
         if (patch.status && !STATUSES.includes(patch.status)) return { error: 'status must be one of ' + STATUSES.join(', ') };
+        if (patch.employmentType && !EMPLOYMENT_TYPES.includes(patch.employmentType)) return { error: 'employmentType must be one of ' + EMPLOYMENT_TYPES.filter(Boolean).join(', ') };
         if (forCreate) {
           for (const k of ['first', 'last', 'workEmail', 'location']) {
             if (!patch[k]) return { error: k + ' is required' };

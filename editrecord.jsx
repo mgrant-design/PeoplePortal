@@ -60,6 +60,7 @@ const ADMIN_FIELDS = [
   { k: 'workEmail', label: 'Work email' },
   { k: 'mobile', label: 'Mobile phone' },
   { k: 'startDate', label: 'Start date' },
+  { k: 'employmentType', label: 'Employment type', options: ['', 'Full-time', 'Part-time', 'Per diem'] },
   { k: 'status', label: 'Status', options: ['Active', 'Suspended', 'Terminated'] },
 ];
 
@@ -108,7 +109,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
   if (signing) {
     const isTerm = signing.to === 'Terminated';
     return (
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
         <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)', maxHeight: '88vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: isTerm ? 'color-mix(in oklab, oklch(0.6 0.19 25) 14%, var(--surface))' : 'var(--warn-soft)', color: isTerm ? 'oklch(0.5 0.17 25)' : 'oklch(0.45 0.12 60)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name="bell" style={{ width: 20, height: 20 }} /></div>
@@ -152,7 +153,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'center', padding: 20 }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
       <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)', maxHeight: '88vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name="pen" style={{ width: 20, height: 20 }} /></div>

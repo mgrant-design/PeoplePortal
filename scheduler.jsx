@@ -279,31 +279,56 @@ function Scheduler({ me, access, onBack }) {
     load(true);
   };
 
-  /* ---- fill empty cells from each person's standing regular hours (MH #2) ----
-     Replay only: never touches a cell that already has a shift, never invents times. */
-  const fillFromRegular = async () => {
+  /* ---- lay standing regular hours onto the week ----
+     `mode` 'empty' fills only slots with nothing in them; 'rebuild' replaces whatever is
+     on the days a person's profile covers, which is the auto-schedule people expect.
+
+     This iterates PEOPLE, not offices, and routes each day to the office named on that
+     day of the profile. Iterating offices and taking officeRoster(office) — everyone whose
+     HOME is that office — was the bug: someone working Monday at one site and Tuesday at
+     another got built into their home office all week, silently, in the wrong place. */
+  const fillFromRegular = async (mode) => {
     setMenu(null);
-    let added = 0, skipped = 0;
-    for (const office of offices) {
-      const cur = (docs[office] && docs[office].shifts) || [];
-      const team = officeRoster(office);
-      const next = [];
-      team.forEach(p => {
-        if (!regHoursFor(regIndex, p)) { skipped++; return; }
-        days.forEach(d => {
-          const taken = cur.some(s => s.empId === p.id && s.date === d.date) || next.some(s => s.empId === p.id && s.date === d.date);
-          if (taken) return;
-          const reg = regHoursOnDate(regIndex, p, d.date);
-          if (!reg) return;
-          const sh = { id: newShiftId(), empId: p.id, date: d.date, start: reg.start, end: reg.end };
-          if (reg.breakMins > 0) sh.breakMins = reg.breakMins;
-          next.push(sh);
-        });
+    const rebuild = mode === 'rebuild';
+    /* a shift may land in an office that isn't currently displayed; collect them so the
+       week can be pulled into view, because publish() only writes the selected offices —
+       an invisible shift would never be published and would look like data loss */
+    const byOffice = {};
+    const bucket = o => (byOffice[o] = byOffice[o] || { add: [], drop: new Set() });
+    let skipped = 0;
+
+    allRoster.forEach(p => {
+      if (!regHoursFor(regIndex, p)) { skipped++; return; }
+      days.forEach(d => {
+        const reg = regHoursOnDate(regIndex, p, d.date);
+        if (!reg) return;
+        const office = reg.office || p.office;
+        if (!office) return;
+        const existing = shifts.filter(s => s.empId === p.id && s.date === d.date);
+        if (existing.length && !rebuild) return;                 /* 'empty' never overwrites */
+        if (existing.length && rebuild) existing.forEach(s => bucket(s._office).drop.add(s.id));
+        const sh = { id: newShiftId(), empId: p.id, date: d.date, start: reg.start, end: reg.end };
+        if (reg.breakMins > 0) sh.breakMins = reg.breakMins;
+        bucket(office).add.push(sh);
       });
-      if (next.length) { await saveAll(office, [...cur, ...next]); added += next.length; }
+    });
+
+    const touched = Object.keys(byOffice);
+    let added = 0;
+    for (const office of touched) {
+      const { add, drop } = byOffice[office];
+      const cur = ((docsRef.current[office] && docsRef.current[office].shifts) || []).filter(s => !drop.has(s.id));
+      if (!add.length && !drop.size) continue;
+      await saveAll(office, [...cur, ...add]);
+      added += add.length;
     }
-    if (!added) flash(skipped ? 'No regular hours set for anyone in view — set them under Options → Regular hours.' : 'Every slot with regular hours is already filled.');
-    else flash(`Filled ${added} empty slot${added === 1 ? '' : 's'} from regular hours — saved when you publish.`);
+    /* bring any office we just wrote into the current selection so it is visible AND
+       publishable — writing somewhere you can't see is worse than not writing at all */
+    const unseen = touched.filter(o => !offices.includes(o));
+    if (unseen.length) setOffices(cur => [...new Set([...cur, ...unseen])]);
+
+    if (!added) flash(skipped ? 'No regular hours set for anyone in view — set them under Options → Regular hours.' : 'Everyone with regular hours is already scheduled.');
+    else flash(`${rebuild ? 'Built' : 'Filled'} ${added} shift${added === 1 ? '' : 's'} from regular hours${unseen.length ? ' — added ' + unseen.join(', ') + ' to the view' : ''}. Saved when you publish.`);
   };
 
   /* ---- copy & templates (§3.3) ---- */
@@ -455,7 +480,8 @@ function Scheduler({ me, access, onBack }) {
         {/* the four ways to fill a week in from something else */}
         <div className="schm-acts">
           <button onClick={copyLastWeek}>Copy last week</button>
-          <button onClick={fillFromRegular}>Fill empties from regular hours</button>
+          <button onClick={() => fillFromRegular('empty')}>Fill empties from regular hours</button>
+          <button onClick={() => fillFromRegular('rebuild')}>Build week from regular hours</button>
           <button onClick={() => openTpl('save')}>Save as template</button>
           <button onClick={() => openTpl('load')}>Load template</button>
         </div>
@@ -597,7 +623,7 @@ function Scheduler({ me, access, onBack }) {
         {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
         {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
         {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
-        {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
+        {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
           onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
           onClose={() => setRegOpen(false)} />}
         {tplModal === 'save' && <NameModal title="Save week as template" hint={`Saves ${offices[0]}'s currently displayed week as a reusable setup.`} onSave={saveTemplate} onClose={() => setTplModal(null)} />}
@@ -623,7 +649,8 @@ function Scheduler({ me, access, onBack }) {
             <button className="btn btn-ghost" onClick={() => setMenu(m => m === 'copy' ? null : 'copy')}><Icon name="doc" /> Copy <Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(90deg)' }} /></button>
             {menu === 'copy' && <Dropdown onClose={() => setMenu(null)} items={[
               ['Copy last week', `Pull ${weekLabel(addWeeks(weekKey, -1))} into this week`, copyLastWeek],
-              ['Fill empties from regular hours', 'Lay each person’s standing hours onto their empty slots only', fillFromRegular],
+              ['Fill empties from regular hours', 'Lay each person’s standing hours onto their empty slots only', () => fillFromRegular('empty')],
+              ['Build week from regular hours', 'Lay down everyone’s standing week, replacing what’s on those days', () => fillFromRegular('rebuild')],
               ['Save as template…', 'Keep this week as a named setup', () => openTpl('save')],
               ['Load template…', 'Apply a saved setup to this week', () => openTpl('load')],
             ]} />}
@@ -794,7 +821,7 @@ function Scheduler({ me, access, onBack }) {
       {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
       {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
       {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
-      {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} flash={flash}
+      {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
         onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
         onClose={() => setRegOpen(false)} />}
       {tplModal === 'save' && <NameModal title="Save week as template" hint={`Saves ${offices[0]}'s currently displayed week as a reusable setup.`} onSave={saveTemplate} onClose={() => setTplModal(null)} />}
@@ -816,7 +843,7 @@ function PublishAsk({ unpubCount, onPick, onClose }) {
   return (
     <SchedPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
-      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 89, width: 'min(430px, 94vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 89, width: 'min(430px, 94vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 17, marginBottom: 3 }}>Publish schedule</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>
           {unpubCount ? `${unpubCount} unpublished change${unpubCount === 1 ? '' : 's'}. ` : ''}Team members only see shifts once they're published.
@@ -905,7 +932,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
   return (
     <SchedPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>{s ? 'Edit shift' : 'New shift'}</div>
@@ -1065,7 +1092,7 @@ function NameModal({ title, hint, onSave, onClose }) {
   return (
 <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(380px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(380px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>{title}</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>{hint}</p>
         <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Template name" onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onSave(name.trim()); }}
@@ -1083,7 +1110,7 @@ function LoadTplModal({ office, templates, onPick, onDelete, onClose }) {
   return (
 <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>Load a template</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>Adds the template’s shifts to {office}’s displayed week.</p>
         {templates.length === 0 && <div style={{ fontSize: 13.5, color: 'var(--ink-3)', padding: '10px 0' }}>No templates saved for {office} yet.</div>}

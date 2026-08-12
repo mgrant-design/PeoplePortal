@@ -49,14 +49,21 @@ function otThreshold(index, emp) {
   return isFinite(n) && n > 0 ? n : DEFAULT_OT_THRESHOLD;
 }
 /* the standing hours for one ISO date, or null if they don't normally work it.
-   weekDaysFor() indexes Monday=0, which matches REG_DOW. */
+   weekDaysFor() indexes Monday=0, which matches REG_DOW.
+
+   `office` is the site that day happens at — people routinely work Monday at one
+   office and Tuesday at another, and a standing week that can't say so builds them
+   into the wrong place. Absent means their home office, so profiles written before
+   the field existed behave exactly as they did. */
 function regHoursOnDate(index, emp, date) {
   const p = regHoursFor(index, emp);
   if (!p || !p.days) return null;
   const d = parseISO(date);
   const key = REG_DOW[(d.getDay() + 6) % 7];
   const day = p.days[key];
-  return day && day.start && day.end ? { start: day.start, end: day.end, breakMins: Number(day.breakMins) || 0 } : null;
+  if (!day || !day.start || !day.end) return null;
+  const home = (emp && (emp.office || emp.loc || emp.location)) || '';
+  return { start: day.start, end: day.end, breakMins: Number(day.breakMins) || 0, office: day.office || home };
 }
 /* sum of a profile's standing week, break-subtracted — the "hours per period"
    figure. Derived, never stored: it is not the same number as the OT threshold. */
@@ -83,7 +90,7 @@ function blankRegHours(emp) {
    vocabulary (presets, typed times, an unpaid break) so it reads as the same tool. */
 function RegPortal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
-function RegularHoursModal({ roster, profiles, onSaved, onClose, flash }) {
+function RegularHoursModal({ roster, profiles, offices, onSaved, onClose, flash }) {
   const [pickId, setPickId] = useState('');
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -98,7 +105,14 @@ function RegularHoursModal({ roster, profiles, onSaved, onClose, flash }) {
     setDraft(existing ? JSON.parse(JSON.stringify(existing)) : blankRegHours(emp));
   };
   const setDay = (k, patch) => setDraft(d => ({ ...d, days: { ...d.days, [k]: patch } }));
-  const toggleDay = (k) => setDraft(d => ({ ...d, days: { ...d.days, [k]: d.days[k] ? null : { start: '09:00', end: '17:00', breakMins: DEFAULT_MEAL_BREAK } } }));
+  /* a new day starts at the person's home office — the common case — and can be pointed
+     at any other office without touching where they're based */
+  const toggleDay = (k) => setDraft(d => ({ ...d, days: { ...d.days, [k]: d.days[k] ? null : { start: '09:00', end: '17:00', breakMins: DEFAULT_MEAL_BREAK, office: d.office || '' } } }));
+  const OFFICE_LIST = useMemo(() => {
+    const set = new Set(offices || []);
+    (roster || []).forEach(p => { if (p.office) set.add(p.office); });
+    return [...set].filter(Boolean).sort();
+  }, [offices, roster]);
 
   const save = async () => {
     if (!draft) return;
@@ -114,7 +128,7 @@ function RegularHoursModal({ roster, profiles, onSaved, onClose, flash }) {
   return (
     <RegPortal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 81, width: 'min(560px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
+<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(560px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Regular hours</div>
@@ -156,6 +170,13 @@ function RegularHoursModal({ roster, profiles, onSaved, onClose, flash }) {
                           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
                             <input type="number" min="0" max="480" step="5" value={d.breakMins} onChange={e => setDay(k, { ...d, breakMins: Math.max(0, Number(e.target.value) || 0) })} className="mono" style={{ width: 58, padding: '6px 7px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12.5, background: 'var(--surface)' }} /> min unpaid break
                           </label>
+                          {/* which site this day happens at — the whole point of a standing
+                              week for someone who splits their days between offices */}
+                          <select value={d.office || ''} onChange={e => setDay(k, { ...d, office: e.target.value })} title="Office for this day"
+                            style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12.5, background: 'var(--surface)', maxWidth: 150 }}>
+                            <option value="">{draft.office ? draft.office + ' (home)' : 'Home office'}</option>
+                            {OFFICE_LIST.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
                           <span className="mono" style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>{shiftHrs({ start: d.start, end: d.end, breakMins: d.breakMins })}h</span>
                         </>
                       ) : <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Doesn't normally work</span>}
