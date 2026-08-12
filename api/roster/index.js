@@ -1,7 +1,43 @@
 const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { loadAccessControl } = require('../_shared/cosmos');
+const { loadAccessControl, cosmos, collPath } = require('../_shared/cosmos');
+
+/* ---- roster writes (POST) ----
+   The roster in Cosmos is the source of truth: nothing external regenerates it, so a
+   record created here is permanent and its id is ours to mint. Manager-and-above only.
+
+   PARTITION KEY, and why it looks odd: the container is partitioned on /office, but no
+   existing document carries an `office` field, so all 184 live in Cosmos' "undefined"
+   partition. On the wire that is [{}] — NOT [null], which is a different partition that
+   reads cannot see. `cosmos()` sends JSON.stringify([partitionKey]), so passing {} is
+   what puts a new record alongside the existing ones. Verified against the live
+   container before this was written. Populating /office properly is a separate
+   migration: a partition key value cannot be changed in place, so every document has to
+   be deleted and re-inserted. Do not half-do it here. */
+const ROSTER_PK = {};
+
+/* fields a manager may set. Deliberately a whitelist: a roster document also carries
+   provider/credential and system fields (npi, dea, license, paychexId, denticonId,
+   windowsLogin) that must not be settable from a generic edit form. */
+const WRITABLE = ['first', 'middle', 'last', 'jobTitle', 'department', 'location', 'manager',
+  'managerEmail', 'workEmail', 'personalEmail', 'mobile', 'startDate', 'status'];
+const STATUSES = ['Active', 'Suspended', 'Terminated'];
+const WRITE_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
+
+const cleanStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n || 120);
+const emailOk = e => /^[^@\s]+@[^@\s]+$/.test(e) && WRITE_DOMAINS.includes(e.split('@')[1].toLowerCase());
+
+/* 8 hex chars — the same shape as the existing generated ids — retried on collision.
+   Ids are opaque everywhere (shifts reference employees by id), so the only requirement
+   is that one is never reused. */
+function mintId(taken) {
+  for (let i = 0; i < 50; i++) {
+    const id = crypto.randomBytes(4).toString('hex');
+    if (!taken.has(id)) return id;
+  }
+  return null;
+}
 
 function getAuthHeader(verb, resourceType, resourceId, date, key) {
   const text = `${verb.toLowerCase()}\n${resourceType.toLowerCase()}\n${resourceId}\n${date.toLowerCase()}\n\n`;
@@ -100,8 +136,8 @@ module.exports = async function (context, req) {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Google-Token',
   };
   if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
 
@@ -163,6 +199,74 @@ module.exports = async function (context, req) {
     const managerEmails = new Set((ref.managers || []).map(m => (m.email || '').toLowerCase()).filter(Boolean));
 
     const access = deriveAccess(me, usersByEmail, managerEmails, allEmployees);
+
+    /* ================= WRITE ================= */
+    if (req.method === 'POST') {
+      const send = (status, body) => { context.res = { status, headers, body: JSON.stringify(body) }; };
+      /* "managers or above" — supervisors are deliberately excluded; deriveAccess()
+         already treats isManager and isSupervisor as mutually exclusive. */
+      if (!(access.isAdmin || access.isManager || access.isHR || access.isExec)) {
+        return send(403, { error: 'Managers and above only' });
+      }
+
+      let input = req.body;
+      if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
+      if (!input) return send(400, { error: 'body required' });
+      const action = String(input.action || '');
+
+      /* whitelist + normalise an incoming patch; returns { patch } or { error } */
+      const takePatch = (src, forCreate, selfId) => {
+        const patch = {};
+        for (const k of WRITABLE) if (Object.prototype.hasOwnProperty.call(src, k)) patch[k] = cleanStr(src[k], k === 'workEmail' || k === 'personalEmail' ? 160 : 120);
+        if (patch.status && !STATUSES.includes(patch.status)) return { error: 'status must be one of ' + STATUSES.join(', ') };
+        if (forCreate) {
+          for (const k of ['first', 'last', 'workEmail', 'location']) {
+            if (!patch[k]) return { error: k + ' is required' };
+          }
+        }
+        if (patch.workEmail !== undefined) {
+          /* the join key for the entire app — auth, scheduling, notices and regular-hours
+             profiles all resolve people by it, so it must be present, valid and unique */
+          const em = patch.workEmail.toLowerCase();
+          if (!emailOk(em)) return { error: 'workEmail must be a company address (' + WRITE_DOMAINS.join(', ') + ')' };
+          const clash = allEmployees.find(e => (e.workEmail || '').toLowerCase() === em && e.id !== selfId);
+          if (clash) return { error: 'Another roster record already uses ' + em };
+          patch.workEmail = em;
+        }
+        if (patch.personalEmail && !/^[^@\s]+@[^@\s]+$/.test(patch.personalEmail)) return { error: 'personalEmail is not a valid address' };
+        return { patch };
+      };
+
+      const stamp = { updatedBy: identity.email, updatedAt: new Date().toISOString() };
+
+      if (action === 'create') {
+        const { patch, error } = takePatch(input.employee || {}, true, null);
+        if (error) return send(400, { error });
+        const id = mintId(new Set(allEmployees.map(e => e.id)));
+        if (!id) return send(500, { error: 'could not allocate an id' });
+        const doc = { id, status: 'Active', ...patch, createdBy: identity.email, createdAt: new Date().toISOString(), ...stamp };
+        const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: false });
+        if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
+        return send(200, { ok: true, employee: strip(r.body) });
+      }
+
+      if (action === 'update') {
+        const id = cleanStr(input.id, 60);
+        if (!id) return send(400, { error: 'id is required' });
+        const existing = allEmployees.find(e => e.id === id);
+        if (!existing) return send(404, { error: 'no roster record with that id' });
+        const { patch, error } = takePatch(input.patch || {}, false, id);
+        if (error) return send(400, { error });
+        if (!Object.keys(patch).length) return send(400, { error: 'nothing to update' });
+        const doc = { ...existing, ...patch, ...stamp };
+        const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: true });
+        if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
+        return send(200, { ok: true, employee: strip(r.body) });
+      }
+
+      return send(400, { error: 'unknown action — expected create or update' });
+    }
+
     const visible = scopedEmployees(me, access, allEmployees);
 
     context.res = { status: 200, headers, body: JSON.stringify({ employees: visible, ...ref }) };
