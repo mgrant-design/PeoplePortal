@@ -201,8 +201,27 @@ const NJ_DOMAIN = 'foureversmile.com';
 const EMAIL_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const domainForOffice = office => (/jersey|totowa/i.test(office || '') ? NJ_DOMAIN : 'puredental.com');
 
-function AddEmployeeModal({ offices, onCreated, onClose }) {
-  const [f, setF] = useState({ first: '', last: '', local: '', domain: 'puredental.com', location: '', department: '', jobTitle: '', employmentType: 'Full-time', startDate: '', mobile: '', managerEmail: '' });
+/* `preset` prefills from a name the import couldn't resolve: { person, email, office }.
+   The name is split on the LAST space, which is right for "Diana Guzmán" and a guess for
+   "Jasmine Carbajal Stuyvesant" — so the split is shown in editable fields rather than
+   applied silently, and whoever is adding them fixes it if it's wrong. */
+function AddEmployeeModal({ offices, preset, onCreated, onClose }) {
+  const [f, setF] = useState(() => {
+    const base = { first: '', last: '', local: '', domain: 'puredental.com', location: '', department: '', jobTitle: '', employmentType: 'Full-time', startDate: '', mobile: '', managerEmail: '' };
+    if (!preset) return base;
+    const parts = String(preset.person || '').trim().split(/\s+/);
+    const first = parts.shift() || '';
+    const last = parts.join(' ');
+    const office = preset.office || '';
+    /* only reuse the address from the file when it is already a company one — the rows
+       that fail to match are frequently the ones carrying a personal address */
+    const em = String(preset.email || '').toLowerCase();
+    const dom = em.includes('@') ? em.split('@')[1] : '';
+    const company = EMAIL_DOMAINS.includes(dom);
+    return { ...base, first, last, location: office,
+      local: company ? em.split('@')[0] : '',
+      domain: company ? dom : domainForOffice(office) };
+  });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));

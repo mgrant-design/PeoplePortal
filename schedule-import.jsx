@@ -68,7 +68,34 @@ function toISODate(raw) {
   const d = new Date(s);
   return isNaN(d) ? null : isoDate(d);
 }
-const normName = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
+/* Compare written names without demanding an identical keystroke. NFD splits an accented
+   letter into base + combining mark, so dropping the marks lets Guzmán match a roster
+   "Guzman". COMPARISON ONLY — nothing stored is rewritten, because how someone spells
+   their name is theirs, and if the two differ we ask rather than assume.
+
+   The old version used replace(/[^a-z]/g,'') on the raw string, which DELETED accented
+   letters rather than folding them: "Guzmán" became "guzmn", which matches nothing. */
+const normName = n => String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+
+/* The roster stores first / middle / last but the app's display name is first + last, so
+   someone recorded as Jasmine · Carbajal · Stuyvesant shows as "Jasmine Stuyvesant" while
+   an export says "Jasmine Carbajal Stuyvesant". Both spellings are indexed so a compound
+   surname or a used middle name still finds its person. */
+function nameKeys(emp) {
+  const f = emp.first || '', m = emp.middle || '', l = emp.last || '';
+  return [...new Set([normName(`${f}${l}`), normName(`${f}${m}${l}`)].filter(Boolean))];
+}
+
+/* Rows that are not people. An export marks an unfilled shift with a placeholder in the
+   team-member column; treating those as "no roster account matches this name" is a
+   category error — nobody is going to add **UNALLOCATED** to the roster. They are open
+   shifts, which the shift model already supports.
+
+   Deliberately conservative: anything that doesn't clearly look like a placeholder falls
+   through to the person path, so a real employee with an unusual name is never silently
+   converted into an unassigned shift. */
+const PLACEHOLDER_RE = /^\*+.*\*+$|^\s*(unallocated|unassigned|open shift|vacant|tbd|tba)\s*$|^(temp|new|extra|agency|locum)\b.*|.*\b\d{1,2}[:.]\d{2}\s*-\s*\d{1,2}([:.]\d{2})?\s*$/i;
+const looksLikePlaceholder = n => { const s = String(n || '').trim(); return !!s && PLACEHOLDER_RE.test(s); };
 
 /* Parse + resolve a roster CSV export against our roster.
    Returns { shifts:[{office, weekKey, shift}], unresolved:[...], weeks:[...], offices:[...] } */
@@ -78,8 +105,8 @@ function parseScheduleExport(text) {
   const head = rows[0].map(h => String(h).trim());
   const col = name => head.findIndex(h => h.toLowerCase() === name.toLowerCase());
   const need = ['Location', 'Team Member', 'Start Date', 'Start Time', 'End Time'];
-  const missing = need.filter(n => col(n) < 0);
-  if (missing.length) return { error: 'This doesn\'t look like a roster export — missing column(s): ' + missing.join(', ') + '.' };
+  const missingCols = need.filter(n => col(n) < 0);
+  if (missingCols.length) return { error: 'This doesn\'t look like a roster export — missing column(s): ' + missingCols.join(', ') + '.' };
 
   const iLoc = col('Location'), iArea = col('Area'), iName = col('Team Member');
   const iDate = col('Start Date'), iStart = col('Start Time'), iEnd = col('End Time');
@@ -87,10 +114,13 @@ function parseScheduleExport(text) {
 
   const staff = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
   const byEmail = {}; staff.forEach(e => { const k = (e.emailLower || e.workEmail || '').toLowerCase(); if (k) byEmail[k] = e; });
-  const byName = {}; staff.forEach(e => { const k = normName(e.name); if (k) (byName[k] = byName[k] || []).push(e); });
+  const byName = {}; staff.forEach(e => { nameKeys(e).forEach(k => { (byName[k] = byName[k] || []).push(e); }); });
 
   const shifts = [], unresolved = [];
   const weeks = new Set(), offices = new Set();
+  /* people the file names who aren't on the roster, collected once each rather than once
+     per shift — the list is a worklist, and 40 rows for one missing person is noise */
+  const missing = new Map();
 
   rows.slice(1).forEach((r, n) => {
     if (!r.length || r.every(c => !String(c).trim())) return;
@@ -106,26 +136,60 @@ function parseScheduleExport(text) {
     if (!office || office === 'Unassigned') { unresolved.push({ line, person, reason: 'Location doesn\'t match one of our offices', raw: rawLoc }); return; }
 
     const email = (iEmail >= 0 ? String(r[iEmail] || '').trim().toLowerCase() : '');
+    const br = iMeal >= 0 ? breakToMins(r[iMeal]) : 0;
+    const note = iNote >= 0 ? String(r[iNote] || '').trim().slice(0, 280) : '';
+    const weekKey = weekKeyOf(date);
+    const push = (shift) => {
+      if (br > 0) shift.breakMins = br;
+      if (note) shift.note = note;
+      weeks.add(weekKey); offices.add(office);
+      shifts.push({ office, weekKey, shift, area: iArea >= 0 ? String(r[iArea] || '').trim() : '', status: iStatus >= 0 ? String(r[iStatus] || '').trim() : '' });
+    };
+
+    /* 1. not a person — an unfilled shift. Import it as one instead of reporting it as a
+          missing employee, which is what it was being called. */
+    if (looksLikePlaceholder(person)) {
+      push({ id: newShiftId(), empId: '', open: true, date, start, end, note: note || person.trim().slice(0, 280) });
+      return;
+    }
+
+    /* 2. a person we can identify — email first, then name */
     let emp = email && byEmail[email];
     if (!emp) {
       const hits = byName[normName(person)] || [];
       if (hits.length === 1) emp = hits[0];
-      else if (hits.length > 1) { unresolved.push({ line, person, reason: 'More than one active employee has this name — no work-email match to break the tie', raw: email || '(no email)' }); return; }
+      else if (hits.length > 1) { unresolved.push({ line, person, kind: 'ambiguous', reason: 'More than one active employee has this name — no work-email match to break the tie', raw: email || '(no email)' }); return; }
     }
-    if (!emp) { unresolved.push({ line, person, reason: email ? 'No roster account matches this email or name' : 'No roster account matches this name', raw: email || rawLoc }); return; }
+    if (emp) { push({ id: newShiftId(), empId: emp.id, date, start, end }); return; }
 
-    const shift = { id: newShiftId(), empId: emp.id, date, start, end };
-    const br = iMeal >= 0 ? breakToMins(r[iMeal]) : 0;
-    if (br > 0) shift.breakMins = br;
-    const note = iNote >= 0 ? String(r[iNote] || '').trim().slice(0, 280) : '';
-    if (note) shift.note = note;
-
-    const weekKey = weekKeyOf(date);
-    weeks.add(weekKey); offices.add(office);
-    shifts.push({ office, weekKey, shift, area: iArea >= 0 ? String(r[iArea] || '').trim() : '', status: iStatus >= 0 ? String(r[iStatus] || '').trim() : '' });
+    /* 3. genuinely not on the roster — one entry per person, with their shift count, so
+          the panel is a worklist rather than a wall of repeats */
+    const key = normName(person) || person;
+    const cur = missing.get(key) || { person: person.trim(), email, office, lines: [], shifts: 0 };
+    cur.shifts++; if (cur.lines.length < 5) cur.lines.push(line);
+    if (!cur.email && email) cur.email = email;
+    missing.set(key, cur);
   });
 
-  return { shifts, unresolved, weeks: [...weeks].sort(), offices: [...offices].sort(), rowCount: rows.length - 1 };
+  return {
+    shifts, unresolved, missing: [...missing.values()].sort((a, b) => b.shifts - a.shifts),
+    weeks: [...weeks].sort(), offices: [...offices].sort(), rowCount: rows.length - 1,
+    openCount: shifts.filter(s => s.shift.open).length,
+  };
+}
+
+/* The worklist as a file, for whoever maintains the roster. A scrollable box is fine for
+   five names and useless for forty. */
+function downloadMissingCSV(missing, fileName) {
+  const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = [['Name', 'Email on file', 'Office', 'Shifts in file', 'First rows'].map(esc).join(',')]
+    .concat((missing || []).map(m => [m.person, m.email || '', m.office || '', m.shifts, (m.lines || []).join(' ')].map(esc).join(',')));
+  const blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (String(fileName || 'import').replace(/\.csv$/i, '') || 'import') + ' — not on roster.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /* ---- the import screen: pick a file, review what resolved, then load ---- */
@@ -135,6 +199,8 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState('merge'); // merge | replace
   const [result, setResult] = useState(null);
+  const [addFor, setAddFor] = useState(null);   // a missing person being added to the roster
+  const [added, setAdded] = useState([]);      // names added during this visit
 
   const onFile = (file) => {
     if (!file) return;
@@ -193,17 +259,48 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
                 Weeks: <b className="mono">{parsed.weeks.join(', ') || '—'}</b>
               </div>
 
+              {/* People the file names who aren't on the roster. This is a worklist, not an
+                  error: the import still runs, and each person can be added right here. */}
+              {parsed.missing.length > 0 && (
+                <div style={{ border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', borderRadius: 'var(--r-md)', padding: '11px 13px' }}>
+                  <b style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'oklch(0.42 0.11 60)' }}>
+                    <Icon name="users" style={{ width: 14, height: 14 }} /> {parsed.missing.length} {parsed.missing.length === 1 ? 'person isn’t' : 'people aren’t'} on the roster
+                  </b>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.5 }}>
+                    Their shifts are the only ones being left out — everything else imports. Add someone and their shifts come in next time you import.
+                  </div>
+                  <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 9, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {parsed.missing.map((m, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--surface)', borderRadius: 'var(--r-sm)', padding: '7px 9px' }}>
+                        <span style={{ flex: 1, minWidth: 150, fontSize: 12.5 }}>
+                          <b>{m.person}</b>
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)' }}>
+                            {m.shifts} shift{m.shifts === 1 ? '' : 's'} · {m.office}{m.email ? ' · ' + m.email : ''}
+                          </span>
+                        </span>
+                        {added.includes(m.person)
+                          ? <span className="badge badge-ok" style={{ fontSize: 10.5 }}><Icon name="check" /> added</span>
+                          : <button className="btn btn-quiet" style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 700 }} onClick={() => setAddFor(m)}>Add to roster</button>}
+                      </div>
+                    ))}
+                  </div>
+                  <button className="btn btn-quiet" style={{ marginTop: 9, padding: '5px 11px', fontSize: 11.5, fontWeight: 700 }} onClick={() => downloadMissingCSV(parsed.missing, fileName)}>
+                    <Icon name="doc" style={{ width: 13, height: 13 }} /> Download as CSV
+                  </button>
+                </div>
+              )}
+
+              {/* rows that couldn't be read at all, or where the name is genuinely ambiguous */}
               {parsed.unresolved.length > 0 && (
-                <div style={{ border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', borderRadius: 'var(--r-md)', padding: '10px 13px' }}>
-                  <b style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'oklch(0.42 0.11 60)' }}><Icon name="bell" style={{ width: 14, height: 14 }} /> {parsed.unresolved.length} row{parsed.unresolved.length === 1 ? '' : 's'} won't import</b>
-                  <div style={{ maxHeight: 150, overflowY: 'auto', marginTop: 7, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ border: '1px solid var(--line)', background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: '10px 13px' }}>
+                  <b style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>{parsed.unresolved.length} row{parsed.unresolved.length === 1 ? '' : 's'} couldn’t be read</b>
+                  <div style={{ maxHeight: 130, overflowY: 'auto', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {parsed.unresolved.map((u, i) => (
                       <div key={i} style={{ fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.45 }}>
                         <span className="mono" style={{ color: 'var(--ink-3)' }}>line {u.line}</span> · <b>{u.person || '(no name)'}</b> — {u.reason}{u.raw ? <span style={{ color: 'var(--ink-3)' }}> ({u.raw})</span> : null}
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 7 }}>These are listed rather than dropped quietly. Fix them in the roster (or the CSV) and import again — matched rows aren't duplicated if you re-run with Merge.</div>
                 </div>
               )}
 
@@ -230,6 +327,12 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
             </div>
           )}
         </div>
+
+        {addFor && (
+          <AddEmployeeModal offices={offices} preset={addFor}
+            onCreated={() => { setAdded(l => [...l, addFor.person]); setAddFor(null); }}
+            onClose={() => setAddFor(null)} />
+        )}
 
         <div style={{ display: 'flex', gap: 8, padding: '13px 20px 16px', borderTop: '1px solid var(--line)' }}>
           <div style={{ flex: 1 }} />

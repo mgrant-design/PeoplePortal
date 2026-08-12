@@ -437,6 +437,11 @@ function Scheduler({ me, access, onBack }) {
 
   /* dept view rows show only that group's office; person view shows all selected */
   const cellShifts = (pid, date, office) => shifts.filter(s => s.empId === pid && s.date === date && (!office || s._office === office));
+  /* Shifts with nobody on them. They cannot sit on a person's row — there is no person —
+     so they get a lane of their own at the top of the grid, which is also where a manager
+     looks to see what still needs covering. */
+  const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
+  const openOn = (date) => openLane.filter(s => s.date === date);
   const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
@@ -536,6 +541,28 @@ function Scheduler({ me, access, onBack }) {
 
         {published && anySaved && <div className="schm-note"><Icon name="check" style={{ width: 14, height: 14 }} /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</div>}
         {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
+
+        {openOn(dayISO).length > 0 && (
+          <div className="schm-group">
+            <div className="schm-group-head" style={{ background: 'var(--warn-soft)', color: 'oklch(0.42 0.11 60)' }}>
+              <Icon name="bell" style={{ width: 13, height: 13, flex: 'none' }} />
+              <span>Open shifts</span>
+              <small>{openOn(dayISO).length} unassigned</small>
+            </div>
+            {openOn(dayISO).map(s2 => (
+              <button key={s2.id} className="schm-row" style={{ borderLeftColor: 'var(--warn)' }}
+                onClick={() => setModal({ office: s2._office, empId: null, date: dayISO, shift: s2 })}>
+                <span className="schm-row-txt">
+                  <span className="schm-row-name">Open shift</span>
+                  <span className="schm-row-time mono">{shiftRange(s2)}</span>
+                  <span className="schm-row-sub">{shiftHrs(s2)}h{multi ? ' · ' + s2._office : ''}</span>
+                  {s2.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s2.note}</span>}
+                </span>
+                <Icon name="chevron" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? <div className="schm-empty">Loading…</div> : dayGroups.length === 0 ? (
           <div className="schm-empty">No one on the roster for this selection.</div>
@@ -755,6 +782,26 @@ function Scheduler({ me, access, onBack }) {
                 ))}
               </div>
 
+              {openLane.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: colTemplate, borderBottom: '1px solid var(--line)', background: 'color-mix(in oklab, var(--warn) 7%, var(--surface))' }}>
+                  <div style={{ padding: '8px 13px', display: 'flex', alignItems: 'center', gap: 8, borderRight: '1px solid var(--line)', minWidth: 0 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--warn-soft)', color: 'oklch(0.45 0.12 60)' }}><Icon name="bell" style={{ width: 14, height: 14 }} /></div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>Open shifts</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{openLane.length} unassigned</div>
+                    </div>
+                  </div>
+                  {days.map(d => (
+                    <div key={d.date} className="sched-cell" onClick={() => setModal({ office: offices[0], empId: null, date: d.date, shift: null, open: true })}
+                      style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
+                      {openOn(d.date).map(s => (
+                        <SchedShift key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
+                          onClick={(e) => { e.stopPropagation(); setModal({ office: s._office, empId: null, date: d.date, shift: s }); }} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
               {rows.map(group => {
                 const gk = group.office + '|' + group.dept;
                 const closed = !!collapsed[gk];
@@ -951,7 +998,7 @@ function SchedPortal({ children }) { return ReactDOM.createPortal(children, docu
 function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
   const s = modal.shift;
   const [office, setOffice] = useState(modal.office);
-  const [open, setOpen] = useState(s ? !!s.open : false);
+  const [open, setOpen] = useState(s ? !!s.open : !!modal.open);
   const [empId, setEmpId] = useState(s ? (s.empId || '') : (modal.empId || ''));
   const [date, setDate] = useState(modal.date);
   const [start, setStart] = useState(s ? s.start : '09:00');
@@ -971,7 +1018,8 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
     shiftConflicts({ shifts: weekShifts, blackouts, empId, date, start, end, excludeId: s && s.id }),
     [empId, date, start, end, open]);
   const hasConflict = conflict.shifts.length > 0 || !!conflict.blackout;
-  const valid = date && start && end && timeMins(end) > timeMins(start) && empId;
+  /* an open shift is valid with nobody on it — being unassigned is the point */
+  const valid = date && start && end && timeMins(end) > timeMins(start) && (empId || open);
 
   const preset = SHIFT_PRESETS.find(p => p.start === start && p.end === end);
 
@@ -1024,7 +1072,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
                 </optgroup>
               </select>
             </label>
-            {s && (
+            {(
               <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', paddingBottom: 9, whiteSpace: 'nowrap', cursor: 'pointer' }} title="The shift stays on this row but is flagged open — visible for teammates to claim">
                 <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> Mark open
               </label>
