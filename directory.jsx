@@ -60,12 +60,23 @@ function Directory({ employees, access, onRecord, canRecord, canSeeInactive, tit
   const [office, setOffice] = useState('All');
   const [dept, setDept] = useState('All');
   const [card, setCard] = useState(null);
+  const [adding, setAdding] = useState(false);
+  /* Someone added here is pushed into EMPLOYEES immediately, but `employees` arrives as a
+     prop from a parent that won't have re-rendered yet — so hold them locally too and let
+     the duplicate filter drop them once the parent catches up. */
+  const [justAdded, setJustAdded] = useState([]);
   const showStatusFilter = !!canSeeInactive;
+  const fl = (access && access.flags) || {};
+  const canAdd = !!(fl.isAdmin || fl.isHR || fl.isExec || fl.isManager);   // same as the server's canWrite
 
-  const offices = useMemo(() => ['All', ...Array.from(new Set(employees.map(e => e.loc))).sort()], [employees]);
-  const depts = useMemo(() => ['All', ...Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort()], [employees]);
+  const people = useMemo(
+    () => [...employees, ...justAdded.filter(x => !employees.some(e => e.id === x.id))],
+    [employees, justAdded]);
 
-  const filtered = employees.filter(e => {
+  const offices = useMemo(() => ['All', ...Array.from(new Set(people.map(e => e.loc))).sort()], [people]);
+  const depts = useMemo(() => ['All', ...Array.from(new Set(people.map(e => e.department).filter(Boolean))).sort()], [people]);
+
+  const filtered = people.filter(e => {
     const st = showStatusFilter ? status : 'Active';
     if (st !== 'All' && e.status !== st) return false;
     if (office !== 'All' && e.loc !== office) return false;
@@ -74,18 +85,24 @@ function Directory({ employees, access, onRecord, canRecord, canSeeInactive, tit
     return true;
   }).sort((a, b) => a.last.localeCompare(b.last));
 
-  const activeCount = employees.filter(e => e.status === 'Active').length;
-  const provCount = employees.filter(e => e.provider && e.status === 'Active').length;
+  const activeCount = people.filter(e => e.status === 'Active').length;
+  const provCount = people.filter(e => e.provider && e.status === 'Active').length;
   const handleOpen = (e) => setCard(e);
 
   return (
     <div className="fade-in">
       {card && <ContactCard emp={card} onClose={() => setCard(null)} canRecord={canRecord && canRecord(card)} sensitive={access && access.caps && access.caps.viewAll} onRecord={onRecord} />}
+      {adding && <AddEmployeeModal offices={offices.filter(o => o !== 'All')} onCreated={p => setJustAdded(l => [...l, p])} onClose={() => setAdding(false)} />}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>{title || 'People'}</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Company directory · {activeCount} active · {provCount} providers</p>
         </div>
+        {canAdd && (
+          <button className="btn btn-primary" onClick={() => setAdding(true)} title="Add someone who never came through onboarding">
+            <Icon name="plus" /> Add person
+          </button>
+        )}
         <div style={{ position: 'relative', minWidth: 240 }}>
           <Icon name="users" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, color: 'var(--ink-3)' }} />
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, title, email…"

@@ -188,4 +188,104 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
   );
 }
 
-Object.assign(window, { saveEmpRecord, deriveEmp, applyEmpToRoster, EditRecordModal, ADMIN_FIELDS });
+/* ---- adding someone to the roster ----
+   The work email is split into a name part and a domain, because it is the key the whole
+   app joins on — auth, scheduling, notices and regular-hours profiles all resolve people
+   by it — so a typo is expensive and a free-text box invites one. The domain follows the
+   office they're being HIRED at, which is how addresses are assigned here; it stays a
+   picker because that rule decides the address once and afterwards the stored email is
+   the record of it. (Checked against the live roster: current addresses do NOT track
+   present-day location — people keep their address when they move — so the office is a
+   sensible default and a terrible inference.) */
+const NJ_DOMAIN = 'foureversmile.com';
+const EMAIL_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
+const domainForOffice = office => (/jersey|totowa/i.test(office || '') ? NJ_DOMAIN : 'puredental.com');
+
+function AddEmployeeModal({ offices, onCreated, onClose }) {
+  const [f, setF] = useState({ first: '', last: '', local: '', domain: 'puredental.com', location: '', department: '', jobTitle: '', employmentType: 'Full-time', startDate: '', mobile: '', managerEmail: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const pickOffice = (v) => setF(s => ({ ...s, location: v, domain: domainForOffice(v) }));
+  const inp = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  const lbl = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 5 };
+  const ok = f.first.trim() && f.last.trim() && f.local.trim() && f.location;
+
+  const create = async () => {
+    if (!ok || saving) return;
+    setSaving(true); setErr('');
+    try {
+      const employee = {
+        first: f.first.trim(), last: f.last.trim(),
+        workEmail: `${f.local.trim().replace(/@.*$/, '')}@${f.domain}`,
+        location: f.location, department: f.department.trim(), jobTitle: f.jobTitle.trim(),
+        employmentType: f.employmentType, startDate: f.startDate, mobile: f.mobile.trim(),
+        managerEmail: f.managerEmail.trim().toLowerCase(),
+      };
+      const saved = await saveEmpRecord({ action: 'create', employee });
+      onCreated && onCreated(applyEmpToRoster(deriveEmp(saved)));
+      onClose();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: '3vh 20px 24px' }}>
+      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name="users" style={{ width: 20, height: 20 }} /></div>
+          <div style={{ flex: 1 }}><h2 style={{ fontSize: 19 }}>Add someone to the roster</h2><p style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>For people who never came through onboarding</p></div>
+          <button className="btn btn-quiet" style={{ padding: 7 }} onClick={onClose}><Icon name="x" /></button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label><div style={lbl}>First name *</div><input autoFocus value={f.first} onChange={e => set('first', e.target.value)} style={inp} /></label>
+          <label><div style={lbl}>Last name *</div><input value={f.last} onChange={e => set('last', e.target.value)} style={inp} /></label>
+
+          <label style={{ gridColumn: '1 / -1' }}>
+            <div style={lbl}>Work email *</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input value={f.local} onChange={e => set('local', e.target.value)} placeholder="first.last" style={{ ...inp, flex: 1 }} />
+              <span style={{ color: 'var(--ink-3)', fontWeight: 700 }}>@</span>
+              <select value={f.domain} onChange={e => set('domain', e.target.value)} style={{ ...inp, width: 'auto', appearance: 'auto' }}>
+                {EMAIL_DOMAINS.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 5, lineHeight: 1.45 }}>
+              Required — it's what signs them in and links them to their schedule. Someone without a company address yet can't be added until they have one.
+            </div>
+          </label>
+
+          <label><div style={lbl}>Office *</div>
+            <select value={f.location} onChange={e => pickOffice(e.target.value)} style={{ ...inp, appearance: 'auto' }}>
+              <option value="">— pick —</option>
+              {(offices || []).map(o => <option key={o}>{o}</option>)}
+            </select>
+          </label>
+          <label><div style={lbl}>Department</div><input value={f.department} onChange={e => set('department', e.target.value)} style={inp} /></label>
+          <label><div style={lbl}>Job title</div><input value={f.jobTitle} onChange={e => set('jobTitle', e.target.value)} style={inp} /></label>
+          <label><div style={lbl}>Employment type</div>
+            <select value={f.employmentType} onChange={e => set('employmentType', e.target.value)} style={{ ...inp, appearance: 'auto' }}>
+              {['Full-time', 'Part-time', 'Per diem'].map(t => <option key={t}>{t}</option>)}
+            </select>
+          </label>
+          <label><div style={lbl}>Start date</div><input type="date" value={f.startDate} onChange={e => set('startDate', e.target.value)} style={inp} /></label>
+          <label><div style={lbl}>Mobile</div><input value={f.mobile} onChange={e => set('mobile', e.target.value)} style={inp} /></label>
+          <label style={{ gridColumn: '1 / -1' }}><div style={lbl}>Manager's work email</div><input value={f.managerEmail} onChange={e => set('managerEmail', e.target.value)} placeholder="optional — sets who they report to" style={inp} /></label>
+        </div>
+
+        {err && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid oklch(0.6 0.16 25)', background: 'color-mix(in oklab, oklch(0.6 0.19 25) 10%, var(--surface))', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.45 0.16 25)' }}>
+            <Icon name="bell" style={{ width: 15, height: 15, flex: 'none', marginTop: 1 }} /> {err}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!ok || saving} onClick={create}><Icon name="check" /> {saving ? 'Adding…' : 'Add to roster'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { saveEmpRecord, deriveEmp, applyEmpToRoster, EditRecordModal, AddEmployeeModal, ADMIN_FIELDS, domainForOffice });
