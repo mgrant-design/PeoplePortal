@@ -96,17 +96,18 @@ const deptHue = (() => { const cache = {}; let i = 0; const hues = [220, 155, 28
 /* one shift block in the grid.
    `pub` = published (the committed green state); `ot` = this person's week is over
    their overtime threshold; `note` shows under the time with a speech bubble. */
-function SchedShift({ s, hue, multi, dim, hi, ot, onClick }) {
+function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEnd, dragging }) {
   const open = !!s.open, off = !!s.offered, pub = !!s.pub;
   const tint = open ? 'oklch(0.7 0.14 75)' : off ? 'oklch(0.65 0.16 320)' : pub ? 'oklch(0.68 0.14 150)' : `oklch(0.65 0.13 ${hue})`;
   const edge = open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})`;
   const label = open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : pub ? 'oklch(0.44 0.13 150)' : `oklch(0.5 0.14 ${hue})`;
   return (
-    <button onClick={onClick} className="sched-shift" style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', position: 'relative',
+    <button onClick={onClick} className="sched-shift" draggable={!!onDragStart} onDragStart={onDragStart} onDragEnd={onDragEnd}
+      style={{ display: 'block', width: '100%', textAlign: 'left', cursor: onDragStart ? 'grab' : 'pointer', border: 'none', position: 'relative',
       background: `color-mix(in oklab, ${tint} ${pub && !open && !off ? 20 : open ? 18 : 16}%, var(--surface))`,
       borderLeft: `3px solid ${edge}`,
       boxShadow: ot ? 'inset 0 0 0 1.5px oklch(0.58 0.19 25)' : 'none',
-      borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dim ? 0.35 : 1,
+      borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dragging ? 0.4 : dim ? 0.35 : 1,
       outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
       <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}{ot ? <span title="Over their weekly hours" style={{ marginLeft: 4, color: 'oklch(0.55 0.19 25)' }}>⚠</span> : null}</span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
@@ -440,6 +441,45 @@ function Scheduler({ me, access, onBack }) {
   /* Shifts with nobody on them. They cannot sit on a person's row — there is no person —
      so they get a lane of their own at the top of the grid, which is also where a manager
      looks to see what still needs covering. */
+  /* ---- drag and drop (desktop only) ----
+     Added ALONGSIDE click-to-edit, not replacing it: clicking a slot still opens the form,
+     and that stays the way to create or change a shift. Dragging only MOVES an existing
+     one — to another day, another person, or another office — because that is the bit
+     muscle memory reaches for and the bit clicking is clumsy at.
+
+     Not offered on the phone layout: it shows one day at a time in a single column, so
+     there is nothing to drag across, and a long-press to pick up fights with scrolling.
+
+     A move across offices is two edits, not one — a shift lives inside its office's week
+     document, so it is removed from one and added to the other. */
+  const [drag, setDrag] = useState(null);        // the shift being carried
+  const [dropAt, setDropAt] = useState(null);    // 'empId|date|office' currently under it
+  const moveShift = async (s2, toEmpId, toDate, toOffice) => {
+    setDrag(null); setDropAt(null);
+    const sameSlot = s2.empId === (toEmpId || '') && s2.date === toDate && s2._office === toOffice;
+    if (sameSlot) return;
+    const moved = { ...s2, empId: toEmpId || '', date: toDate };
+    delete moved._office; delete moved.pub;      /* moved = unpublished again */
+    if (!toEmpId) moved.open = true; else delete moved.open;
+    if (s2._office === toOffice) {
+      await oneChange(toOffice, { op: 'update', shift: moved }, list => [...list.filter(x => x.id !== moved.id), moved]);
+    } else {
+      const landed = { ...moved, id: newShiftId() };
+      await oneChange(s2._office, { op: 'remove', shiftId: s2.id }, list => list.filter(x => x.id !== s2.id));
+      await oneChange(toOffice, { op: 'add', shift: landed }, list => [...list, landed]);
+    }
+  };
+  const dropProps = (toEmpId, toDate, toOffice) => {
+    const key = (toEmpId || '') + '|' + toDate + '|' + toOffice;
+    return {
+      onDragOver: e => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropAt !== key) setDropAt(key); } },
+      onDragLeave: () => { if (dropAt === key) setDropAt(null); },
+      onDrop: e => { e.preventDefault(); if (drag) moveShift(drag, toEmpId, toDate, toOffice); },
+      'data-drop': dropAt === key ? 'on' : undefined,
+    };
+  };
+  const isDropping = (toEmpId, toDate, toOffice) => dropAt === ((toEmpId || '') + '|' + toDate + '|' + toOffice);
+
   const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
   const openOn = (date) => openLane.filter(s => s.date === date);
   const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
@@ -672,7 +712,7 @@ function Scheduler({ me, access, onBack }) {
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
-      subtitle="Click any slot to add a shift. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."
+      subtitle="Click any slot to add a shift, or drag a shift to move it — to another day, another person, or another office. Drop one on the Open shifts row to leave it unassigned. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."
       onBack={onBack}
       aside={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -793,9 +833,14 @@ function Scheduler({ me, access, onBack }) {
                   </div>
                   {days.map(d => (
                     <div key={d.date} className="sched-cell" onClick={() => setModal({ office: offices[0], empId: null, date: d.date, shift: null, open: true })}
-                      style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }}>
+                      {...dropProps('', d.date, offices[0])}
+                      style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer',
+                        background: isDropping('', d.date, offices[0]) ? 'var(--accent-soft)' : 'transparent',
+                        outline: isDropping('', d.date, offices[0]) ? '2px solid var(--accent)' : 'none', outlineOffset: -2 }}>
                       {openOn(d.date).map(s => (
                         <SchedShift key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
+                          dragging={drag && drag.id === s.id}
+                          onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
                           onClick={(e) => { e.stopPropagation(); setModal({ office: s._office, empId: null, date: d.date, shift: s }); }} />
                       ))}
                     </div>
@@ -840,11 +885,16 @@ function Scheduler({ me, access, onBack }) {
                         return (
                           <div key={d.date} onClick={() => { if (isEmpty) setModal({ office: p.office, empId: p.id, date: d.date, shift: null }); }}
                             className="sched-cell"
+                            {...dropProps(p.id, d.date, group.office || p.office)}
                             style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: isEmpty ? 'pointer' : 'default',
-                              background: bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
-                              outline: statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
+                              background: isDropping(p.id, d.date, group.office || p.office) ? 'var(--accent-soft)'
+                                : bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
+                              outline: isDropping(p.id, d.date, group.office || p.office) ? '2px solid var(--accent)' : statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)} onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
+                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)}
+                              dragging={drag && drag.id === s.id}
+                              onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
+                              onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
                             {isEmpty && <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: 0.3 }}><Icon name="plus" style={{ width: 13, height: 13 }} /></div>}
                           </div>
                         );
