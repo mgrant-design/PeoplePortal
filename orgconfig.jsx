@@ -11,7 +11,7 @@
    and the hook surfaces status 'error' while keeping the local value, so sandbox UI
    work still functions — same graceful degradation as the schedule/coverage helpers. */
 
-const ORG_SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding', 'weekStart'];
+const ORG_SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding', 'weekStart', 'refLinks'];
 
 async function fetchOrgConfig() {
   const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';

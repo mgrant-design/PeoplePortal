@@ -73,6 +73,9 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
             </button>
           ))}
         </div>
+        {/* policies and reference docs matter most to the people who don't have a
+            manager's screens — this is the view that needs them */}
+        <div style={{ marginTop: 'var(--gap)' }}><RefLinks access={access} /></div>
       </div>
     );
   }
@@ -213,9 +216,85 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
             {access.caps.offboard && <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => onNav('offboarding')}><Icon name="bell" /> Offboarding</button>}
           </div>
         </div>
+        <RefLinks access={access} />
       </div>
     </div>
   );
 }
 
-Object.assign(window, { Dashboard });
+/* ---- Reference & resources ----
+   "A reference link on the dashboard for info, policies, docs, etc that may need to be
+   easily accessed in a day-to-day workflow or edge-case scenario."
+
+   The links are stored in org config rather than hardcoded, so adding one is an admin
+   editing a list — not a developer editing a file and waiting for a deploy. A hardcoded
+   link would have satisfied the request once and then needed us every time after.
+
+   Everyone sees the list; only admins see the edit control. Links open in a new tab so
+   nobody loses the page they were working on, with rel=noopener because target=_blank
+   without it hands the opened page a handle back to ours. */
+function RefLinks({ access }) {
+  const [links, save, status] = useOrgSection('refLinks');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState([]);
+  const canEdit = !!(access && access.caps && access.caps.manageUsers);
+
+  const open = () => { setDraft((links || []).map(l => ({ ...l }))); setEditing(true); };
+  const setRow = (i, k, v) => setDraft(d => d.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const clean = () => draft
+    .map(r => ({ label: String(r.label || '').trim().slice(0, 80), url: String(r.url || '').trim().slice(0, 500) }))
+    .filter(r => r.label && r.url)
+    .map(r => ({ ...r, url: /^https?:\/\//i.test(r.url) ? r.url : 'https://' + r.url }));
+
+  if (!links.length && !canEdit) return null;   /* nothing to show and nothing to add */
+
+  return (
+    <div className="card" style={{ padding: 'var(--pad)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <h3 style={{ fontSize: 16, flex: 1 }}>Reference &amp; resources</h3>
+        {canEdit && !editing && <button className="btn btn-quiet" style={{ padding: '4px 10px', fontSize: 12 }} onClick={open}><Icon name="pen" style={{ width: 13, height: 13 }} /> Edit</button>}
+        {status === 'saving' && <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>Saving…</span>}
+        {status === 'saved' && <span style={{ fontSize: 11.5, color: 'oklch(0.45 0.12 155)' }}>Saved</span>}
+        {status === 'conflict' && <span style={{ fontSize: 11.5, color: 'oklch(0.5 0.16 25)' }}>Someone else saved — reload</span>}
+      </div>
+
+      {!editing && (
+        links.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {links.map((l, i) => (
+              <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', borderRadius: 'var(--r-md)', textDecoration: 'none', color: 'var(--ink)', fontSize: 13.5, fontWeight: 600 }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent)', flex: 'none' }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.label}</span>
+                <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', flex: 'none' }} />
+              </a>
+            ))}
+          </div>
+        ) : <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>No links yet — add the policies and documents people reach for most.</p>
+      )}
+
+      {editing && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {draft.map((r, i) => (
+            <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={r.label || ''} onChange={e => setRow(i, 'label', e.target.value)} placeholder="Name"
+                style={{ flex: '1 1 130px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
+              <input value={r.url || ''} onChange={e => setRow(i, 'url', e.target.value)} placeholder="Link"
+                style={{ flex: '2 1 190px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
+              <button className="btn btn-quiet" style={{ padding: 6 }} title="Remove" onClick={() => setDraft(d => d.filter((_, j) => j !== i))}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>
+            </div>
+          ))}
+          <button className="btn btn-quiet" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setDraft(d => [...d, { label: '', url: '' }])}><Icon name="plus" style={{ width: 13, height: 13 }} /> Add a link</button>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => { save(clean()); setEditing(false); }}><Icon name="check" /> Save links</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { Dashboard, RefLinks });

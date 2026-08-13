@@ -16,7 +16,7 @@ const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-const SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding'];
+const SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding', 'refLinks'];
 /* scalar settings, saved through the same endpoint but not array-shaped */
 const WEEK_STARTS = [0, 1, 2];
 
@@ -62,6 +62,7 @@ module.exports = async function (context, req) {
         offices: s.offices || [], departments: s.departments || [], titles: s.titles || [],
         managers: s.managers || [], users: s.users || [], offboarding: s.offboarding || [],
         weekStart: Number.isFinite(s.weekStart) ? s.weekStart : 1,
+        refLinks: s.refLinks || [],
       }) };
       return;
     }
