@@ -124,7 +124,7 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 'var(--gap)', marginBottom: 'var(--gap)' }}>
         <div className="card" style={{ padding: 'var(--pad)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', background: 'var(--ok-soft)', color: 'oklch(0.45 0.12 155)', flex: 'none' }}><Icon name="sparkle" style={{ width: 16, height: 16 }} /></div>
+            <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)', flex: 'none' }}><Icon name="sparkle" style={{ width: 16, height: 16 }} /></div>
             <h3 style={{ fontSize: 16 }}>Starting today</h3>
             <span className="badge badge-ok" style={{ marginLeft: 'auto' }}>{startingToday.length}</span>
           </div>
