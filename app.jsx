@@ -363,7 +363,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   const createHire = (f) => {
     const id = 'auto' + Date.now();
-    const auto = { id, ...f, workEmail: genWorkEmail(f.name), stage: 0, createdAt: Date.now() };
+    /* no work address until one is really created — see suggestWorkEmail in automation.jsx */
+    const auto = { id, ...f, workEmail: f.workEmail || '', stage: 0, createdAt: Date.now() };
     setAutomations(a => [auto, ...a]);
     setCurrentAuto(id);
     go('autodetail');

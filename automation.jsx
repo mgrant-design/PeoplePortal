@@ -7,10 +7,18 @@ function roleKeyFor({ provider, providerType, department, jobTitle }) {
   if (/insur|billing/i.test((department || '') + (jobTitle || ''))) return 'insurance';
   return 'frontdesk';
 }
-function genWorkEmail(name) {
-  const p = name.trim().toLowerCase().split(/\s+/);
-  if (p.length < 2) return (p[0] || 'newhire') + '@puredental.com';
-  return `${p[0]}.${p[p.length - 1]}@puredental.com`.replace(/[^a-z.@]/g, '');
+/* A SUGGESTED work address, never a real one. It used to be written onto the hire as
+   though the account existed — always @puredental.com, so every Four Ever Smile hire got
+   the wrong domain, and two people with the same name got the same address.
+
+   The account is created by us during onboarding, so until that happens there is no
+   address. This only ever pre-fills a field a human confirms; nothing stores it and no
+   step claims it exists. */
+function suggestWorkEmail(name) {
+  const p = String(name || '').trim().toLowerCase().split(/\s+/);
+  if (!p[0]) return '';
+  if (p.length < 2) return p[0].replace(/[^a-z.]/g, '');
+  return `${p[0]}.${p[p.length - 1]}`.replace(/[^a-z.]/g, '');
 }
 
 /* ---------- Add New Hire ---------- */
@@ -80,7 +88,7 @@ function buildSteps(a, apiMode = true) {
     { key: 'intake', icon: 'doc', label: 'Collected details & paperwork', detail: 'New hire submitted personal info, emergency contact, resume, and signed W-4, I-9 & direct deposit.' },
   ];
   if (a.provider) steps.push({ key: 'credentials', icon: 'star', label: apiMode ? 'Verified credentials' : 'Collected credentials for verification', detail: apiMode ? `Checked NPI and ${a.office} state license${a.rk === 'dentist' ? ' and DEA registration' : ''} against the registries — all active.` : `Recorded NPI and ${a.office} state license${a.rk === 'dentist' ? ' and DEA' : ''} — flagged for IT/HR to verify against the registries.` });
-  steps.push({ key: 'google', icon: 'mail', label: (apiMode ? 'Created ' : 'Queued for IT/HR — ') + 'Google Workspace', detail: `${a.workEmail} · OU ${rules.google.ou} · groups ${rules.google.groups.join(', ')} · ${rules.google.license}.` });
+  steps.push({ key: 'google', icon: 'mail', label: (apiMode ? 'Created ' : 'Queued for IT/HR — ') + 'Google Workspace', detail: `${a.workEmail || 'address not created yet'} · OU ${rules.google.ou} · groups ${rules.google.groups.join(', ')} · ${rules.google.license}.` });
   steps.push({ key: 'denticon', icon: 'tooth', label: (apiMode ? 'Created ' : 'Queued for IT/HR — ') + 'Denticon account', detail: `Security template “${rules.denticon.template}”${rules.denticon.provider ? ' + provider profile linked to NPI' : ''} · modules: ${rules.denticon.modules.join(', ')}.` });
   if (rules.nexhealth) steps.push({ key: 'nexhealth', icon: 'calendar', label: (apiMode ? 'Created ' : 'Queued for IT/HR — ') + 'NexHealth account', detail: `Role “${rules.nexhealth.role}” · ${rules.nexhealth.features.join(', ')}.` });
   if (rules.dosespot) steps.push({ key: 'dosespot', icon: 'shield', label: (apiMode ? 'Created ' : 'Queued for IT/HR — ') + 'DoseSpot (EPCS)', detail: `${rules.dosespot.account} · schedules ${rules.dosespot.schedules} · SSO via Google.` });
@@ -237,4 +245,4 @@ function Automations({ automations, onOpen, onAdd, onConsole }) {
   );
 }
 
-Object.assign(window, { AddHire, Automations, AutomationDetail, roleKeyFor, genWorkEmail });
+Object.assign(window, { AddHire, Automations, AutomationDetail, roleKeyFor, suggestWorkEmail });

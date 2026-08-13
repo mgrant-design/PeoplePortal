@@ -561,7 +561,8 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
   };
   const saveEdit = () => { const name = (form.first + ' ' + form.last).trim(); onEditInfo(a.id, { ...form, name }); setEditInfo(false); if (flash) flash('Applicant details updated'); };
   const idx = ATS_IDX[a.stage] != null ? ATS_IDX[a.stage] : 0;
-  const rejected = a.stage === 'rejected';
+  /* older records stored the archive AS the stage; both shapes read the same */
+  const rejected = !!a.rejected || a.stage === 'rejected';
   const skipIdx = (idx === ATS_IDX.interview && !a.wiRequired) ? ATS_IDX.offer : Math.min(ATS_STAGES.length - 1, idx + 1);
   const stageDef = ATS_STAGES[idx] || ATS_STAGES[0];
   const canPay = access.caps.payroll || access.flags.isExec;
@@ -587,7 +588,10 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>{a.role} · {a.office}</div>
         </div>
-        <span className={`badge ${rejected ? 'badge-todo' : stageDef.badge}`} style={{ flex: 'none' }}>{rejected ? 'Archived' : stageDef.label}</span>
+        {/* now that archiving keeps the stage, say how far they actually got */}
+        <span className={`badge ${rejected ? 'badge-todo' : stageDef.badge}`} style={{ flex: 'none' }}>
+          {rejected ? (() => { const from = ATS_STAGES.find(x => x.id === (a.rejectedFrom || a.stage)); return from ? `Archived · ${from.label}` : 'Archived'; })() : stageDef.label}
+        </span>
         <button className="btn btn-quiet" style={{ padding: 8, flex: 'none' }} onClick={onClose}><Icon name="x" /></button>
       </div>
 
@@ -856,8 +860,15 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     setSel(null);
     if (flash) flash('Offer signed — onboarding team notified, onboarding started');
   };
-  const reject = (id) => { update(id, { stage: 'rejected' }); setSel(null); };
-  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, stage: 'applied', role: '' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(r.name + ' reopened — set a role / title to continue'); };
+  /* Archiving someone is a flag on top of where they got to, not a replacement for it.
+     Overwriting the stage threw away how far they reached, so a day-one pass looked
+     identical to someone who made it through a working interview — and that difference is
+     the whole point of tracking a pipeline. */
+  const reject = (id) => { const r = list.find(a => a.id === id); if (!r) return; update(id, { rejected: true, rejectedAt: Date.now(), rejectedFrom: r.stage && r.stage !== 'rejected' ? r.stage : (r.rejectedFrom || 'applied') }); setSel(null); };
+  /* Bringing someone back returns them to the stage they were archived from and KEEPS
+     their job title — clearing it meant re-typing what you already knew, and the title is
+     what the pipeline gates advancement on. */
+  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, rejected: false, rejectedAt: null, stage: r.rejectedFrom || (r.stage === 'rejected' ? 'applied' : r.stage) || 'applied' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(r.name + ' reopened — set a role / title to continue'); };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
     const today = new Date().toISOString().slice(0, 10);
@@ -891,8 +902,9 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   if (list === null) return <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh', color: 'var(--ink-3)' }}><span className="spin" style={{ width: 22, height: 22, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /></div>;
 
   const scoped = access.caps.viewAll ? list : list.filter(a => normLoc(a.office) === me.loc);
-  const active = scoped.filter(a => a.stage !== 'rejected');
-  const archived = scoped.filter(a => a.stage === 'rejected');
+  const isArchived = a => !!a.rejected || a.stage === 'rejected';
+  const active = scoped.filter(a => !isArchived(a));
+  const archived = scoped.filter(isArchived);
   const byStage = {}; ATS_STAGES.forEach(s => byStage[s.id] = active.filter(a => a.stage === s.id));
   const count = (id) => byStage[id].length;
   const visibleStages = ATS_STAGES.filter(s => s.id !== 'working' || count('working') > 0);
