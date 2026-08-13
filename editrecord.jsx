@@ -160,7 +160,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
           <div style={{ flex: 1 }}><h2 style={{ fontSize: 19 }}>{title}</h2><p style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{emp.name}</p></div>
           <button className="btn btn-quiet" style={{ padding: 7 }} onClick={onClose}><Icon name="x" /></button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="pd-form2">
           {fields.map(f => (
             <label key={f.k} style={{ display: 'block', gridColumn: f.k === 'address' ? '1 / -1' : 'auto' }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 5 }}>{f.label}</div>
@@ -256,7 +256,7 @@ function AddEmployeeModal({ offices, preset, onCreated, onClose }) {
           <button className="btn btn-quiet" style={{ padding: 7 }} onClick={onClose}><Icon name="x" /></button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="pd-form2">
           <label><div style={lbl}>First name *</div><input autoFocus value={f.first} onChange={e => set('first', e.target.value)} style={inp} /></label>
           <label><div style={lbl}>Last name *</div><input value={f.last} onChange={e => set('last', e.target.value)} style={inp} /></label>
 

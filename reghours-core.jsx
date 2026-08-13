@@ -158,26 +158,26 @@ function RegularHoursModal({ roster, profiles, offices, onSaved, onClose, flash 
                 {REG_DOW.map(k => {
                   const d = draft.days[k];
                   return (
-                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', padding: '7px 10px', borderRadius: 'var(--r-md)', background: d ? 'var(--accent-softer)' : 'var(--surface-2)' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 7, width: 116, fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                    <div key={k} className="reg-day" style={{ background: d ? 'var(--accent-softer)' : 'var(--surface-2)' }}>
+                      <label className="reg-day-name">
                         <input type="checkbox" checked={!!d} onChange={() => toggleDay(k)} /> {REG_DOW_LABEL[k]}
                       </label>
                       {d ? (
                         <>
-                          <input type="time" value={d.start} onChange={e => setDay(k, { ...d, start: e.target.value })} style={{ width: 110, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
+                          <input type="time" value={d.start} onChange={e => setDay(k, { ...d, start: e.target.value })} className="reg-day-time" style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
                           <span style={{ color: 'var(--ink-3)' }}>→</span>
-                          <input type="time" value={d.end} onChange={e => setDay(k, { ...d, end: e.target.value })} style={{ width: 110, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
+                          <input type="time" value={d.end} onChange={e => setDay(k, { ...d, end: e.target.value })} className="reg-day-time" style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
+                          <label className="reg-day-break" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
                             <input type="number" min="0" max="480" step="5" value={d.breakMins} onChange={e => setDay(k, { ...d, breakMins: Math.max(0, Number(e.target.value) || 0) })} className="mono" style={{ width: 58, padding: '6px 7px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12.5, background: 'var(--surface)' }} /> min unpaid break
                           </label>
                           {/* which site this day happens at — the whole point of a standing
                               week for someone who splits their days between offices */}
                           <select value={d.office || ''} onChange={e => setDay(k, { ...d, office: e.target.value })} title="Office for this day"
-                            style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12.5, background: 'var(--surface)', maxWidth: 150 }}>
+                            className="reg-day-office" style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12.5, background: 'var(--surface)' }}>
                             <option value="">{draft.office ? draft.office + ' (home)' : 'Home office'}</option>
                             {OFFICE_LIST.map(o => <option key={o} value={o}>{o}</option>)}
                           </select>
-                          <span className="mono" style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>{shiftHrs({ start: d.start, end: d.end, breakMins: d.breakMins })}h</span>
+                          <span className="mono reg-day-hrs" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>{shiftHrs({ start: d.start, end: d.end, breakMins: d.breakMins })}h</span>
                         </>
                       ) : <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Doesn't normally work</span>}
                     </div>

@@ -548,11 +548,13 @@ function Scheduler({ me, access, onBack }) {
           ))}
         </div>
 
+        {/* a button per department becomes a wall once there are more than a few, and this
+            screen already stacks several control rows — one picker instead */}
         {DEPTS.length > 1 && (
-          <div className="schm-acts">
-            <button onClick={() => setDept('')} className={dept ? '' : 'on'}>All roles</button>
-            {DEPTS.map(d => <button key={d} onClick={() => setDept(dept === d ? '' : d)} className={dept === d ? 'on' : ''}>{d}</button>)}
-          </div>
+          <select value={dept} onChange={e => setDept(e.target.value)} className="schm-pick">
+            <option value="">All roles</option>
+            {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         )}
 
         {/* the week, as seven tap targets — the second axis without rendering it */}

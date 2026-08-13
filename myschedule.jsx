@@ -122,7 +122,7 @@ function MySchedule({ me }) {
           <p style={{ fontSize: 14, maxWidth: 420, margin: '0 auto', lineHeight: 1.55 }}>When your manager publishes {weekKey === thisWeekKey() ? 'this' : 'that'} week's schedule, your shifts show up here. Use the arrows to check other weeks.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--gap)' }}>
+        <div className="msched-week">
           {days.map(dayCard)}
         </div>
       )}
