@@ -170,8 +170,8 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
                   ))}
                 </div>
                 {bdaySent
-                  ? <div className="fade-in" style={{ borderRadius: 'var(--r-md)', background: 'var(--ok-soft)', padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'oklch(0.4 0.12 155)', marginBottom: 6 }}><Icon name="check" style={{ width: 16, height: 16 }} /> Posted to Google Chat · Sunshine Club ☀️</div>
+                  ? <div className="fade-in" style={{ borderRadius: 'var(--r-md)', background: 'var(--accent-softer)', padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--accent-strong)', marginBottom: 6 }}><Icon name="check" style={{ width: 16, height: 16 }} /> Posted to Google Chat · Sunshine Club ☀️</div>
                       <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{typeof buildSunshinePost === 'function' ? buildSunshinePost(birthdaysToday, anniversariesToday) : birthdayMessage(birthdaysToday.map(e => e.first))}</div>
                     </div>
                   : <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={sendBirthdayWish}>🎉 Send wishes to Sunshine Club</button>}
@@ -254,7 +254,7 @@ function RefLinks({ access }) {
         <h3 style={{ fontSize: 16, flex: 1 }}>Reference &amp; resources</h3>
         {canEdit && !editing && <button className="btn btn-quiet" style={{ padding: '4px 10px', fontSize: 12 }} onClick={open}><Icon name="pen" style={{ width: 13, height: 13 }} /> Edit</button>}
         {status === 'saving' && <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>Saving…</span>}
-        {status === 'saved' && <span style={{ fontSize: 11.5, color: 'oklch(0.45 0.12 155)' }}>Saved</span>}
+        {status === 'saved' && <span style={{ fontSize: 11.5, color: 'var(--accent-strong)' }}>Saved</span>}
         {status === 'conflict' && <span style={{ fontSize: 11.5, color: 'oklch(0.5 0.16 25)' }}>Someone else saved — reload</span>}
       </div>
 

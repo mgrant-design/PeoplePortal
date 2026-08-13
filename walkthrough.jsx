@@ -40,7 +40,10 @@ function AIWalkthrough() {
             <div style={{ width: 0, height: 0, borderLeft: '18px solid var(--accent-strong)', borderTop: '11px solid transparent', borderBottom: '11px solid transparent', marginLeft: 5 }} />
           </div>
           <div style={{ position: 'absolute', left: 16, bottom: 14, color: '#fff', textAlign: 'left' }}>
-            <div className="eyebrow" style={{ color: 'oklch(0.9 0.05 200)' }}>AI Walkthrough</div>
+            {/* .eyebrow is normally var(--accent-strong), which is too dark to read on this
+                hero — hence the override. Lightening the accent keeps it legible AND lets it
+                follow the chosen accent, which a fixed pale blue never did. */}
+            <div className="eyebrow" style={{ color: 'color-mix(in oklab, var(--accent) 45%, white)' }}>AI Walkthrough</div>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>Meet Riley — your portal guide</div>
             <div className="mono" style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>~90s · narrated by Riley · 🔊 sound on</div>
           </div>
