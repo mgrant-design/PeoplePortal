@@ -40,7 +40,10 @@ function httpPost(urlStr, { headers = {}, body = '' } = {}) {
 async function notifyOfferEvent(rec, kind) {
   const summary = { gchat: false, simulated: false, errors: [] };
   const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
-  const text = kind === 'submitted'
+  const declined = rec && rec.offer && rec.offer.status === 'declined' ? rec.offer : null;
+  const text = kind === 'declined'
+    ? `\u274c *Offer declined* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined${declined && declined.declineReason ? `: ${declined.declineReason}` : ''}. ${OFFER_APPROVER_NAME} can revise and re-send, or archive.`
+    : kind === 'submitted'
     ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${OFFER_APPROVER_NAME}'s review.`
     : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
   try {
@@ -139,20 +142,21 @@ module.exports = async function (context, req) {
     // the normal recruiting-write check above. The tag itself is never persisted.
     const isApproveAction = doc._offerAction === 'approve';
     const isSubmitAction = doc._offerAction === 'submit';
+    const isDeclineAction = doc._offerAction === 'declined';
     if (isApproveAction && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can approve and send an offer' }) }; return;
     }
     // Any transition of offer.status beyond draft/pending is the approver's alone — enforced
     // against the stored record, not the client's tag: if the incoming doc's offer.status
     // differs from what's on file and moves into sent/signed, only the approver may write it.
-    if (doc.offer && ['sent', 'signed'].includes(doc.offer.status) && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
+    if (doc.offer && ['sent', 'signed', 'declined'].includes(doc.offer.status) && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
       let prevStatus = null;
       try {
         const prev = (await listAll(coll)).find(d => d.id === doc.id);
         prevStatus = prev && prev.offer ? prev.offer.status : null;
       } catch (e) { /* if the read fails, fall through to reject — never allow on error */ }
       if (prevStatus !== doc.offer.status) {
-        context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can send or sign an offer' }) }; return;
+        context.res = { status: 403, headers, body: JSON.stringify({ error: `Only ${OFFER_APPROVER_NAME} can send, sign or decline an offer` }) }; return;
       }
     }
     const { _offerAction, ...clean } = doc;
@@ -164,6 +168,7 @@ module.exports = async function (context, req) {
     let notify;
     if (isApproveAction) notify = await notifyOfferEvent(rec, 'approved');
     else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
+    else if (isDeclineAction) notify = await notifyOfferEvent(rec, 'declined');
     context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body), notify }) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };

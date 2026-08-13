@@ -90,6 +90,22 @@ const JD_TEMPLATES = {
   insurance: 'Insurance & Billing Specialist — submit and follow up on claims, post payments, manage AR and appeals, verify eligibility and benefits, and resolve patient billing questions in Denticon.',
 };
 const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
+
+/* Why a candidate turned an offer down. A fixed list rather than free text, because the
+   point of capturing it is to be able to count it later — "we lost four people on pay
+   this quarter" is a decision you can act on; four differently-worded sentences aren't.
+   "Other" still takes notes, so nothing is forced into the wrong box. */
+const OFFER_DECLINE_REASONS = [
+  'Wage/Salary',
+  'Schedule',
+  'Benefits package (including PTO, Med/Dental, 401K)',
+  'Poor cultural fit',
+  'Limited growth potential',
+  'Accepted another offer',
+  'Stayed at current job',
+  'Personal or family reasons',
+  'Other',
+];
 const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR — only this address may approve+send, enforced server-side too
 
 /* Google Drive is not connected — attachments are local uploads only. */
@@ -347,9 +363,13 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI
 }
 
 /* ------- Offer letter ------- */
-function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, flash }) {
+function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, onReject, flash }) {
   const o = a.offer;
   const [sig, setSig] = useState('');
+  /* recording a decline: reason is required, notes are required only for "Other" */
+  const [declining, setDeclining] = useState(false);
+  const [dReason, setDReason] = useState('');
+  const [dNote, setDNote] = useState('');
   const [picker, setPicker] = useState(false);
   const [open, setOpen] = useState(false);
   const fmtStart = (d) => atsFmt(d);
@@ -467,14 +487,54 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
               <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 1 }} />
               <div style={{ fontSize: 13, color: 'oklch(0.4 0.12 155)', lineHeight: 1.5 }}>Accepted &amp; e-signed by <b>{o.signature}</b> on {atsFmt(new Date(o.signedAt).toISOString().slice(0, 10))}. The onboarding team was notified and onboarding has started.</div>
             </div>
+          ) : o.status === 'declined' ? (
+            /* Declined: the two things you can do about it are the two things offered —
+               revise the offer and send it again, or archive the applicant. */
+            <div className="fade-in" style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--warn-soft)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <Icon name="bell" style={{ width: 18, height: 18, color: 'oklch(0.5 0.13 60)', flex: 'none', marginTop: 1 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'oklch(0.42 0.11 60)' }}>Offer declined — {o.declineReason || 'no reason given'}</div>
+                  {o.declineNote && <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.5 }}>{o.declineNote}</div>}
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Recorded by {o.declinedBy || OFFER_EXECUTOR}{o.declinedAt ? ' on ' + atsFmt(new Date(o.declinedAt).toISOString().slice(0, 10)) : ''}</div>
+                </div>
+              </div>
+              {isApprover && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onOffer(a.id, { status: 'draft' })}><Icon name="pen" /> Revise &amp; re-send</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12.5 }} onClick={() => onReject(a.id)}><Icon name="x" /> Archive applicant</button>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Sent by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate’s signature.</div>
-              {isApprover && (
+              {isApprover && !declining && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
                   <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Candidate declined</button>
+                </div>
+              )}
+              {isApprover && declining && (
+                <div className="fade-in" style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--warn)', background: 'var(--warn-soft)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'oklch(0.42 0.11 60)', marginBottom: 9 }}>Why did they decline?</div>
+                  <select value={dReason} onChange={e => setDReason(e.target.value)} style={{ ...atsFld, width: '100%' }}>
+                    <option value="">— pick a reason —</option>
+                    {OFFER_DECLINE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <textarea value={dNote} onChange={e => setDNote(e.target.value.slice(0, 600))} rows={2}
+                    placeholder={dReason === 'Other' ? 'Please specify — required' : 'Notes (optional)'}
+                    style={{ ...atsFld, width: '100%', marginTop: 8, resize: 'vertical', lineHeight: 1.5 }} />
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+                    <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setDeclining(false)}>Cancel</button>
+                    <button className="btn btn-primary" style={{ fontSize: 12.5 }}
+                      disabled={!dReason || (dReason === 'Other' && !dNote.trim())}
+                      onClick={() => { onOffer(a.id, { status: 'declined', declineReason: dReason, declineNote: dNote.trim(), declinedAt: Date.now(), declinedBy: OFFER_EXECUTOR }, 'declined'); setDeclining(false); }}>
+                      <Icon name="check" /> Record decline
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -601,7 +661,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
         {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
 
         {/* offer letter */}
-        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} flash={flash} />}
+        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} onReject={onReject} flash={flash} />}
 
         {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
         {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
@@ -754,7 +814,9 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   const setWIRequired = (id, val) => update(id, { wiRequired: val });
   const scheduleWI = (id) => setWI(id, { status: 'scheduled', date: '', hours: '', rate: '', autoSend: true });
   const removeWI = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: null }); };
-  const setOffer = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: { ...(r.offer || {}), ...patch } }); };
+  /* `action` tags an offer transition so the server fires the matching Chat message.
+     It is stripped before the record is stored — see api/applicants. */
+  const setOffer = (id, patch, action) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: { ...(r.offer || {}), ...patch }, ...(action ? { _offerAction: action } : {}) }); };
   const initOffer = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, offer: draftOffer(r) }); };
   const submitOfferForApproval = async (id) => {
     const r = list.find(a => a.id === id); if (!r) return;
