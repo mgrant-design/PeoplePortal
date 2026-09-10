@@ -77,17 +77,23 @@ function useSchedFit() {
   return fit;
 }
 
-function schedOffices() {
+/* The people this viewer schedules. Normally their own reports; the whole company for
+   anyone with See Everyone covering Scheduling (rbac.jsx), and for HR/Admin/Leadership. */
+function schedPeople(me, access) {
+  if (typeof pageEmployees === 'function') return pageEmployees(me, access, 'scheduler');
+  return (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+}
+function schedOffices(people) {
   const out = [];
-  (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []).forEach(e => {
+  (people || []).forEach(e => {
     if (e.status !== 'Active') return;
     const l = e.loc || e.location;
     if (l && l !== 'Unassigned' && !out.includes(l)) out.push(l);
   });
   return out.sort();
 }
-function officeRoster(office) {
-  return (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
+function officeRoster(office, people) {
+  return (people || [])
     .filter(e => e.status === 'Active' && (e.loc || e.location) === office)
     .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }));
 }
@@ -119,7 +125,8 @@ function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEn
 }
 
 function Scheduler({ me, access, onBack }) {
-  const OFFICES = useMemo(() => schedOffices(), []);
+  const people = useMemo(() => schedPeople(me, access), [me, access]);
+  const OFFICES = useMemo(() => schedOffices(people), [people]);
   const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
   /* org config is Admin / HR / Leadership on the server; mirror it so the menu entry only
      shows to someone whose save would actually be accepted */
@@ -154,14 +161,14 @@ function Scheduler({ me, access, onBack }) {
 
   const days = useMemo(() => weekDaysFor(weekKey), [weekKey]);
   const roster = useMemo(() => {
-    let r = offices.flatMap(officeRoster);
+    let r = offices.flatMap(o => officeRoster(o, people));
     if (search.trim()) { const q = search.trim().toLowerCase(); r = r.filter(p => p.name.toLowerCase().includes(q)); }
     if (dept) r = r.filter(p => p.dept === dept);
     return r;
-  }, [offices, search, dept]);
+  }, [offices, search, dept, people]);
   const multi = offices.length > 1;
   /* unfiltered team for the regular-hours picker (the search box scopes the grid, not this) */
-  const allRoster = useMemo(() => offices.flatMap(officeRoster), [offices]);
+  const allRoster = useMemo(() => offices.flatMap(o => officeRoster(o, people)), [offices, people]);
   /* every department present across the selected offices — "only the Dental Assistants
      in the offices I pick", which the name-only search box could never do */
   const DEPTS = useMemo(() => [...new Set(allRoster.map(p => p.dept).filter(Boolean))].sort(), [allRoster]);
@@ -411,7 +418,7 @@ function Scheduler({ me, access, onBack }) {
       const people = list.filter(p => seen.has(p.id) ? false : seen.add(p.id)).sort((a, b) => a.name.localeCompare(b.name));
       return [{ office: null, dept: null, people }];
     }
-    const all = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
+    const all = people;
     const q = search.trim().toLowerCase();
     const groups = {};
     const put = (office, p) => {
@@ -695,7 +702,7 @@ function Scheduler({ me, access, onBack }) {
 
         {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
         {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
-        {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+        {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} people={people} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
         {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
         {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
           onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
@@ -925,7 +932,7 @@ function Scheduler({ me, access, onBack }) {
 
       {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
       {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
-      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} people={people} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
       {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
       {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
         onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
@@ -1047,7 +1054,7 @@ function SchedPortal({ children }) { return ReactDOM.createPortal(children, docu
 
 /* ---- the shift form (§2.1, §2.2, §2.3): presets + typed times, repeats,
         conflict warning that never blocks ---- */
-function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
+function ShiftModal({ modal, offices, people, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
   const s = modal.shift;
   const [office, setOffice] = useState(modal.office);
   const [open, setOpen] = useState(s ? !!s.open : !!modal.open);
@@ -1059,8 +1066,8 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
   const [note, setNote] = useState(s ? (s.note || '') : '');
   const [repeat, setRepeat] = useState('none');
   const [repeatN, setRepeatN] = useState(3);
-  const team = officeRoster(office);
-  const others = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
+  const team = officeRoster(office, people);
+  const others = (people || [])
     .filter(e => e.status === 'Active' && (e.loc || e.location) !== office && !['', 'Unassigned'].includes(e.loc || e.location || ''))
     .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }))
     .sort((a, b) => a.name.localeCompare(b.name));

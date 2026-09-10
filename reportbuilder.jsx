@@ -301,7 +301,7 @@ function Reports({ access, scope, paychexOn, me, flash }) {
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
         {TABS.map(tb => <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>)}
       </div>
-      {!access.caps.viewAll && <div style={{ fontSize: 12.5, color: 'var(--accent-strong)', marginBottom: 12, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="users" style={{ width: 14, height: 14 }} /> Scoped to your team ({active.length} active).</div>}
+      {!((typeof seesAll === 'function') ? seesAll(access, 'reports') : access.caps.viewAll) && <div style={{ fontSize: 12.5, color: 'var(--accent-strong)', marginBottom: 12, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="users" style={{ width: 14, height: 14 }} /> Scoped to your team ({active.length} active).</div>}
       {tab === 'Builder' && <ReportBuilder emps={emps} onSchedule={openSchedule} canSchedule={canSchedule} />}
       {tab === 'Headcount' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 'var(--gap)' }}>

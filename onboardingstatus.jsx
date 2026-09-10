@@ -13,7 +13,8 @@ function OnboardingStatus({ me, access, automations, onPrehire, onOpenAuto }) {
     const live = (automations || []).map(a => ({ id: a.id, name: a.name, jobTitle: a.jobTitle, loc: normLoc(a.office || ''), type: a.type || 'FT', start: a.startDate || '—', stage: Math.min(OB_STAGES.length - 1, (a.stage != null ? Math.ceil(a.stage / 2) : 1)), provider: a.provider, _auto: true }));
     return [...live, ...OB_SEED];
   }, [automations]);
-  const list = access.caps.viewAll ? all : all.filter(h => h.loc === me.loc);
+  const seeEveryone = (typeof seesAll === 'function') ? seesAll(access, 'onboardingstatus') : access.caps.viewAll;
+  const list = seeEveryone ? all : all.filter(h => h.loc === me.loc);
   const canPrehire = access.caps.viewTeam && !access.caps.viewAll || access.caps.hire;
 
   return (
@@ -21,7 +22,7 @@ function OnboardingStatus({ me, access, automations, onPrehire, onOpenAuto }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Onboarding</h1>
-          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{access.caps.viewAll ? 'All new hires in progress' : `New hires at ${me.loc}`} · {list.length} active</p>
+          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{seeEveryone ? 'All new hires in progress' : `New hires at ${me.loc}`} · {list.length} active</p>
         </div>
         {canPrehire && <button className="btn btn-primary" onClick={onPrehire}><Icon name="plus" /> Submit a new hire</button>}
       </div>

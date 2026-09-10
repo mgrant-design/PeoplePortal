@@ -4,6 +4,27 @@
 
 const COMPANY_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 
+/* ---- "See Everyone" ----
+   An admin-granted, per-person visibility override. It widens WHO a person can see; it
+   never widens what they may do — editing, terminating and relations notes stay on the
+   reporting-chain test. Granted globally (pages = []) or limited to the pages below.
+   Only pages whose contents are scoped by the visible-people list belong here: the
+   Directory is company-wide for everyone and needs no entry, and pages that never read
+   the people list (Riley, Ask HR, Scrubs, onboarding automations, Feedback) have nothing
+   to widen. */
+const SEE_ALL_PAGES = [
+  { id: 'scheduler', label: 'Scheduling' },
+  { id: 'timeclock', label: 'Time clock' },
+  { id: 'reviews', label: 'Performance reviews' },
+  { id: 'offboarding', label: 'Offboarding' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'library', label: 'Learning Library' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'onboardingstatus', label: 'Onboarding status' },
+  { id: 'notifications', label: 'Notifications' },
+  { id: 'emprecord', label: 'Employee records' },
+];
+
 /* ---- normalize ---- */
 function normLoc(l) {
   const s = (l || '').toLowerCase();
@@ -24,6 +45,10 @@ function normLoc(l) {
    module that imported these keeps seeing live data after a post-login reload. */
 let HR = window.HRDATA || { employees: [], offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [] };
 const EMPLOYEES = [];
+/* Company-wide people list for the Directory. The roster response carries a `directory`
+   array of every active employee with work-contact fields only; anyone the caller can
+   fully see is overlaid from EMPLOYEES so their own team still shows mobile numbers. */
+const DIRECTORY = [];
 const byEmail = {};
 const usersByEmail = {};
 let managerEmails = new Set();
@@ -43,6 +68,16 @@ function buildFromHRDATA() {
       emailLower: (e.workEmail || '').toLowerCase(),
     });
   });
+
+  DIRECTORY.length = 0;
+  {
+    const seen = {};
+    EMPLOYEES.forEach(e => { seen[e.id] = true; DIRECTORY.push(e); });
+    (HR.directory || []).forEach(d => {
+      if (seen[d.id]) return;
+      DIRECTORY.push({ ...d, loc: normLoc(d.location), name: `${d.first} ${d.last}`.trim(), emailLower: (d.workEmail || '').toLowerCase() });
+    });
+  }
 
   for (const k in byEmail) delete byEmail[k];
   EMPLOYEES.forEach(e => { if (e.emailLower) byEmail[e.emailLower] = e; });
@@ -84,6 +119,9 @@ function deriveAccess(me) {
     isSupervisor = v === 'supervisor'; isManager = v === 'manager'; isAdmin = v === 'admin';
   }
 
+  /* See Everyone — visibility only. pages = [] means every page in SEE_ALL_PAGES. */
+  const seeAll = { on: !!perms.seeAll, pages: Array.isArray(perms.seeAllPages) ? perms.seeAllPages : [] };
+
   const level = isAdmin ? 'admin' : isHR ? 'hr' : isExec ? 'leadership' : isAccounting ? 'accounting' : isManager ? 'manager' : isSupervisor ? 'supervisor' : 'employee';
   const LABELS = { admin: 'Administrator', hr: 'HR & Payroll', leadership: 'Leadership', accounting: 'Accounting', manager: 'Manager', supervisor: 'Supervisor', employee: 'Employee' };
 
@@ -113,7 +151,7 @@ function deriveAccess(me) {
     feedbackView: isAdmin || isHR || isExec || isManager,
     feedbackManage: isAdmin,
   };
-  return { level, label: LABELS[level], flags: { isExec, isHR, isAccounting, isManager, isSupervisor, isAdmin, isDirector }, caps, perms };
+  return { level, label: LABELS[level], seeAll, flags: { isExec, isHR, isAccounting, isManager, isSupervisor, isAdmin, isDirector }, caps, perms };
 }
 
 /* employees visible to `me` given access */
@@ -136,6 +174,20 @@ function scopedEmployees(me, access) {
   return EMPLOYEES.filter(e => e.id === me.id);
 }
 
+/* Does `access` see the whole company on this page? viewAll always does. */
+function seesAll(access, pageId) {
+  if (!access) return false;
+  if (access.caps && access.caps.viewAll) return true;
+  const sa = access.seeAll;
+  if (!sa || !sa.on) return false;
+  return !sa.pages.length || sa.pages.indexOf(pageId) >= 0;
+}
+
+/* The people list a given page should render for `me`. */
+function pageEmployees(me, access, pageId) {
+  return seesAll(access, pageId) ? EMPLOYEES : scopedEmployees(me, access);
+}
+
 /* photo persistence */
 function getPhoto(empId) { try { return localStorage.getItem('pd_photo_' + empId) || null; } catch (e) { return null; } }
 function setPhoto(empId, dataUrl) { try { dataUrl ? localStorage.setItem('pd_photo_' + empId, dataUrl) : localStorage.removeItem('pd_photo_' + empId); } catch (e) {} }
@@ -151,7 +203,8 @@ function loadSession() { try { const id = localStorage.getItem('pd_session'); re
 function saveSession(emp) { try { emp ? localStorage.setItem('pd_session', emp.id) : localStorage.removeItem('pd_session'); } catch (e) {} }
 
 Object.assign(window, {
-  HR, EMPLOYEES, COMPANY_DOMAINS, deriveAccess, scopedEmployees, getPhoto, setPhoto,
+  HR, EMPLOYEES, DIRECTORY, SEE_ALL_PAGES, COMPANY_DOMAINS, deriveAccess, scopedEmployees,
+  seesAll, pageEmployees, getPhoto, setPhoto,
   isCompanyEmail, findByEmail, loadSession, saveSession, normLoc, deptLeaders,
   PD_REBUILD_HRDATA: buildFromHRDATA,
 });

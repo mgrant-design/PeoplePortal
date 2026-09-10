@@ -87,7 +87,7 @@ function ZenEmpty({ isMgr, onRequest, onCompose }) {
 }
 
 function scopedRequests(all, me, access) {
-  if (access.caps.viewAll) return all;
+  if (typeof seesAll === 'function' ? seesAll(access, 'notifications') : access.caps.viewAll) return all;
   if (access.caps.viewTeam) return all.filter(r => r.loc === me.loc);
   return all.filter(r => r.empId === me.id);
 }
@@ -129,7 +129,7 @@ function TimeOffForm({ me, onSubmit, onCancel }) {
 
 function MessageComposer({ me, access, onSend, onCancel }) {
   const people = useMemo(() => (typeof window !== 'undefined' && window.EMPLOYEES ? window.EMPLOYEES : [])
-    .filter(e => e && e.status === 'Active' && e.id !== me.id && (access.caps.viewAll || e.loc === me.loc) && e.workEmail)
+    .filter(e => e && e.status === 'Active' && e.id !== me.id && ((typeof seesAll === 'function' ? seesAll(access, 'notifications') : access.caps.viewAll) || e.loc === me.loc) && e.workEmail)
     .sort((a, b) => a.name.localeCompare(b.name)), [me, access]);
   const [to, setTo] = useState('');
   const [query, setQuery] = useState('');
@@ -235,7 +235,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
       if (cancelled) return;
       const byOffice = {};
       list.forEach(s => {
-        if (!access.caps.viewAll && s.office !== me.loc) return;
+        if (!(typeof seesAll === 'function' ? seesAll(access, 'notifications') : access.caps.viewAll) && s.office !== me.loc) return;
         (s.shifts || []).forEach(o => {
           if (!o.open && !o.offered) return;
           (byOffice[s.office] = byOffice[s.office] || []).push({ day: o.date, time: typeof shiftRange === 'function' ? shiftRange(o) : `${o.start}–${o.end}`, label: o.open ? 'Open' : 'Offered' });
@@ -334,7 +334,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <Icon name="calendar" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-                <h3 style={{ fontSize: 14 }}>Open shifts {access.caps.viewAll ? '· all locations' : '· ' + me.loc}</h3>
+                <h3 style={{ fontSize: 14 }}>Open shifts {(typeof seesAll === 'function' ? seesAll(access, 'notifications') : access.caps.viewAll) ? '· all locations' : '· ' + me.loc}</h3>
               </div>
               {locs.length === 0 ? <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No open shifts.</p> : locs.map(loc => (
                 <div key={loc} style={{ marginBottom: 12 }}>

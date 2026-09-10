@@ -121,11 +121,18 @@ function deriveAccess(me, usersByEmail, managerEmails, employees) {
 
   const viewAll = isAdmin || isHR || isExec;
   const viewTeam = isManager || isSupervisor;
+  /* "See Everyone" — an admin-granted visibility override (see SEE_ALL_PAGES in rbac.jsx).
+     Any grant, global or per-page, widens the roster response to the whole company: the
+     server answers one request at login and cannot know which page will be rendered, so
+     the page limits are applied in the browser. It widens visibility only — canWrite,
+     terminate and suspend below are untouched by it. */
+  const seeAll = !!perms.seeAll;
+  const seeAllPages = Array.isArray(perms.seeAllPages) ? perms.seeAllPages : [];
   /* canWrite / terminate / suspend mirror rbac.jsx:99-101 exactly, so the server enforces
      the same permissions the HR Admin screen hands out. They are returned alongside the
      view flags rather than recomputed by callers. */
   return {
-    viewAll, viewTeam, isAdmin, isHR, isExec, isManager, isSupervisor, isAccounting,
+    viewAll, viewTeam, seeAll, seeAllPages, isAdmin, isHR, isExec, isManager, isSupervisor, isAccounting,
     canWrite: isAdmin || isHR || isExec || isManager,
     terminate: !!perms.canTerminate || isAdmin || isHR,
     suspend: !!perms.canSuspend || isAdmin || isHR,
@@ -133,7 +140,7 @@ function deriveAccess(me, usersByEmail, managerEmails, employees) {
 }
 
 function scopedEmployees(me, access, employees) {
-  if (access.viewAll) return employees;
+  if (access.viewAll || access.seeAll) return employees;
   const meEmail = (me.workEmail || '').toLowerCase();
   if (access.viewTeam) {
     const set = new Set([me.id]);
@@ -324,7 +331,20 @@ module.exports = async function (context, req) {
 
     const visible = scopedEmployees(me, access, allEmployees);
 
-    context.res = { status: 200, headers, body: JSON.stringify({ employees: visible, ...ref }) };
+    /* The Directory is company-wide for every access level. Anyone who is not already
+       receiving the full roster gets this alongside it: every active employee, work
+       contact only. Mobile numbers, personal email and date of birth are deliberately
+       absent — those stay with the people the caller can actually see. */
+    const body = { employees: visible, ...ref };
+    if (visible.length !== allEmployees.length) {
+      body.directory = allEmployees.filter(e => e.status === 'Active').map(e => ({
+        id: e.id, first: e.first, last: e.last, jobTitle: e.jobTitle, department: e.department,
+        location: e.location, workEmail: e.workEmail, phoneExt: e.phoneExt, provider: e.provider,
+        providerType: e.providerType, manager: e.manager, startDate: e.startDate, status: e.status,
+      }));
+    }
+
+    context.res = { status: 200, headers, body: JSON.stringify(body) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
   }

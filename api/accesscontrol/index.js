@@ -2,7 +2,8 @@
    GET  /api/accesscontrol            → list all permission-override docs (admin/HR/leadership)
    POST /api/accesscontrol            → upsert one person's overrides (admin only)
                                         body: { email, admin?, canPrint?, canSuspend?,
-                                                canTerminate?, canDelete?, manager?, supervisor? }
+                                                canTerminate?, canDelete?, manager?, supervisor?,
+                                                seeAll?, seeAllPages? }
    POST /api/accesscontrol { email, remove: true } → delete that person's override doc (admin only)
 
    This is access-control.json reincarnated as its own Cosmos container ("accessControl",
@@ -15,7 +16,11 @@ const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-const FIELDS = ['admin', 'canPrint', 'canSuspend', 'canTerminate', 'canDelete', 'manager', 'supervisor'];
+const FIELDS = ['admin', 'canPrint', 'canSuspend', 'canTerminate', 'canDelete', 'manager', 'supervisor', 'seeAll'];
+/* seeAllPages is the one non-boolean: the page ids "See Everyone" is limited to, or an
+   empty array meaning every page. Ids are stored as given and validated against
+   SEE_ALL_PAGES where they are used, so adding a page there needs no change here. */
+const PAGE_LIST_FIELD = 'seeAllPages';
 
 /* Derive the caller's standing from the roster (title/department) + their merged
    permission flags. viewAll = admin/HR/leadership; only admin may write. */
@@ -87,6 +92,10 @@ module.exports = async function (context, req) {
     // upsert: keep only the known permission fields the client sent
     const doc = { id, email: id, updatedBy: identity.email, updatedAt: new Date().toISOString() };
     FIELDS.forEach(f => { if (input[f] !== undefined) doc[f] = !!input[f]; });
+    if (input[PAGE_LIST_FIELD] !== undefined) {
+      doc[PAGE_LIST_FIELD] = Array.isArray(input[PAGE_LIST_FIELD])
+        ? input[PAGE_LIST_FIELD].map(v => String(v).slice(0, 60)).slice(0, 40) : [];
+    }
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: doc, partitionKey: id, upsert: true });
     if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status, detail: up.body }) }; return; }
     context.res = { status: 200, headers, body: JSON.stringify({ ok: true, override: strip(up.body) }) };

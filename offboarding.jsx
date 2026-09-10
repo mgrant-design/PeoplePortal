@@ -6,8 +6,9 @@ function Offboarding({ me, access, viewOnly, onOpenEmp }) {
   const [open, setOpen] = useState(null);
   const [statusF, setStatusF] = useState('All');
 
+  const seeEveryone = (typeof seesAll === 'function') ? seesAll(access, 'offboarding') : access.caps.viewAll;
   let reqs = (window.HR.offboarding || []).filter(o => o.first || o.last);
-  if (!access.caps.viewAll) {
+  if (!seeEveryone) {
     const myName = me.name.toLowerCase();
     reqs = reqs.filter(o => (o.manager || '').toLowerCase().includes(me.last.toLowerCase()) || (o.requestedBy || '').toLowerCase().includes(me.last.toLowerCase()));
   }
@@ -22,7 +23,7 @@ function Offboarding({ me, access, viewOnly, onOpenEmp }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Offboarding</h1>
-          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{access.caps.viewAll ? 'All termination & resignation requests' : 'Requests for your team'} · {reqs.length} on file</p>
+          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{seeEveryone ? 'All termination & resignation requests' : 'Requests for your team'} · {reqs.length} on file</p>
         </div>
         {access.caps.offboard && !viewOnly && <button className="btn btn-primary"><Icon name="plus" /> New request</button>}
         {viewOnly && <span className="badge badge-todo" style={{ padding: '8px 14px' }}><Icon name="lock" /> View only</span>}

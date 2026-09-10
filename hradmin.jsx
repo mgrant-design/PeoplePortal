@@ -118,7 +118,55 @@ const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['canPrint', 'Pri
 
 const SAVE_LABEL = { saving: 'Saving…', saved: 'Saved', error: 'Save failed — retry', conflict: 'Someone else saved — reload' };
 
-function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
+/* The dialogue shown when "See Everyone" is switched on for someone: company-wide
+   everywhere, or only on the pages picked here. Pages come from SEE_ALL_PAGES (rbac.jsx),
+   which lists only the pages whose contents are scoped by the visible-people list. */
+function SeeEveryoneModal({ name, pages, onCancel, onSave }) {
+  const ALL = (typeof SEE_ALL_PAGES !== 'undefined' ? SEE_ALL_PAGES : []);
+  const [mode, setMode] = useState(pages && pages.length ? 'pages' : 'global');
+  const [picked, setPicked] = useState(() => new Set(pages || []));
+  const flip = id => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const Radio = ({ v, children }) => (
+    <button onClick={() => setMode(v)} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', padding: '7px 0', cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--ink)' }}>
+      <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid', borderColor: mode === v ? 'var(--accent)' : 'var(--line)', display: 'grid', placeItems: 'center', flex: 'none' }}>
+        {mode === v && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />}
+      </span>
+      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{children}</span>
+    </button>
+  );
+  return ReactDOM.createPortal((
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
+      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
+        <h2 style={{ fontSize: 18 }}>See Everyone</h2>
+        <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 6 }}>{name} will see every employee, not only their own reports. This changes what they can see — not what they can change.</p>
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 2 }}>Globally? Or only on certain pages:</div>
+          <Radio v="global">Globally — every page</Radio>
+          <Radio v="pages">Only on certain pages</Radio>
+          {mode === 'pages' && (
+            <div style={{ marginTop: 8, paddingLeft: 25, display: 'grid', gap: 2 }}>
+              {ALL.map(pg => (
+                <button key={pg.id} onClick={() => flip(pg.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--ink)' }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 4, border: '2px solid', borderColor: picked.has(pg.id) ? 'var(--accent)' : 'var(--line)', background: picked.has(pg.id) ? 'var(--accent)' : 'transparent', display: 'grid', placeItems: 'center', flex: 'none' }}>
+                    {picked.has(pg.id) && <Icon name="check" style={{ width: 11, height: 11, color: '#fff' }} />}
+                  </span>
+                  <span style={{ fontSize: 13.5 }}>{pg.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 14, display: 'flex', gap: 6, alignItems: 'center' }}><Icon name="lock" style={{ width: 13, height: 13, flex: 'none' }} /> The Directory is company-wide for everyone already, so it is not listed here.</p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-quiet" style={{ flex: 1, justifyContent: 'center' }} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={mode === 'pages' && !picked.size} onClick={() => onSave(mode === 'global' ? [] : Array.from(picked))}><Icon name="check" /> Apply</button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
+}
+
+function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) {
   // Permissions live in the dedicated accessControl store (/api/accesscontrol), one
   // doc per person keyed by email. Rows = every active employee, overlaid with their
   // current overrides; saving writes each person you changed to that store.
@@ -130,6 +178,10 @@ function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
   const [rows, setRows] = useState(baseRows);
   const [saveStatus, setStatus] = useState('idle');
   const [dirty, setDirty] = useState(false);
+  /* "See Everyone" is Admin-only — HR and Leadership may open this page to read
+     permissions, but the column and its dialogue do not render for them. */
+  const canSeeAll = !!(access && access.flags && access.flags.isAdmin);
+  const [seeAllRow, setSeeAllRow] = useState(null);   // row index being configured
   const changed = useRef(new Set());
 
   useEffect(() => {
@@ -147,13 +199,27 @@ function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
     setDirty(true);
     setRows(rs => rs.map((r, j) => { if (j !== i) return r; changed.current.add(r.email.toLowerCase()); return { ...r, [col]: !r[col] }; }));
   };
+  /* Switching See Everyone ON asks global-or-pages first; switching it OFF clears both. */
+  const toggleSeeAll = (i) => {
+    if (rows[i].seeAll) {
+      setDirty(true);
+      setRows(rs => rs.map((r, j) => { if (j !== i) return r; changed.current.add(r.email.toLowerCase()); return { ...r, seeAll: false, seeAllPages: [] }; }));
+    } else setSeeAllRow(i);
+  };
+  const applySeeAll = (pages) => {
+    const i = seeAllRow;
+    setDirty(true);
+    setRows(rs => rs.map((r, j) => { if (j !== i) return r; changed.current.add(r.email.toLowerCase()); return { ...r, seeAll: true, seeAllPages: pages }; }));
+    setSeeAllRow(null);
+  };
+
   const save = async () => {
     if (typeof saveAccessOverride !== 'function') { setStatus('error'); return; }
     setStatus('saving');
     try {
       const toSave = rows.filter(r => changed.current.has(r.email.toLowerCase()));
       for (const r of toSave) {
-        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete });
+        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete, seeAll: !!r.seeAll, seeAllPages: r.seeAllPages || [] });
       }
       changed.current.clear();
       setStatus('saved'); setDirty(false);
@@ -161,10 +227,11 @@ function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
     } catch (e) { setStatus('error'); }
   };
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];
+  const COLS = `220px repeat(${PERM_COLS.length + (canSeeAll ? 1 : 0)}, 1fr)`;
 
   return (
     <div className="fade-in">
-      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>{page === 'modules' ? 'Modules' : 'Security'}</h1>
+      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>{page === 'modules' ? 'Modules' : 'Permissions'}</h1>
       <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 16 }}>{page === 'modules' ? 'Phased feature rollout — turn modules on or off.' : 'User access and permissions.'}</p>
 
       {page === 'modules' && flagDefs && (
@@ -193,20 +260,38 @@ function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
 
       {page === 'security' && (
       <div>
+      {seeAllRow != null && (
+        <SeeEveryoneModal
+          name={`${rows[seeAllRow].first} ${rows[seeAllRow].last}`.trim() || rows[seeAllRow].email}
+          pages={rows[seeAllRow].seeAllPages || []}
+          onCancel={() => setSeeAllRow(null)}
+          onSave={applySeeAll} />
+      )}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: 720 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: `220px repeat(${PERM_COLS.length}, 1fr)`, padding: '12px var(--pad)', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
+          <div style={{ minWidth: canSeeAll ? 830 : 720 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
               <div>User</div>
               {PERM_COLS.map(([k, l]) => <div key={k} style={{ textAlign: 'center' }}>{l}</div>)}
+              {canSeeAll && <div style={{ textAlign: 'center' }}>See Everyone</div>}
             </div>
             {rows.map((u, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: `220px repeat(${PERM_COLS.length}, 1fr)`, padding: '12px var(--pad)', borderBottom: i < rows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: i < rows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Avatar name={`${u.first} ${u.last}`} size={32} />
                   <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13.5 }}>{u.first} {u.last}</div><div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div></div>
                 </div>
                 {PERM_COLS.map(([k]) => <div key={k} style={{ display: 'grid', placeItems: 'center' }}><Toggle on={!!u[k]} onClick={() => toggle(i, k)} /></div>)}
+                {canSeeAll && (
+                  <div style={{ display: 'grid', placeItems: 'center', gap: 3 }}>
+                    <Toggle on={!!u.seeAll} onClick={() => toggleSeeAll(i)} />
+                    {u.seeAll && (
+                      <button onClick={() => setSeeAllRow(i)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, color: 'var(--accent-strong)' }}>
+                        {(u.seeAllPages && u.seeAllPages.length) ? `${u.seeAllPages.length} page${u.seeAllPages.length > 1 ? 's' : ''}` : 'Globally'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -224,4 +309,4 @@ function AdminUsers({ me, flags, flagDefs, onFlag, page = 'security' }) {
   );
 }
 
-Object.assign(window, { Reports, AdminUsers, Toggle });
+Object.assign(window, { Reports, AdminUsers, Toggle, SeeEveryoneModal });

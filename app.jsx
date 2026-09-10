@@ -72,7 +72,7 @@ const NAV = [
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
-  { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
+  { id: 'security', label: 'Permissions', show: a => a.caps.manageUsers },
   { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
   { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
   { id: 'ask', label: 'Ask Riley', show: () => true, flag: 'ask' },
@@ -111,7 +111,7 @@ const NAV_GROUPS = [
   { id: 'g_settings', label: 'Settings', children: [
     { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
     { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
-    { id: 'security', label: 'Security', show: a => a.caps.manageUsers },
+    { id: 'security', label: 'Permissions', show: a => a.caps.manageUsers },
     { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
   ] },
 ];
@@ -335,19 +335,23 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const saveRouting = agentCfg.saveRouting;
   const [reviewQ, setReviewQ] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_review_questions')) || REVIEW_QUESTIONS; } catch (e) { return REVIEW_QUESTIONS; } });
   const saveReviewQ = (q) => { setReviewQ(q); try { localStorage.setItem('pd_review_questions', JSON.stringify(q)); } catch (e) {} };
-  const reviewList = access.caps.viewAll ? EMPLOYEES.filter(e => e.status === 'Active') : access.caps.viewTeam ? scopedEmployees(me, access).filter(e => e.id !== me.id && e.status === 'Active') : [me];
+  const reviewList = seesAll(access, 'reviews') ? EMPLOYEES.filter(e => e.status === 'Active')
+    : access.caps.viewTeam ? pageEmployees(me, access, 'reviews').filter(e => e.id !== me.id && e.status === 'Active') : [me];
   const [toast, setToast] = useState(null);
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
   const tcOffices = useMemo(() => Array.from(new Set([me.loc, ...(window.HR.offices || []).map(o => normLoc(o.name))].filter(Boolean))), [me]);
-  const tcTeam = access.caps.viewAll ? EMPLOYEES.filter(e => e.status === 'Active').slice(0, 12) : scopedEmployees(me, access).filter(e => e.id !== me.id && e.status === 'Active');
+  const tcTeam = seesAll(access, 'timeclock') ? EMPLOYEES.filter(e => e.status === 'Active').slice(0, 12) : pageEmployees(me, access, 'timeclock').filter(e => e.id !== me.id && e.status === 'Active');
 
   const scopedIds = useMemo(() => new Set(scopedEmployees(me, access).map(e => e.id)), [me, access]);
-  const canRecord = (emp) => access.caps.viewAll || (access.caps.viewTeam && scopedIds.has(emp.id));
+  /* Opening someone's full record is visibility, so See Everyone on 'emprecord' grants it.
+     Editing that record is not — canRelations below stays on the reporting chain. */
+  const canRecord = (emp) => seesAll(access, 'emprecord') || (access.caps.viewTeam && scopedIds.has(emp.id));
 
   const obRole = useMemo(() => onboardRole(me), [me]);
   const visibleTasks = tasks.filter(x => !x.providerOnly || obRole.clinical);
   const credentialsDone = (tasks.find(x => x.id === 'credentials') || {}).status === 'done';
   const scoped = useMemo(() => scopedEmployees(me, access), [me, access]);
+  const dashPeople = useMemo(() => pageEmployees(me, access, 'dashboard'), [me, access]);
 
   const go = (v) => { setView(v); setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const openEmp = (e) => { setSelectedEmp(e); setView('emprecord'); window.scrollTo({ top: 0 }); };
@@ -475,8 +479,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole', 'applicants'].includes(view)) ? 'dashboard' : view;
     if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
-      case 'dashboard': return <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />;
-      case 'people': return <Directory employees={EMPLOYEES} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
+      case 'dashboard': return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
+      case 'people': return <Directory employees={DIRECTORY} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
       case 'emprecord': return <EmployeeRecord emp={selectedEmp || me} access={access} me={me} canRelations={access.caps.viewAll || (access.caps.viewTeam && scopedIds.has((selectedEmp || me).id))} onBack={() => go('people')} />;
       case 'me': return <Profile emp={me} access={access} onNav={dashNav} />;
       case 'ask': return <AskAgent me={me} knowledge={knowledge} routing={routing} />;
@@ -493,12 +497,12 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
       case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
-      case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />; }
-      case 'reports': return <Reports access={access} scope={access.caps.viewAll ? EMPLOYEES : scoped} paychexOn={flagOn('paychex')} me={me} flash={flash} />;
+      case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />; }
+      case 'reports': return <Reports access={access} scope={seesAll(access, 'reports') ? EMPLOYEES : pageEmployees(me, access, 'reports')} paychexOn={flagOn('paychex')} me={me} flash={flash} />;
       case 'onboardingstatus': return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
-      case 'security': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
-      case 'modules': return <AdminUsers me={me} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
+      case 'security': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
+      case 'modules': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
       case 'scheduler': return <Scheduler me={me} access={access} onBack={() => go('dashboard')} />;
       case 'myschedule': return <MySchedule me={me} />;
       // ---- onboarding sub-flow ----
@@ -516,7 +520,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'team': return <TeamStep {...stepProps} />;
       case 'schedule': return <AgendaStep {...stepProps} onOpenScheduler={() => go('scheduler')} />;
       case 'benefits': return <BenefitsStep {...stepProps} />;
-      default: return <Dashboard me={me} access={access} employees={scoped} onNav={dashNav} onOpenEmp={openEmp} />;
+      default: return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
     }
   };
 

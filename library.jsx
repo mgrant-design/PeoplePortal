@@ -234,7 +234,7 @@ function LearningLibrary({ me, access, flash }) {
   const [orient, setOrient] = useState(null);
   const [assignFor, setAssignFor] = useState(null);
   const canManage = access.caps.viewAll || access.caps.viewTeam;
-  const teamList = (typeof scopedEmployees === 'function') ? scopedEmployees(me, access).filter(e => e.status === 'Active') : [];
+  const teamList = (typeof pageEmployees === 'function') ? pageEmployees(me, access, 'library').filter(e => e.status === 'Active') : [];
 
   const saveCourses = (c) => { setCourses(c); persistLib(c); };
   const markDone = (id) => { const wasDone = done[id]; const n = { ...done, [id]: !done[id] }; setDone(n); persistLibDone(n); if (!wasDone && flash) { const c = courses.find(x => x.id === id); flash(`“${c ? c.title : 'Training'}” complete — onboarding chat notified.`); } };
