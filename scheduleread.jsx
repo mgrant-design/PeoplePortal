@@ -158,7 +158,7 @@ function ScheduleRead({ me, access }) {
      the reason to look at this list at all */
   const sortBy = 'name';                          // readers scan alphabetically
   const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
-  const [focusEmp, setFocusEmp] = useState(null);
+  const focusEmp = null;
   const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
   const [menu, setMenu] = useState(null);         // 'copy' | 'options' | null
   const [tplModal, setTplModal] = useState(null); // 'save' | 'load'
@@ -449,11 +449,6 @@ function ScheduleRead({ me, access }) {
     allRoster.forEach(p => { if (hoursOf(p.id) > otThreshold(regIndex, p)) set.add(p.id); });
     return set;
   }, [allRoster, shifts, regIndex]);
-  const sidebar = useMemo(() => {
-    const list = roster.map(p => ({ ...p, hours: Math.round(hoursOf(p.id) * 10) / 10, ot: otIds.has(p.id) }));
-    return list.sort((a, b) => sortBy === 'hours' ? b.hours - a.hours : a.name.localeCompare(b.name));
-  }, [roster, shifts, sortBy, otIds]);
-
   /* ---- row groups ----
      Dept view: one group per office+department ("Clinical Team — Islandia").
      Membership = everyone whose HOME office is that office (so unscheduled people
@@ -718,21 +713,6 @@ function ScheduleRead({ me, access }) {
           );
         })}
 
-        <div className="schm-team">
-          {focusEmp && (
-            <button className="schm-clear" onClick={() => setFocusEmp(null)}>Showing one person — show everyone again</button>
-          )}
-          {sidebar.map(p => (
-            <div key={p.id + p.office} className={focusEmp === p.id ? 'schm-teamrow on' : 'schm-teamrow'}>
-              <button className="schm-teamname" onClick={() => setFocusEmp(focusEmp === p.id ? null : p.id)}>
-                <Avatar name={p.name} size={34} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
-                <span><b>{p.name}</b><small>{p.dept}</small></span>
-                {p.id === me.id && <span className="mono">{p.hours}h</span>}
-              </button>
-            </div>
-          ))}
-        </div>
-
         {toast && (
           <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 95, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
             <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
@@ -798,27 +778,7 @@ function ScheduleRead({ me, access }) {
       </div>
 
 
-      <div style={{ display: 'grid', gridTemplateColumns: `${fit.side}px minmax(0, 1fr)`, gap: 'var(--gap)', alignItems: 'start' }}>
-        {/* team sidebar (§3.2 — hours, search, sort; no cost per D2) */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ maxHeight: 560, overflowY: 'auto' }}>
-            {sidebar.map(p => (
-              <button key={p.id + p.office} onClick={() => setFocusEmp(f => f === p.id ? null : p.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '8px 12px', borderBottom: '1px solid var(--line-soft)',
-                  background: focusEmp === p.id ? 'var(--accent-soft)' : p.id === me.id ? 'var(--accent-softer)' : 'transparent',
-                  boxShadow: p.id === me.id ? 'inset 3px 0 0 var(--accent)' : undefined }}>
-                <Avatar name={p.name} size={28} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                  <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}</span>
-                </span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.id === me.id ? 'var(--accent-strong)' : 'transparent' }}>{p.id === me.id ? `${p.hours}h` : ''}</span>
-              </button>
-            ))}
-            {sidebar.length === 0 && <div style={{ padding: 16, fontSize: 13, color: 'var(--ink-3)' }}>No one matches.</div>}
-          </div>
-        </div>
-
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--gap)', alignItems: 'start' }}>
         {/* the grid — minWidth:0 lets the 1fr track shrink below the 900px inner min-content,
             so the overflowX:auto scroller below actually scrolls instead of pushing the page */}
         <div className="card" style={{ padding: 0, minWidth: 0 }}>
