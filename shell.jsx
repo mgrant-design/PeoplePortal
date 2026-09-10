@@ -3,9 +3,11 @@
 function StepShell({ icon, eyebrow, title, subtitle, onBack, children, aside, footer }) {
   return (
     <div className="fade-in">
-      <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 18, marginLeft: -10 }}>
-        <Icon name="arrowLeft" /> Back to checklist
-      </button>
+      {onBack && (
+        <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 18, marginLeft: -10 }}>
+          <Icon name="arrowLeft" /> Back to checklist
+        </button>
+      )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 26 }}>
         <div style={{ width: 50, height: 50, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
           <Icon name={icon} style={{ width: 26, height: 26 }} />

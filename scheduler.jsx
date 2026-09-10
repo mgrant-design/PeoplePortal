@@ -124,7 +124,11 @@ function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEn
   );
 }
 
-function Scheduler({ me, access, onBack }) {
+/* `readOnly` renders the same grid with nothing editable: no publish, no menus, no shift
+   modal, no dragging, and drafts filtered out. That is the schedule everyone reads — the
+   builder's own view, not a second rendering of the same data. */
+function Scheduler({ me, access, onBack, readOnly }) {
+  const ro = !!readOnly;
   const people = useMemo(() => schedPeople(me, access), [me, access]);
   const OFFICES = useMemo(() => schedOffices(people), [people]);
   const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
@@ -158,6 +162,7 @@ function Scheduler({ me, access, onBack }) {
   const narrow = fit.narrow;
   const [mDay, setMDay] = useState(null);       // ISO date | null = auto (today, else Mon)
   const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
+  const openShiftModal = (m) => { if (!ro) setModal(m); };
 
   const days = useMemo(() => weekDaysFor(weekKey), [weekKey]);
   const roster = useMemo(() => {
@@ -175,7 +180,8 @@ function Scheduler({ me, access, onBack }) {
   useEffect(() => { fetchRegHours().then(setRegHours).catch(() => setRegHours([])); }, []);
 
   /* every displayed shift, tagged with its office */
-  const shifts = useMemo(() => offices.flatMap(o => ((docs[o] && docs[o].shifts) || []).map(s => ({ ...s, _office: o }))), [docs, offices]);
+  /* read-only shows published weeks only — a draft is not a schedule until it is posted */
+  const shifts = useMemo(() => offices.flatMap(o => (ro && !(docs[o] && docs[o].published) ? [] : ((docs[o] && docs[o].shifts) || []).map(s => ({ ...s, _office: o })))), [docs, offices, ro]);
   const allWeekShifts = shifts; // conflict checks run against the loaded week
   const blackouts = useMemo(() => requests.filter(r => r.type === 'blackout' && r.status === 'approved'), [requests]);
   const pending = useMemo(() => requests.filter(r =>
@@ -479,9 +485,9 @@ function Scheduler({ me, access, onBack }) {
   const dropProps = (toEmpId, toDate, toOffice) => {
     const key = (toEmpId || '') + '|' + toDate + '|' + toOffice;
     return {
-      onDragOver: e => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropAt !== key) setDropAt(key); } },
+      onDragOver: e => { if (drag && !ro) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropAt !== key) setDropAt(key); } },
       onDragLeave: () => { if (dropAt === key) setDropAt(null); },
-      onDrop: e => { e.preventDefault(); if (drag) moveShift(drag, toEmpId, toDate, toOffice); },
+      onDrop: e => { e.preventDefault(); if (drag && !ro) moveShift(drag, toEmpId, toDate, toOffice); },
       'data-drop': dropAt === key ? 'on' : undefined,
     };
   };
@@ -515,11 +521,11 @@ function Scheduler({ me, access, onBack }) {
     }).filter(g => g.on.length || g.off.length);
     const dayTotal = dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.filter(s => !s.open).length, 0), 0);
     const dayHrs = Math.round(dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.reduce((c, s) => c + (s.open ? 0 : shiftHrs(s)), 0), 0), 0) * 10) / 10;
-    const openSlot = (office, empId) => setModal({ office: office || offices[0], empId: empId || null, date: dayISO, shift: null });
+    const openSlot = (office, empId) => openShiftModal({ office: office || offices[0], empId: empId || null, date: dayISO, shift: null });
 
     return (
-      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder" onBack={onBack}
-        subtitle="Pick a day, then tap a shift to edit it or Add to create one. Publish saves and notifies.">
+      <StepShell icon="grid" eyebrow="Scheduling" title={ro ? 'Schedule' : 'Schedule builder'} onBack={onBack}
+        subtitle={ro ? 'The published week. Pick a day to see who is on.' : 'Pick a day, then tap a shift to edit it or Add to create one. Publish saves and notifies.'}>
 
         {/* Week: name, back, forward, refresh. No menus anywhere on this screen — every
            control from the desktop screen is drawn where it belongs. */}
@@ -580,7 +586,7 @@ function Scheduler({ me, access, onBack }) {
         </div>
 
         <div className="schm-status">
-          {[['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open']].map(([id, n, label]) => (
+          {(ro ? [['open', openCount, 'open']] : [['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open']]).map(([id, n, label]) => (
             <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)} className={statusHi === id ? 'on' : ''}>
               <b className="mono">{n}</b> {label}
             </button>
@@ -589,7 +595,7 @@ function Scheduler({ me, access, onBack }) {
         </div>
 
         {published && anySaved && <div className="schm-note"><Icon name="check" style={{ width: 14, height: 14 }} /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</div>}
-        {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
+        {!ro && pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
 
         {openOn(dayISO).length > 0 && (
           <div className="schm-group">
@@ -600,7 +606,7 @@ function Scheduler({ me, access, onBack }) {
             </div>
             {openOn(dayISO).map(s2 => (
               <button key={s2.id} className="schm-row" style={{ borderLeftColor: 'var(--warn)' }}
-                onClick={() => setModal({ office: s2._office, empId: null, date: dayISO, shift: s2 })}>
+                onClick={() => openShiftModal({ office: s2._office, empId: null, date: dayISO, shift: s2 })}>
                 <span className="schm-row-txt">
                   <span className="schm-row-name">Open shift</span>
                   <span className="schm-row-time mono">{shiftRange(s2)}</span>
@@ -632,7 +638,7 @@ function Scheduler({ me, access, onBack }) {
                   {g.on.map(({ p, list }) => list.map(s => {
                     const bo = boFor(p.id, dayISO);
                     return (
-                      <button key={s.id} className="schm-row" onClick={() => setModal({ office: s._office, empId: p.id, date: dayISO, shift: s })}
+                      <button key={s.id} className="schm-row" onClick={() => openShiftModal({ office: s._office, empId: p.id, date: dayISO, shift: s })}
                         style={{ opacity: dim(s) ? 0.35 : 1, borderLeftColor: s.open ? 'var(--warn)' : s.offered ? 'oklch(0.6 0.16 320)' : s.pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})` }}>
                         <Avatar name={p.name} size={38} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${deptHue(p.dept)}), oklch(0.55 0.12 ${deptHue(p.dept)}))` }} />
                         <span className="schm-row-txt">
@@ -658,7 +664,7 @@ function Scheduler({ me, access, onBack }) {
                       ))}
                     </div>
                   )}
-                  <button className="schm-add" onClick={() => openSlot(g.office, null)}>+ Add shift</button>
+                  {!ro && <button className="schm-add" onClick={() => openSlot(g.office, null)}>+ Add shift</button>}
                 </>
               )}
             </div>
@@ -720,10 +726,10 @@ function Scheduler({ me, access, onBack }) {
   }
 
   return (
-    <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
-      subtitle="Click any slot to add a shift, or drag a shift to move it — to another day, another person, or another office. Drop one on the Open shifts row to leave it unassigned. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."
+    <StepShell icon="grid" eyebrow="Scheduling" title={ro ? 'Schedule' : 'Schedule builder'}
+      subtitle={ro ? 'The published week, as your manager posted it. Your own shifts carry your notes and the actions that are yours.' : "Click any slot to add a shift, or drag a shift to move it — to another day, another person, or another office. Drop one on the Open shifts row to leave it unassigned. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."}
       onBack={onBack}
-      aside={
+      aside={ro ? null : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" onClick={load} title="Reload changes made by others"><Icon name="refresh" /> Refresh</button>
           <div style={{ position: 'relative' }}>
@@ -750,7 +756,7 @@ function Scheduler({ me, access, onBack }) {
             <Icon name="check" /> Publish{unpubCount ? ` (${unpubCount})` : ''}
           </button>
         </div>
-      }>
+      )}>
 
       {/* selectors: offices (multi), week, view */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -841,7 +847,7 @@ function Scheduler({ me, access, onBack }) {
                     </div>
                   </div>
                   {days.map(d => (
-                    <div key={d.date} className="sched-cell" onClick={() => setModal({ office: offices[0], empId: null, date: d.date, shift: null, open: true })}
+                    <div key={d.date} className="sched-cell" onClick={() => openShiftModal({ office: offices[0], empId: null, date: d.date, shift: null, open: true })}
                       {...dropProps('', d.date, offices[0])}
                       style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer',
                         background: isDropping('', d.date, offices[0]) ? 'var(--accent-soft)' : 'transparent',
@@ -849,8 +855,8 @@ function Scheduler({ me, access, onBack }) {
                       {openOn(d.date).map(s => (
                         <SchedShift key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
                           dragging={drag && drag.id === s.id}
-                          onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
-                          onClick={(e) => { e.stopPropagation(); setModal({ office: s._office, empId: null, date: d.date, shift: s }); }} />
+                          onDragStart={ro ? undefined : () => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
+                          onClick={(e) => { e.stopPropagation(); openShiftModal({ office: s._office, empId: null, date: d.date, shift: s }); }} />
                       ))}
                     </div>
                   ))}
@@ -892,7 +898,7 @@ function Scheduler({ me, access, onBack }) {
                         const bo = boFor(p.id, d.date);
                         const isEmpty = list.length === 0;
                         return (
-                          <div key={d.date} onClick={() => { if (isEmpty) setModal({ office: p.office, empId: p.id, date: d.date, shift: null }); }}
+                          <div key={d.date} onClick={() => { if (isEmpty) openShiftModal({ office: p.office, empId: p.id, date: d.date, shift: null }); }}
                             className="sched-cell"
                             {...dropProps(p.id, d.date, group.office || p.office)}
                             style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: isEmpty ? 'pointer' : 'default',
@@ -902,8 +908,8 @@ function Scheduler({ me, access, onBack }) {
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
                             {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)}
                               dragging={drag && drag.id === s.id}
-                              onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
-                              onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
+                              onDragStart={ro ? undefined : () => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
+                              onClick={() => openShiftModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
                             {isEmpty && <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: 0.3 }}><Icon name="plus" style={{ width: 13, height: 13 }} /></div>}
                           </div>
                         );
@@ -975,7 +981,7 @@ function WeekStartModal({ onSaved, onClose, flash }) {
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
       <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 89, width: 'min(430px, 94vw)', maxHeight: '94vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 17, marginBottom: 3 }}>Week starts on</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>Applies to everyone — the schedule builder, My schedule and notifications.</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>Applies to everyone — the schedule, the builder and notifications.</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {WEEK_STARTS.map(([k, label]) => (
             <label key={k} style={{ display: 'flex', gap: 9, alignItems: 'center', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: pick === k ? 'var(--accent)' : 'var(--line)', background: pick === k ? 'var(--accent-softer)' : 'transparent' }}>

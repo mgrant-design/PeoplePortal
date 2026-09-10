@@ -12,7 +12,7 @@ const I18N = {
     es: {
       // nav + chrome
       'Dashboard': 'Panel', 'My onboarding': 'Mi incorporación', 'Onboarding status': 'Estado de incorporación',
-      'Directory': 'Directorio', 'Scheduling': 'Horarios', 'My schedule': 'Mi horario', 'Time clock': 'Reloj de tiempo',
+      'Directory': 'Directorio', 'Scheduling': 'Horarios', 'Schedule': 'Horario', 'Time clock': 'Reloj de tiempo',
       'Learning': 'Formación', 'Reviews': 'Evaluaciones', 'Reports': 'Informes', 'Automations': 'Automatizaciones',
       'Offboarding': 'Salida', 'Offices': 'Oficinas', 'Admin': 'Administración', 'Roadmap': 'Hoja de ruta',
       'Ask Riley': 'Pregúntale a Riley', 'Sign out': 'Cerrar sesión', 'Help & navigation': 'Ayuda y navegación',
@@ -42,7 +42,7 @@ const I18N = {
     },
     uk: {
       'Dashboard': 'Панель', 'My onboarding': 'Моя адаптація', 'Onboarding status': 'Статус адаптації',
-      'Directory': 'Довідник', 'Scheduling': 'Розклад', 'My schedule': 'Мій розклад', 'Time clock': 'Облік часу',
+      'Directory': 'Довідник', 'Scheduling': 'Розклад', 'Schedule': 'Розклад', 'Time clock': 'Облік часу',
       'Learning': 'Навчання', 'Reviews': 'Оцінювання', 'Reports': 'Звіти', 'Automations': 'Автоматизації',
       'Offboarding': 'Звільнення', 'Offices': 'Офіси', 'Admin': 'Адміністрування', 'Roadmap': 'Дорожня карта',
       'Ask Riley': 'Запитати Райлі', 'Sign out': 'Вийти', 'Help & navigation': 'Довідка та навігація',

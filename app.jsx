@@ -61,8 +61,7 @@ const NAV = [
   { id: 'applicants', label: 'Applicants', show: a => a.flags.isAdmin, flag: 'applicants' },
   { id: 'onboarding', label: 'My onboarding', show: () => true },
   { id: 'people', label: 'Directory', show: () => true },
-  { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
-  { id: 'myschedule', label: 'My schedule', show: a => !a.caps.schedule, flag: 'scheduler' },
+  { id: 'scheduler', label: 'Schedule', show: () => true, flag: 'scheduler' },
   { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
   { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
   { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
@@ -82,7 +81,7 @@ const NAV = [
 /* Flat "all pages" nav (the default). Everyday pages render as a single horizontally
    scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
    appears for management-level access (supervisor and up). Built from the same NAV ids. */
-const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'people', 'timeclock', 'scheduler', 'myschedule', 'library', 'reviews', 'reports', 'offboarding', 'scrubs', 'feedback'];
+const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'people', 'timeclock', 'scheduler', 'library', 'reviews', 'reports', 'offboarding', 'scrubs', 'feedback'];
 const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'automations'];
 
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
@@ -90,7 +89,7 @@ const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'autom
 const NAV_GROUPS = [
   { id: 'dashboard', label: 'Home', view: 'dashboard', show: () => true },
   { id: 'g_mywork', label: 'My Work', children: [
-    { id: 'myschedule', label: 'My schedule', show: () => true, flag: 'scheduler' },
+    { id: 'scheduler', label: 'Schedule', show: () => true, flag: 'scheduler' },
     { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
     { id: 'library', label: 'Learning', show: () => true, flag: 'library' },
     { id: 'scrubs', label: 'Scrubs', show: () => true, flag: 'scrubs' },
@@ -102,7 +101,6 @@ const NAV_GROUPS = [
   { id: 'g_manage', label: 'Manage', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
     { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
-    { id: 'scheduler', label: 'Scheduling', show: a => a.caps.schedule, flag: 'scheduler' },
     { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
@@ -390,7 +388,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   // dashboard tile navigation mapper
   const dashNav = (id) => {
-    if (id === 'myschedule') return go('myschedule');
+    if (id === 'myschedule') return go('scheduler');
     if (id === 'profile') return go('me');
     if (id === 'myschedule_legacy') return go('onboarding');
     if (id === 'resources') return go('ask');
@@ -503,8 +501,10 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'security': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
       case 'modules': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
-      case 'scheduler': return <Scheduler me={me} access={access} onBack={() => go('dashboard')} />;
-      case 'myschedule': return <MySchedule me={me} />;
+      /* one page, two tabs: the published schedule everyone reads, and the builder.
+         'myschedule' is kept as a route so older links land on the same page. */
+      case 'scheduler':
+      case 'myschedule': return <SchedulePage me={me} access={access} />;
       // ---- onboarding sub-flow ----
       case 'onboarding':
         if (access.caps.onboardStatus) return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;

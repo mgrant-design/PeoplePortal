@@ -76,7 +76,7 @@ async function sendPublishNotifications({ office, weekKey, publishedBy, shiftCou
   const from = process.env.TWILIO_FROM || '';
   if (!(webhook || (sid && tok && from))) return summary;
   summary.simulated = false;
-  const human = `${office} — week of ${weekKey}: ${shiftCount} shift${shiftCount === 1 ? '' : 's'} (${hours} hrs) published by ${publishedBy}. View it under My schedule.`;
+  const human = `${office} — week of ${weekKey}: ${shiftCount} shift${shiftCount === 1 ? '' : 's'} (${hours} hrs) published by ${publishedBy}. View it under Schedule.`;
   if (webhook) {
     try {
       const r = await httpPost(webhook, { headers: { 'Content-Type': 'application/json' }, body: { text: `📅 *Schedule published* — ${human}` } });
@@ -87,7 +87,7 @@ async function sendPublishNotifications({ office, weekKey, publishedBy, shiftCou
   if (sid && tok && from && Array.isArray(recipients) && recipients.length) {
     const auth = 'Basic ' + Buffer.from(`${sid}:${tok}`).toString('base64');
     const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`;
-    const text = `Your ${office} schedule for the week of ${weekKey} is published. Open the portal → My schedule.`;
+    const text = `Your ${office} schedule for the week of ${weekKey} is published. Open the portal → Schedule.`;
     for (const to of recipients) {
       try {
         const form = new URLSearchParams({ To: to, From: from, Body: text }).toString();
@@ -284,8 +284,10 @@ module.exports = async function (context, req) {
       const wanted = q.offices ? String(q.offices).split('|') : (q.office ? [String(q.office)] : null);
       if (wanted) docs = docs.filter(d => wanted.includes(d.office));
       if (q.weekKey) docs = docs.filter(d => d.weekKey === q.weekKey);
-      /* scope: edit/view get the full doc; everyone else gets published weeks only,
-         stripped to their own + open + offered shifts (§2.4, §2.6) */
+      /* scope: edit/view get the full doc, published or not. Everyone else gets published
+         weeks only, holding their OWN shifts plus the open and offered ones anybody may
+         claim (§2.4, §2.6). A person's shifts, notes and swap state are theirs; who else
+         may see them is decided by the access rules, not by the page. */
       docs = docs.map(d => {
         if (lvl(d.office) !== 'none') return d;
         if (!d.published) return null;
@@ -409,8 +411,8 @@ module.exports = async function (context, req) {
         await notice((e.workEmail || '').toLowerCase(),
           gone ? 'Your shifts changed' : 'Your schedule is published',
           gone
-            ? `You are no longer scheduled at ${office} for the week of ${weekKey}. Check My schedule.`
-            : `The ${office} schedule for the week of ${weekKey} is published. See your shifts under My schedule.`,
+            ? `You are no longer scheduled at ${office} for the week of ${weekKey}. Check the Schedule.`
+            : `The ${office} schedule for the week of ${weekKey} is published. See your shifts under Schedule.`,
           { view: 'myschedule' });
       }
       flushPushes();

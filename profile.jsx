@@ -99,7 +99,7 @@ function Profile({ emp, access, onNav }) {
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 'var(--gap)' }}>
         <button className="btn btn-primary" onClick={() => onNav('onboarding')}><Icon name="sparkle" /> My onboarding</button>
-        <button className="btn btn-ghost" onClick={() => onNav('myschedule')}><Icon name="calendar" /> My schedule</button>
+        <button className="btn btn-ghost" onClick={() => onNav('scheduler')}><Icon name="calendar" /> Schedule</button>
       </div>
     </div>
   );

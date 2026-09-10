@@ -1,11 +1,13 @@
-/* myschedule.jsx — employee schedule (full rewrite per SCHEDULER.md).
-   Any week (past/future), own shifts across offices. From here an employee can:
-   offer a shift they can't work to the swap board (§2.6), claim a teammate's
-   offered shift (conflict-checked at claim time, warn-not-block), and submit
-   blackout dates that route HR → Manager (§2.5). The server scopes reads: with
-   no edit/view grant this endpoint only returns own + open + offered shifts. */
+/* scheduleview.jsx — THE schedule: the published week for an office, everyone's shifts,
+   readable by everyone. Personal things live inline on your own shifts rather than on a
+   separate page — your note, offering a shift you can't work (§2.6), claiming an offered
+   one, and blackout dates (§2.5). The server returns published weeks in full and removes
+   other people's shift notes; unpublished drafts are not sent at all.
 
-function MySchedule({ me }) {
+   SchedulePage (bottom of this file) is the page itself: this view, plus the Builder as a
+   second tab for anyone who may schedule. */
+
+function ScheduleView({ me, access }) {
   const [weekKey, setWeekKey] = useState(() => thisWeekKey());
   const [docs, setDocs] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -66,22 +68,25 @@ function MySchedule({ me }) {
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>{d.dname}</div>
         <div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 10 }}>{d.month} {d.dnum}{isToday ? ' · today' : ''}</div>
         {list.length === 0 ? <div style={{ padding: '12px 0', color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>Off</div> :
-          list.map(s => (
-            <div key={s.id} style={{ borderRadius: 'var(--r-md)', padding: '10px 10px', marginBottom: 6, textAlign: 'left', background: s.offered ? 'oklch(0.95 0.06 320)' : 'var(--accent-softer)', borderLeft: `3px solid ${s.offered ? 'oklch(0.6 0.16 320)' : 'var(--accent)'}` }}>
+          list.map(s => {
+          const isMine = s.empId === me.id;
+          return (
+            <div key={s.id} style={{ borderRadius: 'var(--r-md)', padding: '10px 10px', marginBottom: 6, textAlign: 'left', background: s.offered ? 'oklch(0.95 0.06 320)' : isMine ? 'var(--accent-softer)' : 'var(--surface-2)', borderLeft: `3px solid ${s.offered ? 'oklch(0.6 0.16 320)' : isMine ? 'var(--accent)' : 'var(--line)'}` }}>
               <div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{shiftRange(s)}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{shiftHrs(s)}h{s.breakMins ? ` · ${breakLabel(s.breakMins)} unpaid break` : ''} · {s._office}</div>
               {s.note && <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, fontSize: 11, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.4 }}><Icon name="chat" style={{ width: 11, height: 11, flex: 'none', marginTop: 1.5 }} /> {s.note}</div>}
-              {s._published && !s.offered && !s.open && <button onClick={() => offer(s)} className="btn btn-ghost" style={{ marginTop: 7, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Can’t work — offer it</button>}
-              {s.open && <span style={{ display: 'block', marginTop: 6, fontSize: 10.5, fontWeight: 700, color: 'oklch(0.45 0.12 65)' }}>Marked open — yours until a claim is approved</span>}
+              {isMine && s._published && !s.offered && !s.open && <button onClick={() => offer(s)} className="btn btn-ghost" style={{ marginTop: 7, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Can’t work — offer it</button>}
+              {s.open && <span style={{ display: 'block', marginTop: 6, fontSize: 10.5, fontWeight: 700, color: 'oklch(0.45 0.12 65)' }}>{isMine ? 'Marked open — yours until a claim is approved' : 'Open shift'}</span>}
               {s.offered && (
                 <div style={{ marginTop: 6 }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: 'oklch(0.45 0.15 320)' }}>Offered for swap</span>
-                  {!pendingClaimIds.has(s.id) && <button onClick={() => retract(s)} className="btn btn-quiet" style={{ marginTop: 4, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Withdraw offer</button>}
+                  {isMine && !pendingClaimIds.has(s.id) && <button onClick={() => retract(s)} className="btn btn-quiet" style={{ marginTop: 4, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Withdraw offer</button>}
                   {pendingClaimIds.has(s.id) && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 3 }}>claim awaiting manager</span>}
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
       </div>
     );
   };
@@ -90,7 +95,7 @@ function MySchedule({ me }) {
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>My schedule</h1>
+          <h2 style={{ fontSize: 'clamp(18px,2.4vw,22px)' }}>Your week</h2>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Week of {weekLabel(weekKey)}{mine.length ? <> · <b>{total}h</b> scheduled</> : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -114,12 +119,12 @@ function MySchedule({ me }) {
       )}
 
       {!loaded ? (
-        <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-3)' }}>Loading your schedule…</div>
+        <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-3)' }}>Loading your shifts…</div>
       ) : mine.length === 0 ? (
         <div className="card" style={{ padding: 'clamp(30px,6vw,52px)', textAlign: 'center', color: 'var(--ink-2)' }}>
           <Icon name="calendar" style={{ width: 30, height: 30, color: 'var(--ink-3)', margin: '0 auto 12px', display: 'block' }} />
-          <h3 style={{ fontSize: 17, marginBottom: 8 }}>No shifts this week</h3>
-          <p style={{ fontSize: 14, maxWidth: 420, margin: '0 auto', lineHeight: 1.55 }}>When your manager publishes {weekKey === thisWeekKey() ? 'this' : 'that'} week's schedule, your shifts show up here. Use the arrows to check other weeks.</p>
+          <h3 style={{ fontSize: 17, marginBottom: 8 }}>No shifts for you this week</h3>
+          <p style={{ fontSize: 14, maxWidth: 420, margin: '0 auto', lineHeight: 1.55 }}>Nothing is scheduled for you in {weekKey === thisWeekKey() ? 'this' : 'that'} week. Use the arrows to check other weeks.</p>
         </div>
       ) : (
         <div className="msched-week">
@@ -238,4 +243,36 @@ function BlackoutModal({ onClose, onSubmit }) {
   );
 }
 
-Object.assign(window, { MySchedule });
+/* The page: the schedule everyone reads, and the builder for anyone who may schedule.
+   With no scheduling permission there is one view and no tab bar. */
+function PostedSchedule({ me, access }) {
+  return (
+    <div>
+      <Scheduler me={me} access={access} readOnly />
+      <div style={{ borderTop: '1px solid var(--line)', marginTop: 'var(--gap)', paddingTop: 'var(--gap)' }}>
+        <ScheduleView me={me} access={access} />
+      </div>
+    </div>
+  );
+}
+
+function SchedulePage({ me, access }) {
+  const canBuild = !!(access && access.caps && access.caps.schedule);
+  const [tab, setTab] = useState('schedule');
+  if (!canBuild) return <PostedSchedule me={me} access={access} />;
+  const Tab = ({ id, children }) => (
+    <button onClick={() => setTab(id)} style={{ border: 'none', background: 'none', padding: '9px 2px', margin: 0, cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'var(--font-display)',
+      color: tab === id ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: '2.5px solid ' + (tab === id ? 'var(--accent)' : 'transparent') }}>{children}</button>
+  );
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid var(--line)', marginBottom: 18 }}>
+        <Tab id="schedule">Schedule</Tab>
+        <Tab id="builder">Builder</Tab>
+      </div>
+      {tab === 'schedule' ? <PostedSchedule me={me} access={access} /> : <Scheduler me={me} access={access} />}
+    </div>
+  );
+}
+
+Object.assign(window, { ScheduleView, PostedSchedule, SchedulePage });
