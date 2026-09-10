@@ -780,8 +780,10 @@ function ScheduleRead({ me, access }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--gap)', alignItems: 'start' }}>
         {/* the grid — minWidth:0 lets the 1fr track shrink below the 900px inner min-content,
-            so the overflowX:auto scroller below actually scrolls instead of pushing the page */}
-        <div className="card" style={{ padding: 0, minWidth: 0 }}>
+            so the overflowX:auto scroller below actually scrolls instead of pushing the page.
+            overflow:hidden clips the header row and the row borders to the card's radius —
+            without it they paint square over the rounded corners. */}
+        <div className="card" style={{ padding: 0, minWidth: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: fit.need }}>
               <div style={{ display: 'grid', gridTemplateColumns: colTemplate, borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' }}>
