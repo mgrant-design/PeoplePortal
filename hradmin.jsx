@@ -182,6 +182,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
      permissions, but the column and its dialogue do not render for them. */
   const canSeeAll = !!(access && access.flags && access.flags.isAdmin);
   const [seeAllRow, setSeeAllRow] = useState(null);   // row index being configured
+  const [q, setQ] = useState('');
   const changed = useRef(new Set());
 
   useEffect(() => {
@@ -228,6 +229,14 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
   };
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];
   const COLS = `220px repeat(${PERM_COLS.length + (canSeeAll ? 1 : 0)}, 1fr)`;
+  /* The toggles address a row by its index in `rows`, so the search carries the real
+     index with each match instead of re-indexing a filtered copy. */
+  const shownRows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const all = rows.map((u, i) => ({ u, i }));
+    if (!t) return all;
+    return all.filter(({ u }) => `${u.first || ''} ${u.last || ''} ${u.email || ''}`.toLowerCase().includes(t));
+  }, [rows, q]);
 
   return (
     <div className="fade-in">
@@ -267,6 +276,11 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
           onCancel={() => setSeeAllRow(null)}
           onSave={applySeeAll} />
       )}
+      <div style={{ position: 'relative', marginBottom: 12, maxWidth: 340 }}>
+        <Icon name="search" style={{ width: 15, height: 15, position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name or email"
+          style={{ width: '100%', padding: '9px 11px 9px 34px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' }} />
+      </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ minWidth: canSeeAll ? 830 : 720 }}>
@@ -275,8 +289,8 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
               {PERM_COLS.map(([k, l]) => <div key={k} style={{ textAlign: 'center' }}>{l}</div>)}
               {canSeeAll && <div style={{ textAlign: 'center' }}>See Everyone</div>}
             </div>
-            {rows.map((u, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: i < rows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
+            {shownRows.map(({ u, i }, n) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: n < shownRows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Avatar name={`${u.first} ${u.last}`} size={32} />
                   <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13.5 }}>{u.first} {u.last}</div><div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div></div>
@@ -297,6 +311,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
           </div>
         </div>
       </div>
+      {!shownRows.length && <div style={{ padding: '18px var(--pad)', fontSize: 13.5, color: 'var(--ink-3)' }}>No one matches “{q}”.</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="shield" style={{ width: 14, height: 14, color: 'var(--accent)' }} /> Changes are logged. Only Admins can grant Delete.</span>
         {saveStatus !== 'idle' && saveStatus !== 'saved' && <span style={{ fontSize: 12.5, fontWeight: 600, color: saveStatus === 'conflict' || saveStatus === 'error' ? 'var(--danger)' : 'var(--ink-3)' }}>{SAVE_LABEL[saveStatus]}</span>}
