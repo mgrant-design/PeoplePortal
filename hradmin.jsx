@@ -114,7 +114,7 @@ function Toggle({ on, onClick, disabled }) {
   );
 }
 
-const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['canPrint', 'Print'], ['canSuspend', 'Suspend'], ['canTerminate', 'Terminate'], ['canDelete', 'Delete']];
+const PERM_COLS = [['admin', 'Admin'], ['manager', 'Manager'], ['supervisor', 'Supervisor'], ['canPrint', 'Print'], ['canSuspend', 'Suspend'], ['canTerminate', 'Terminate'], ['canDelete', 'Delete']];
 
 const SAVE_LABEL = { saving: 'Saving…', saved: 'Saved', error: 'Save failed — retry', conflict: 'Someone else saved — reload' };
 
@@ -220,7 +220,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
     try {
       const toSave = rows.filter(r => changed.current.has(r.email.toLowerCase()));
       for (const r of toSave) {
-        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete, seeAll: !!r.seeAll, seeAllPages: r.seeAllPages || [] });
+        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete, supervisor: !!r.supervisor, seeAll: !!r.seeAll, seeAllPages: r.seeAllPages || [] });
       }
       changed.current.clear();
       setStatus('saved'); setDirty(false);
@@ -283,7 +283,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
       </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: canSeeAll ? 830 : 720 }}>
+          <div style={{ minWidth: canSeeAll ? 930 : 820 }}>
             <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
               <div>User</div>
               {PERM_COLS.map(([k, l]) => <div key={k} style={{ textAlign: 'center' }}>{l}</div>)}
