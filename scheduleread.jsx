@@ -152,7 +152,7 @@ function ScheduleRead({ me, access }) {
   const [requests, setRequests] = useState([]);   // edits / swaps / blackouts, scoped
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);       // { office, empId|null, date, shift|null }
-  const [search, setSearch] = useState('');
+  const search = '';
   const [dept, setDept] = useState('');           // '' = every department
   /* hours-first by default: whoever is closest to overtime belongs at the top, which is
      the reason to look at this list at all */
@@ -642,7 +642,6 @@ function ScheduleRead({ me, access }) {
           <span className="mono schm-status-tot">{dayTotal} today · {dayHrs}h</span>
         </div>
 
-        {published && anySaved && <div className="schm-note"><Icon name="check" style={{ width: 14, height: 14 }} /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</div>}
 
 
         {openOn(dayISO).length > 0 && (
@@ -719,11 +718,7 @@ function ScheduleRead({ me, access }) {
           );
         })}
 
-        {/* staff list, with the search and sort that act on it sitting directly on top */}
         <div className="schm-team">
-          <div className="schm-search">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" />
-          </div>
           {focusEmp && (
             <button className="schm-clear" onClick={() => setFocusEmp(null)}>Showing one person — show everyone again</button>
           )}
@@ -800,21 +795,18 @@ function ScheduleRead({ me, access }) {
           <option value="">All roles</option>
           {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</span>}
       </div>
 
-      {pending.length > 0 && <RoApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: `${fit.side}px minmax(0, 1fr)`, gap: 'var(--gap)', alignItems: 'start' }}>
         {/* team sidebar (§3.2 — hours, search, sort; no cost per D2) */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" style={{ flex: 1, minWidth: 0, border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '6px 9px', fontSize: 13, background: 'var(--surface)' }} />
-          </div>
           <div style={{ maxHeight: 560, overflowY: 'auto' }}>
             {sidebar.map(p => (
-              <button key={p.id + p.office} style={p.id === me.id ? { background: 'var(--accent-softer)', boxShadow: 'inset 3px 0 0 var(--accent)' } : undefined} onClick={() => setFocusEmp(f => f === p.id ? null : p.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '8px 12px', background: focusEmp === p.id ? 'var(--accent-soft)' : 'transparent', borderBottom: '1px solid var(--line-soft)' }}>
+              <button key={p.id + p.office} onClick={() => setFocusEmp(f => f === p.id ? null : p.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '8px 12px', borderBottom: '1px solid var(--line-soft)',
+                  background: focusEmp === p.id ? 'var(--accent-soft)' : p.id === me.id ? 'var(--accent-softer)' : 'transparent',
+                  boxShadow: p.id === me.id ? 'inset 3px 0 0 var(--accent)' : undefined }}>
                 <Avatar name={p.name} size={28} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
@@ -907,7 +899,7 @@ function ScheduleRead({ me, access }) {
                           <div key={d.date} onClick={undefined}
                             className="sched-cell"
                             {...dropProps(p.id, d.date, group.office || p.office)}
-                            style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: isEmpty ? 'pointer' : 'default',
+                            style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'default',
                               background: isDropping(p.id, d.date, group.office || p.office) ? 'var(--accent-soft)'
                                 : bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
                               outline: isDropping(p.id, d.date, group.office || p.office) ? '2px solid var(--accent)' : statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
@@ -916,7 +908,6 @@ function ScheduleRead({ me, access }) {
                               dragging={drag && drag.id === s.id}
                               onDragStart={undefined} onDragEnd={() => { setDrag(null); setDropAt(null); }}
                               onClick={undefined} />)}
-                            {isEmpty && <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', opacity: 0.3 }}><Icon name="plus" style={{ width: 13, height: 13 }} /></div>}
                           </div>
                         );
                       })}
