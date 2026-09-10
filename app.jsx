@@ -313,6 +313,11 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       if (seenNotifRef.current instanceof Set) seenNotifRef.current.add('notice:' + n.id);
       setNotices(list => { const i = list.findIndex(x => x.id === n.id); if (i >= 0) { const next = list.slice(); next[i] = n; return next; } return [n, ...list]; });
       if (n.category !== 'social' && window.PDSound && window.PDSound.ding) window.PDSound.ding(me.id);
+      /* a published week is the one notice a screen should act on by itself — the schedule
+         reloads instead of asking the reader to press Refresh */
+      if (n.deepLink && (n.deepLink.view === 'myschedule' || n.deepLink.view === 'scheduler')) {
+        try { window.dispatchEvent(new CustomEvent('pd-schedule-changed')); } catch (e) {}
+      }
     };
     connectNotifications(me.workEmail, onNotice).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
     return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };

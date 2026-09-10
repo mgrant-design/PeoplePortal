@@ -139,7 +139,13 @@ function ScheduleRead({ me, access }) {
   /* org config is Admin / HR / Leadership on the server; mirror it so the menu entry only
      shows to someone whose save would actually be accepted */
   const canOrg = !!(access && access.flags && (access.flags.isAdmin || access.flags.isHR || access.flags.isExec));
-  const [offices, setOffices] = useState(() => OFFICES); // "All" is the default view
+  /* Opens on the office she is scheduled at this week. Two offices in one week is normal,
+     so the chips stay and she can add or switch. Falls back to her home office when she
+     has no shifts that week, so the page is never blank for a reason she can't see. */
+  const [offices, setOffices] = useState(() => (me.loc && OFFICES.includes(me.loc)) ? [me.loc] : OFFICES.slice(0, 1));
+  const pickedRef = useRef(false);
+  const [myShifts, setMyShifts] = useState([]);
+  const [tick, setTick] = useState(0);
   const [weekKey, setWeekKey] = useState(() => thisWeekKey());
   const [view, setView] = useState('dept');
   const [docs, setDocs] = useState({});           // office → week doc
@@ -150,7 +156,7 @@ function ScheduleRead({ me, access }) {
   const [dept, setDept] = useState('');           // '' = every department
   /* hours-first by default: whoever is closest to overtime belongs at the top, which is
      the reason to look at this list at all */
-  const [sortBy, setSortBy] = useState('hours');  // name | hours
+  const sortBy = 'name';                          // readers scan alphabetically
   const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
   const [focusEmp, setFocusEmp] = useState(null);
   const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
@@ -204,6 +210,39 @@ function ScheduleRead({ me, access }) {
     });
   };
   useEffect(load, [offices.join('|'), weekKey]);
+  /* no Refresh button: the week reloads when a manager publishes one */
+  useEffect(() => {
+    const onPub = () => { load(); setTick(t => t + 1); };
+    window.addEventListener('pd-schedule-changed', onPub);
+    return () => window.removeEventListener('pd-schedule-changed', onPub);
+  });
+
+  /* Her own shifts come from every office, not just the ones on screen — someone at
+     Hauppauge on Monday and Garden City on Tuesday has to see both in her own strip. */
+  useEffect(() => {
+    let dead = false;
+    fetchSchedules({ weekKey }).then(list => {
+      if (dead) return;
+      const mine = (list || []).filter(d => d.published).flatMap(d => (d.shifts || []).filter(s => s.empId === me.id).map(s => ({ ...s, _office: d.office })));
+      setMyShifts(mine);
+      /* first load of the first week decides which office the page opens on */
+      if (!pickedRef.current && mine.length) {
+        pickedRef.current = true;
+        const her = Array.from(new Set(mine.map(s => s._office).filter(Boolean)));
+        if (her.length) setOffices(her);
+      }
+    }).catch(() => { if (!dead) setMyShifts([]); });
+    return () => { dead = true; };
+  }, [weekKey, me.id, tick]);
+
+  const myWeek = useMemo(() => days.map(d => ({
+    day: d,
+    list: myShifts.filter(s => s.date === d.date).sort((a, b) => timeMins(a.start) - timeMins(b.start)),
+  })), [days, myShifts]);
+  const myNext = useMemo(() => {
+    const today = isoDate(new Date());
+    return myShifts.slice().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).find(s => s.date >= today) || null;
+  }, [myShifts]);
 
   /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
           Cosmos until Publish, which saves the week, locks it, and notifies.
@@ -498,7 +537,8 @@ function ScheduleRead({ me, access }) {
 
   const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
   const openOn = (date) => openLane.filter(s => s.date === date);
-  const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
+  /* a blackout is a person's own time-off request — shown only on their own row */
+  const boFor = (pid, date) => pid === me.id && blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
   const colTemplate = `${fit.name}px repeat(7, minmax(${fit.day}px, 1fr))`;
@@ -574,6 +614,16 @@ function ScheduleRead({ me, access }) {
         )}
 
         {/* the week, as seven tap targets — the second axis without rendering it */}
+        <div className="schr-next">
+          {myNext ? (
+            <>
+              <span className="schr-next-lbl">Your next shift</span>
+              <b>{myNext.date === isoDate(new Date()) ? 'Today' : myNext.date} · {shiftRange(myNext)}</b>
+              <span className="mono">{shiftHrs(myNext)}h · {myNext._office}</span>
+            </>
+          ) : <span className="schr-next-lbl">Nothing scheduled for you this week</span>}
+        </div>
+
         <div className="schm-strip">
           {days.map(d => {
             const on = d.date === dayISO, n = nOn(d.date), o = nOpenOn(d.date);
@@ -589,11 +639,6 @@ function ScheduleRead({ me, access }) {
         </div>
 
         <div className="schm-status">
-          {[['open', openCount, 'open']].map(([id, n, label]) => (
-            <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)} className={statusHi === id ? 'on' : ''}>
-              <b className="mono">{n}</b> {label}
-            </button>
-          ))}
           <span className="mono schm-status-tot">{dayTotal} today · {dayHrs}h</span>
         </div>
 
@@ -645,7 +690,7 @@ function ScheduleRead({ me, access }) {
                         style={{ opacity: dim(s) ? 0.35 : 1, borderLeftColor: s.open ? 'var(--warn)' : s.offered ? 'oklch(0.6 0.16 320)' : s.pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})` }}>
                         <Avatar name={p.name} size={38} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
                         <span className="schm-row-txt">
-                          <span className="schm-row-name">{p.name}{otIds.has(p.id) && <em className="schm-ot">OT</em>}</span>
+                          <span className="schm-row-name">{p.name}</span>
                           <span className="schm-row-time mono">{shiftRange(s)}</span>
                           <span className="schm-row-sub">
                             {s.open ? 'Open shift' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
@@ -678,7 +723,6 @@ function ScheduleRead({ me, access }) {
         <div className="schm-team">
           <div className="schm-search">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" />
-            <button onClick={() => setSortBy(s2 => s2 === 'name' ? 'hours' : 'name')}>{sortBy === 'name' ? 'A–Z' : 'Hrs'}</button>
           </div>
           {focusEmp && (
             <button className="schm-clear" onClick={() => setFocusEmp(null)}>Showing one person — show everyone again</button>
@@ -688,7 +732,7 @@ function ScheduleRead({ me, access }) {
               <button className="schm-teamname" onClick={() => setFocusEmp(focusEmp === p.id ? null : p.id)}>
                 <Avatar name={p.name} size={34} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
                 <span><b>{p.name}</b><small>{p.dept}</small></span>
-                <span className="mono">{p.hours}h{p.ot ? <em className="schm-ot">OT</em> : null}</span>
+                {p.id === me.id && <span className="mono">{p.hours}h</span>}
               </button>
             </div>
           ))}
@@ -706,7 +750,20 @@ function ScheduleRead({ me, access }) {
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule"
       subtitle="The published week for each office — who is on, and when. Your own shifts are marked."
-      aside={<button className="btn btn-ghost" onClick={load} title="Reload"><Icon name="refresh" /> Refresh</button>}>
+      >
+
+      {/* her week first — one line per day, short enough that the office grid stays in view */}
+      <div className="schr-mine">
+        {myWeek.map(({ day, list }) => (
+          <div key={day.date} className={'schr-mine-day' + (day.date === isoDate(new Date()) ? ' today' : '') + (list.length ? '' : ' off')}>
+            <b>{day.dname.slice(0, 3)}</b>
+            <span className="mono">{day.month} {day.dnum}</span>
+            {list.length === 0 ? <i>Off</i> : list.map(s => (
+              <em key={s.id}>{shiftRange(s)}<small>{s._office}</small></em>
+            ))}
+          </div>
+        ))}
+      </div>
 
       {/* selectors: offices (multi), week, view */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -753,7 +810,6 @@ function ScheduleRead({ me, access }) {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" style={{ flex: 1, minWidth: 0, border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '6px 9px', fontSize: 13, background: 'var(--surface)' }} />
-            <button className="btn btn-quiet" onClick={() => setSortBy(s => s === 'name' ? 'hours' : 'name')} title="Toggle sort" style={{ padding: '6px 9px', fontSize: 11.5, fontWeight: 700 }}>{sortBy === 'name' ? 'A–Z' : 'Hrs'}</button>
           </div>
           <div style={{ maxHeight: 560, overflowY: 'auto' }}>
             {sidebar.map(p => (
@@ -764,7 +820,7 @@ function ScheduleRead({ me, access }) {
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                   <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)' }}>{p.dept}</span>
                 </span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.ot ? 'oklch(0.52 0.18 25)' : p.hours ? 'var(--ink)' : 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 4 }}>{p.ot && <span title={`Over ${otThreshold(regIndex, p)}h this week`} style={{ width: 6, height: 6, borderRadius: '50%', background: 'oklch(0.58 0.19 25)', flex: 'none' }} />}{p.hours}h</span>
+                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: p.id === me.id ? 'var(--accent-strong)' : 'transparent' }}>{p.id === me.id ? `${p.hours}h` : ''}</span>
               </button>
             ))}
             {sidebar.length === 0 && <div style={{ padding: 16, fontSize: 13, color: 'var(--ink-3)' }}>No one matches.</div>}
@@ -856,7 +912,7 @@ function ScheduleRead({ me, access }) {
                                 : bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
                               outline: isDropping(p.id, d.date, group.office || p.office) ? '2px solid var(--accent)' : statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <RoSchedShift key={s.id + s._office} s={s} hue={RodeptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)}
+                            {list.map(s => <RoSchedShift key={s.id + s._office} s={s} hue={RodeptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
                               dragging={drag && drag.id === s.id}
                               onDragStart={undefined} onDragEnd={() => { setDrag(null); setDropAt(null); }}
                               onClick={undefined} />)}
@@ -875,12 +931,6 @@ function ScheduleRead({ me, access }) {
 
           {/* status overview bar (§3.2) — click to highlight */}
           <div style={{ display: 'flex', gap: 8, padding: '9px 14px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-            {[['empty', emptyCount, 'empty slots'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open / offered']].map(([id, n, label]) => (
-              <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)}
-                style={{ border: '1px solid', borderColor: statusHi === id ? 'var(--accent)' : 'var(--line)', background: statusHi === id ? 'var(--accent-soft)' : 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: statusHi === id ? 'var(--accent-strong)' : 'var(--ink-2)' }}>
-                <b className="mono">{n}</b> {label}
-              </button>
-            ))}
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-3)' }} className="mono">{shifts.filter(s => !s.open).length} shifts · {Math.round(shifts.reduce((a, s) => a + (s.open ? 0 : shiftHrs(s)), 0))} hrs</span>
           </div>
         </div>

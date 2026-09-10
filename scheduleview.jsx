@@ -95,7 +95,7 @@ function ScheduleView({ me, access }) {
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h2 style={{ fontSize: 'clamp(18px,2.4vw,22px)' }}>Your week</h2>
+          <h2 style={{ fontSize: 'clamp(18px,2.4vw,22px)' }}>Your shifts — offer, swap, blackout</h2>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Week of {weekLabel(weekKey)}{mine.length ? <> · <b>{total}h</b> scheduled</> : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
