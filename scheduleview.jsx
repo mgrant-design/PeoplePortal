@@ -248,7 +248,7 @@ function BlackoutModal({ onClose, onSubmit }) {
 function PostedSchedule({ me, access }) {
   return (
     <div>
-      <Scheduler me={me} access={access} readOnly />
+      <ScheduleRead me={me} access={access} />
       <div style={{ borderTop: '1px solid var(--line)', marginTop: 'var(--gap)', paddingTop: 'var(--gap)' }}>
         <ScheduleView me={me} access={access} />
       </div>

@@ -284,14 +284,15 @@ module.exports = async function (context, req) {
       const wanted = q.offices ? String(q.offices).split('|') : (q.office ? [String(q.office)] : null);
       if (wanted) docs = docs.filter(d => wanted.includes(d.office));
       if (q.weekKey) docs = docs.filter(d => d.weekKey === q.weekKey);
-      /* scope: edit/view get the full doc, published or not. Everyone else gets published
-         weeks only, holding their OWN shifts plus the open and offered ones anybody may
-         claim (§2.4, §2.6). A person's shifts, notes and swap state are theirs; who else
-         may see them is decided by the access rules, not by the page. */
+      /* scope: edit/view get the full doc, published or not. Everyone else gets PUBLISHED
+         weeks whole — a posted schedule shows the office, names and hours, the way it does
+         on the wall. The free-text note on a shift stays personal: it is between that
+         person and whoever schedules them, so it is removed from everybody else's. Drafts
+         are never sent. */
       docs = docs.map(d => {
         if (lvl(d.office) !== 'none') return d;
         if (!d.published) return null;
-        return { ...d, shifts: (d.shifts || []).filter(s => s.empId === me.id || s.open || s.offered), scopedToSelf: true };
+        return { ...d, shifts: (d.shifts || []).map(s => (s.empId === me.id || !s.note) ? s : { ...s, note: undefined }) };
       }).filter(Boolean);
       return send(200, { schedules: docs });
     }
