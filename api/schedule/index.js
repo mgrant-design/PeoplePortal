@@ -38,6 +38,7 @@
 const https = require('https');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, listAll, strip, collPath, cosmosConfigured, loadAccessControl, applyAccessControl } = require('../_shared/cosmos');
+const { broadcast } = require('../_shared/push');
 
 const ALLOWED = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const SCHEDULES = collPath('schedules');
@@ -229,7 +230,9 @@ module.exports = async function (context, req) {
       pushes.push({ userId: toEmail, target: 'notify', arguments: [doc] });
     } catch (e) { /* best-effort */ }
   }
-  const flushPushes = () => { if (pushes.length) context.bindings.signalRMessages = pushes; };
+  // append, don't overwrite — a broadcast() call (see save/edit/publish) may already have
+  // queued a signalRMessages entry before this runs.
+  const flushPushes = () => { if (pushes.length) context.bindings.signalRMessages = [...(context.bindings.signalRMessages || []), ...pushes]; };
 
   const getWeek = async (office, weekKey) => {
     const id = `${weekKey}__${office}`;
@@ -319,6 +322,7 @@ module.exports = async function (context, req) {
       const shifts = (Array.isArray(input.shifts) ? input.shifts : []).map(cleanShift).filter(Boolean);
       const doc = { ...(existing || { id: `${weekKey}__${office}`, office, weekKey, published: false }), shifts };
       const saved = await putWeek(doc);
+      broadcast(context, 'schedule-changed', { office, weekKey });
       return send(200, { ok: true, schedule: saved });
     }
 
@@ -347,6 +351,7 @@ module.exports = async function (context, req) {
       const shifts = (doc.shifts || []).filter(s => s.id !== shift.id);
       if (op !== 'remove') shifts.push(shift);
       const saved = await putWeek({ ...doc, shifts });
+      broadcast(context, 'schedule-changed', { office, weekKey });
       return send(200, { ok: true, schedule: saved });
     }
 
@@ -366,6 +371,7 @@ module.exports = async function (context, req) {
       }
       const decided = await putRequest({ ...reqDoc, status: approve ? 'applied' : 'rejected', decidedBy: identity.email, decidedAt: new Date().toISOString() });
       await notice(reqDoc.createdBy, `Schedule change ${approve ? 'approved' : 'rejected'}`, `Your change to the ${office} week of ${reqDoc.weekKey} was ${approve ? 'approved and applied' : 'rejected — the schedule is unchanged'}.`, { view: 'scheduler' });
+      if (approve) broadcast(context, 'schedule-changed', { office, weekKey: reqDoc.weekKey });
       flushPushes();
       return send(200, { ok: true, request: decided });
     }
@@ -416,6 +422,7 @@ module.exports = async function (context, req) {
             : `The ${office} schedule for the week of ${weekKey} is published. See your shifts under Schedule.`,
           { view: 'myschedule' });
       }
+      broadcast(context, 'schedule-changed', { office, weekKey });
       flushPushes();
       return send(200, { ok: true, schedule: saved, notify, notified: scheduled.length, mode: onlyUpdates ? 'updates' : 'all' });
     }

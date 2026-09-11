@@ -11,6 +11,9 @@ function Login({ onSignedIn, loading, error }) {
   const onGoogle = (resp) => {
     try {
       window.PD_GOOGLE_TOKEN = resp.credential;   // server verifies this token
+      // Survive a same-tab reload without a full re-login. Cleared on logout and on 401
+      // (see app.jsx bootstrap). sessionStorage, not localStorage — gone when the tab closes.
+      try { sessionStorage.setItem('pd_google_token', resp.credential); } catch (e) {}
       const part = resp.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(decodeURIComponent(escape(window.atob(part))));
       const email = (payload.email || '').toLowerCase();
@@ -25,7 +28,11 @@ function Login({ onSignedIn, loading, error }) {
     let cancelled = false;
     const init = () => {
       if (cancelled || !(window.google && window.google.accounts && window.google.accounts.id)) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: onGoogle, hd: 'puredental.com', auto_select: false });
+      // auto_select: when the browser already has an active, previously-consented Google
+      // session, this silently re-issues a credential instead of waiting for a click —
+      // covers the case where sessionStorage was empty (new tab) but Google itself still
+      // remembers you.
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: onGoogle, hd: 'puredental.com', auto_select: true });
       if (gbtnRef.current) {
         gbtnRef.current.innerHTML = '';
         window.google.accounts.id.renderButton(gbtnRef.current, { type: 'standard', theme: 'filled_blue', size: 'large', text: 'continue_with', shape: 'pill', width: 300 });

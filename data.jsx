@@ -308,8 +308,11 @@ async function restoreNotice(id) {
 /* Open the live SignalR connection so notices pushed to me arrive instantly. Returns the
    connection (call .stop() to close) or null when unavailable — no client library, not
    signed in, or no /api (sandbox). Safe to call always: on null the 5-min poll still covers
-   everything, just not instantly. */
-async function connectNotifications(email, onNotice) {
+   everything, just not instantly.
+   `extra` is an optional { target: handler } map for the broadcast events other pages care
+   about (e.g. 'feedback-changed', 'schedule-changed', 'roster-changed' — see api/_shared/push.js)
+   — one shared connection, more `.on()` registrations, rather than every page opening its own. */
+async function connectNotifications(email, onNotice, extra) {
   if (typeof window === 'undefined' || !window.signalR || !email) return null;
   const token = window.PD_GOOGLE_TOKEN || '';
   if (!token) return null;
@@ -322,6 +325,12 @@ async function connectNotifications(email, onNotice) {
       .withAutomaticReconnect()
       .build();
     conn.on('notify', (notice) => { try { onNotice && onNotice(notice); } catch (e) {} });
+    if (extra && typeof extra === 'object') {
+      Object.keys(extra).forEach(target => {
+        const handler = extra[target];
+        if (typeof handler === 'function') conn.on(target, (payload) => { try { handler(payload); } catch (e) {} });
+      });
+    }
     await conn.start();
     return conn;
   } catch (e) { return null; }

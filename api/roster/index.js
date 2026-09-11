@@ -2,6 +2,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { loadAccessControl, cosmos, collPath } = require('../_shared/cosmos');
+const { broadcast } = require('../_shared/push');
 
 /* ---- roster writes (POST) ----
    The roster in Cosmos is the source of truth: nothing external regenerates it, so a
@@ -273,6 +274,7 @@ module.exports = async function (context, req) {
         const doc = { id, status: 'Active', ...patch, createdBy: identity.email, createdAt: new Date().toISOString(), ...stamp };
         const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: false });
         if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
+        broadcast(context, 'roster-changed', { id, action: 'create' });
         return send(200, { ok: true, employee: strip(r.body) });
       }
 
@@ -323,6 +325,7 @@ module.exports = async function (context, req) {
             audited = (a.status === 200 || a.status === 201);
           } catch (e) { audited = false; }
         }
+        broadcast(context, 'roster-changed', { id, action: 'update' });
         return send(200, { ok: true, employee: strip(r.body), ...(auditDoc ? { audited } : {}) });
       }
 

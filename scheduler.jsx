@@ -189,6 +189,21 @@ function Scheduler({ me, access, onBack }) {
   };
   useEffect(load, [offices.join('|'), weekKey]);
 
+  // Live update: another manager saved/published this same office+week. Reuses load()'s
+  // existing dirty-guard (it already confirms before discarding local edits on a manual
+  // reload) — a broadcast just triggers that same path instead of waiting for a refresh.
+  // No detail (or an office/week that isn't open here) is ignored.
+  useEffect(() => {
+    const onChanged = (e) => {
+      const d = e && e.detail;
+      if (d && d.office && !offices.includes(d.office)) return;
+      if (d && d.weekKey && d.weekKey !== weekKey) return;
+      load();
+    };
+    window.addEventListener('pd-schedule-changed', onChanged);
+    return () => window.removeEventListener('pd-schedule-changed', onChanged);
+  }, [offices.join('|'), weekKey, dirty]);
+
   /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
           Cosmos until Publish, which saves the week, locks it, and notifies.
           One exception, because it's an approval queue rather than a save: a

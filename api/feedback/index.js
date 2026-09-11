@@ -12,6 +12,7 @@
 
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
+const { broadcast } = require('../_shared/push');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 const STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
@@ -356,6 +357,7 @@ module.exports = async function (context, req) {
       await cosmos({ verb: 'DELETE', resId: `${cColl}/docs/${input.id}`, path: `/${cColl}/docs/${input.id}`, partitionKey: input.id }).catch(() => {});
       const del = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${input.id}`, path: `/${coll}/docs/${input.id}`, partitionKey: input.id });
       if (del.status !== 204 && del.status !== 200 && del.status !== 404) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'delete failed', status: del.status }) }; return; }
+      broadcast(context, 'feedback-changed', { id: input.id, action: 'delete' });
       context.res = { status: 200, headers, body: JSON.stringify({ ok: true, id: input.id }) };
       return;
     } else {
@@ -364,6 +366,7 @@ module.exports = async function (context, req) {
 
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: next, partitionKey: next.id, upsert: true });
     if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'update failed', status: up.status, detail: up.body }) }; return; }
+    broadcast(context, 'feedback-changed', { id: next.id, action: input.action });
     context.res = { status: 200, headers, body: JSON.stringify({ ok: true, item: clean(strip(up.body)) }) };
     return;
   } catch (err) {

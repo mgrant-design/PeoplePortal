@@ -90,6 +90,20 @@ function Feedback({ me, access, flash }) {
   };
   useEffect(load, []);
 
+  // Live update: someone else voted/changed status/deleted an item (see api/feedback/index.js
+  // broadcast + app.jsx's 'pd-feedback-changed' bridge). Quiet refetch — no loading spinner,
+  // since this is a background sync, not the initial load.
+  useEffect(() => {
+    const onChanged = () => {
+      waitForFetchFeedback()
+        .then(() => window.fetchFeedback())
+        .then(list => { setItems(list); setMyVote(Object.fromEntries(list.map(i => [i.id, i.myVote || 0]))); })
+        .catch(() => {});
+    };
+    window.addEventListener('pd-feedback-changed', onChanged);
+    return () => window.removeEventListener('pd-feedback-changed', onChanged);
+  }, []);
+
   const submit = () => {
     if (!draft.title.trim() || submitting) return;
     setSubmitting(true);

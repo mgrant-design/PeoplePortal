@@ -319,9 +319,39 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         try { window.dispatchEvent(new CustomEvent('pd-schedule-changed')); } catch (e) {}
       }
     };
-    connectNotifications(me.workEmail, onNotice).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
+    // Broadcast events (everyone gets these, not just "me") — bridge each into a window
+    // CustomEvent so any mounted page can listen without touching the SignalR connection
+    // itself, same trick as the 'pd-schedule-changed' dispatch above.
+    const extra = {
+      'feedback-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-feedback-changed', { detail: p })); } catch (e) {} },
+      'schedule-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-schedule-changed', { detail: p })); } catch (e) {} },
+      'roster-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-roster-changed', { detail: p })); } catch (e) {} },
+    };
+    connectNotifications(me.workEmail, onNotice, extra).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
     return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };
   }, [me.id]);
+  // Someone else added/edited a roster record (e.g. Directory's manual-add). EMPLOYEES/DIRECTORY
+  // are mutable globals rebuilt in place by rbac.jsx (see buildFromHRDATA) rather than React
+  // state, so a re-fetch alone won't repaint anything — rosterVersion just forces this
+  // component to re-render after the rebuild so pages reading those globals pick up the change.
+  const [, setRosterVersion] = useState(0);
+  useEffect(() => {
+    const onRosterChanged = () => {
+      const token = window.PD_GOOGLE_TOKEN || '';
+      if (!token) return;
+      fetch('/api/roster', { headers: { 'X-Google-Token': token } })
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => {
+          if (!data) return;
+          window.HRDATA = data;
+          if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
+          setRosterVersion(v => v + 1);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('pd-roster-changed', onRosterChanged);
+    return () => window.removeEventListener('pd-roster-changed', onRosterChanged);
+  }, []);
   // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
@@ -838,7 +868,9 @@ function App() {
       const res = await fetch('/api/roster', { headers: { 'X-Google-Token': token } });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || ('Roster request failed (' + res.status + ')'));
+        const err = new Error(body.error || ('Roster request failed (' + res.status + ')'));
+        err.authRejected = res.status === 401 || res.status === 403;
+        throw err;
       }
       const data = await res.json();
       window.HRDATA = data;
@@ -854,6 +886,12 @@ function App() {
       setMe(meEmp);
     } catch (e) {
       setRosterError(e.message || 'Could not load your roster.');
+      // Only drop the token when the server actually rejected it (stale/invalid) — a
+      // network hiccup shouldn't sign someone out of a still-valid session.
+      if (e.authRejected) {
+        window.PD_GOOGLE_TOKEN = '';
+        try { sessionStorage.removeItem('pd_google_token'); } catch (e2) {}
+      }
     } finally {
       setLoadingRoster(false);
     }
@@ -865,7 +903,24 @@ function App() {
     enterWithToken();
   };
 
-  const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; };
+  // Restore a same-tab session across a reload: sessionStorage keeps the Google credential
+  // (login.jsx writes it), so a refresh doesn't need to bounce through Login again. If the
+  // restored token is stale, enterWithToken's /api/roster call 401s and rosterError is set —
+  // that just falls through to the normal Login screen, no special handling needed.
+  useEffect(() => {
+    if (me || window.PD_GOOGLE_TOKEN) return;
+    let token = '';
+    try { token = sessionStorage.getItem('pd_google_token') || ''; } catch (e) {}
+    if (!token) return;
+    window.PD_GOOGLE_TOKEN = token;
+    const part = token.split('.')[1];
+    let email = '';
+    try { email = (JSON.parse(decodeURIComponent(escape(window.atob(part.replace(/-/g, '+').replace(/_/g, '/'))))).email || '').toLowerCase(); } catch (e) {}
+    if (!email) { try { sessionStorage.removeItem('pd_google_token'); } catch (e) {} return; }
+    onSignedIn(email);
+  }, []);
+
+  const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; try { sessionStorage.removeItem('pd_google_token'); } catch (e) {} };
   const previewAs = async (emp) => { if (window.__PD_MODULES_READY) await window.__PD_MODULES_READY; saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
 
   // DEV bridge — inert in production. A dev-only module (dev-bypass.js), when present,
