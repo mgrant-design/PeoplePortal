@@ -189,6 +189,14 @@ function Scheduler({ me, access, onBack }) {
   };
   useEffect(load, [offices.join('|'), weekKey]);
 
+  /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
+          Cosmos until Publish, which saves the week, locks it, and notifies.
+          One exception, because it's an approval queue rather than a save: a
+          SUPERVISOR editing a PUBLISHED week sends each change to the server
+          immediately so the manager can approve or reject it. ---- */
+  const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs; }, [docs]);
+  const [dirty, setDirty] = useState(false);
+
   // Live update: another manager saved/published this same office+week. Reuses load()'s
   // existing dirty-guard (it already confirms before discarding local edits on a manual
   // reload) — a broadcast just triggers that same path instead of waiting for a refresh.
@@ -203,14 +211,6 @@ function Scheduler({ me, access, onBack }) {
     window.addEventListener('pd-schedule-changed', onChanged);
     return () => window.removeEventListener('pd-schedule-changed', onChanged);
   }, [offices.join('|'), weekKey, dirty]);
-
-  /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
-          Cosmos until Publish, which saves the week, locks it, and notifies.
-          One exception, because it's an approval queue rather than a save: a
-          SUPERVISOR editing a PUBLISHED week sends each change to the server
-          immediately so the manager can approve or reject it. ---- */
-  const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs; }, [docs]);
-  const [dirty, setDirty] = useState(false);
   const applyLocal = (office, fn) => setDocs(d => {
     const doc = d[office] || { id: `${weekKey}__${office}`, office, weekKey, published: false, shifts: [] };
     return { ...d, [office]: { ...doc, shifts: fn(doc.shifts || []), _dirty: true } };
