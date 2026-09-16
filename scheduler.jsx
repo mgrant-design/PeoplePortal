@@ -551,6 +551,41 @@ function Scheduler({ me, access, onBack }) {
 
   const toggleOffice = (o) => setOffices(cur => cur.length === OFFICES.length ? [o] : cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
 
+  /* ---- working one role at a time ----
+     The week opens on everyone, at every office, which is what a scheduler asked for —
+     but that is one 48px row per person, so a full roster is several screens of scrolling
+     and the day header is long gone by the time you reach the bottom. Nothing here filters
+     anything out; it only folds the groups you are not working on, so the roster stays
+     whole and the page stops being a mile long. */
+  const groupKeys = useMemo(() => rows.filter(g => g.dept).map(g => g.office + '|' + g.dept), [rows]);
+  const collapseAll = () => setCollapsed(Object.fromEntries(groupKeys.map(k => [k, true])));
+  const expandAll = () => setCollapsed({});
+  const allClosed = groupKeys.length > 0 && groupKeys.every(k => collapsed[k]);
+  /* Roles, merged across offices: she builds "all the hygienists", and they sit in a
+     separate group per office. This is the index into those — counts for the role as a
+     whole, and one click to work it alone. */
+  const roleNav = useMemo(() => {
+    const m = {};
+    rows.forEach(g => {
+      if (!g.dept) return;
+      const r = m[g.dept] = m[g.dept] || { dept: g.dept, people: 0, scheduled: 0 };
+      r.people += g.people.length;
+      const ids = new Set(g.people.map(p => p.id));
+      r.scheduled += shifts.filter(s => !s.open && ids.has(s.empId) && (!g.office || s._office === g.office)).length;
+    });
+    return Object.values(m).sort((a, b) => a.dept.localeCompare(b.dept));
+  }, [rows, shifts]);
+  /* open this role's groups (at every office), fold everything else, and jump to it */
+  const soloRole = (d) => {
+    setCollapsed(Object.fromEntries(groupKeys.map(k => [k, k.split('|')[1] !== d])));
+    setTimeout(() => {
+      const el = document.querySelector(`[data-grp-dept="${CSS.escape(d)}"]`);
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 0);
+  };
+  const soloed = roleNav.length > 1 && groupKeys.some(k => collapsed[k]) && groupKeys.some(k => !collapsed[k])
+    ? (groupKeys.find(k => !collapsed[k]) || '|').split('|')[1] : null;
+
   /* ================= PHONE LAYOUT =================
      A separate render path, reached only when useSchedFit() says the week grid cannot fit. The desktop
      return below is untouched: same state, same handlers, same ShiftModal. One axis at a
@@ -841,6 +876,12 @@ function Scheduler({ me, access, onBack }) {
           <option value="">All roles</option>
           {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
+        {view === 'dept' && groupKeys.length > 1 && (
+          <button onClick={allClosed ? expandAll : collapseAll} title={allClosed ? 'Open every role' : 'Fold every role — then open the one you are working on'}
+            style={{ border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="chevron" style={{ width: 12, height: 12, transform: allClosed ? 'rotate(90deg)' : 'rotate(-90deg)' }} /> {allClosed ? 'Expand all' : 'Collapse all'}
+          </button>
+        )}
         {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</span>}
       </div>
 
@@ -849,6 +890,27 @@ function Scheduler({ me, access, onBack }) {
       <div style={{ display: 'grid', gridTemplateColumns: `${fit.side}px minmax(0, 1fr)`, gap: 'var(--gap)', alignItems: 'start' }}>
         {/* team sidebar (§3.2 — hours, search, sort; no cost per D2) */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {/* Roles first: the week is built one role at a time, so this is the index into
+              the grid rather than a filter — clicking opens that role everywhere and folds
+              the rest. Sticky so it stays reachable while the grid scrolls past it. */}
+          {view === 'dept' && roleNav.length > 1 && (
+            <div style={{ borderBottom: '1px solid var(--line)' }}>
+              <div style={{ padding: '9px 12px 6px', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)' }}>Roles</div>
+              {roleNav.map(r => {
+                const on = soloed === r.dept;
+                return (
+                  <button key={r.dept} onClick={() => on ? expandAll() : soloRole(r.dept)}
+                    title={on ? 'Show every role again' : `Work ${r.dept} on its own`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '7px 12px',
+                      background: on ? 'var(--accent-soft)' : 'transparent', borderBottom: '1px solid var(--line-soft)' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, flex: 'none', background: `oklch(0.65 0.13 ${deptHue(r.dept)})` }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: on ? 800 : 600, color: on ? 'var(--accent-strong)' : 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.dept}</span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', flex: 'none' }}>{r.scheduled}/{r.people}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search team…" style={{ flex: 1, minWidth: 0, border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '6px 9px', fontSize: 13, background: 'var(--surface)' }} />
             <button className="btn btn-quiet" onClick={() => setSortBy(s => s === 'name' ? 'hours' : 'name')} title="Toggle sort" style={{ padding: '6px 9px', fontSize: 11.5, fontWeight: 700 }}>{sortBy === 'name' ? 'A–Z' : 'Hrs'}</button>
@@ -916,7 +978,7 @@ function Scheduler({ me, access, onBack }) {
                 return (
                 <React.Fragment key={gk}>
                   {group.dept && (
-                    <div onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `color-mix(in oklab, oklch(0.65 0.1 ${deptHue(group.dept)}) 10%, var(--surface))`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none' }} title={closed ? 'Expand' : 'Collapse'}>
+                    <div data-grp-dept={group.dept} onClick={() => setCollapsed(c => ({ ...c, [gk]: !closed }))} style={{ display: 'grid', gridTemplateColumns: colTemplate, background: `color-mix(in oklab, oklch(0.65 0.1 ${deptHue(group.dept)}) 10%, var(--surface))`, borderBottom: '1px solid var(--line)', cursor: 'pointer', userSelect: 'none' }} title={closed ? 'Expand' : 'Collapse'}>
                       <div style={{ padding: '6px 14px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: `color-mix(in oklab, oklch(0.5 0.13 ${deptHue(group.dept)}) 65%, var(--ink))`, display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minWidth: 0 }}>
                         <Icon name="chevron" style={{ width: 11, height: 11, flex: 'none', transform: closed ? 'none' : 'rotate(90deg)', transition: 'transform .12s' }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.dept} — {group.office}{closed ? ` (${group.people.length})` : ''}</span>
