@@ -546,11 +546,6 @@ html.pd-mobile-view .app { width: 390px; height: 844px; min-height: 0; max-heigh
   .pd-form2 input, .pd-form2 select, .reg-day input, .reg-day select { min-height: 44px; }
 }
 
-/* My schedule: seven day cards. Wide enough and they sit in a row; on a phone two across
-   stays readable, and one across below that beats squeezing. */
-.msched-week { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--gap); }
-@media (max-width: 420px) { .msched-week { grid-template-columns: 1fr 1fr; } }
-
 /* ===== Scheduler phone layout (.schm-*) =====
    Reached only via useSchedNarrow() in scheduler.jsx — a real <=800px viewport or the admin
    dev clamp. Every selector here is .schm-prefixed and unreachable from the desktop grid. */

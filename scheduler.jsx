@@ -97,7 +97,10 @@ const deptHue = (() => { const cache = {}; let i = 0; const hues = [220, 155, 28
    `pub` = published (the committed green state); `ot` = this person's week is over
    their overtime threshold; `note` shows under the time with a speech bubble. */
 function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEnd, dragging }) {
-  const open = !!s.open, off = !!s.offered, pub = !!s.pub;
+  /* two different things share `s.open`: no empId = UNASSIGNED (sits in the Open shifts
+     lane, nobody on it yet); empId + open = UP FOR GRABS (still this person's shift until
+     a claim is approved). Same styling either way — only the label text differs. */
+  const open = !!s.open, unassigned = !s.empId, off = !!s.offered, pub = !!s.pub;
   const tint = open ? 'oklch(0.7 0.14 75)' : off ? 'oklch(0.65 0.16 320)' : pub ? 'oklch(0.68 0.14 150)' : `oklch(0.65 0.13 ${hue})`;
   const edge = open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})`;
   const label = open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : pub ? 'oklch(0.44 0.13 150)' : `oklch(0.5 0.14 ${hue})`;
@@ -111,7 +114,7 @@ function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEn
       outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
       <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}{ot ? <span title="Over their weekly hours" style={{ marginLeft: 4, color: 'oklch(0.55 0.19 25)' }}>⚠</span> : null}</span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
-        {open ? 'Open shift' : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
+        {open ? (unassigned ? 'Unassigned' : 'Up for grabs') : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
       </span>
       {s.note && <span style={{ display: 'flex', alignItems: 'flex-start', gap: 3, fontSize: 10, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.35 }}><Icon name="chat" style={{ width: 10, height: 10, flex: 'none', marginTop: 1 }} /> {s.note}</span>}
     </button>
@@ -196,6 +199,10 @@ function Scheduler({ me, access, onBack }) {
           immediately so the manager can approve or reject it. ---- */
   const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs; }, [docs]);
   const [dirty, setDirty] = useState(false);
+  /* our own publish() broadcasts a change for every office it saves, which reaches this
+     same tab. Without this guard that self-broadcast lands on the dirty-guard below and
+     asks "discard your changes?" mid-publish — for a change we already made. */
+  const publishingRef = useRef(false);
 
   // Live update: another manager saved/published this same office+week. Reuses load()'s
   // existing dirty-guard (it already confirms before discarding local edits on a manual
@@ -203,6 +210,7 @@ function Scheduler({ me, access, onBack }) {
   // No detail (or an office/week that isn't open here) is ignored.
   useEffect(() => {
     const onChanged = (e) => {
+      if (publishingRef.current) return;
       const d = e && e.detail;
       if (d && d.office && !offices.includes(d.office)) return;
       if (d && d.weekKey && d.weekKey !== weekKey) return;
@@ -231,7 +239,29 @@ function Scheduler({ me, access, onBack }) {
     }
     applyLocal(office, localFn); setDirty(true);
   };
-  const saveAll = async (office, nextShifts) => { applyLocal(office, () => nextShifts); setDirty(true); };
+  /* Bulk tools (copy last week, fill/build from regular hours, load template, mark-all-open,
+     delete-all) all land here. A supervisor editing a PUBLISHED week must go through the same
+     per-change approval queue oneChange() already gives a single shift edit — writing the
+     whole list straight to the draft skipped that queue, so the supervisor did the work and
+     then hit a 409 on Publish ("supervisor changes go through per-change approval"). Diff
+     against what's there and replay each difference through oneChange instead. */
+  const saveAll = async (office, nextShifts) => {
+    const doc = docsRef.current[office];
+    if (doc && doc.published && isSup) {
+      const curById = new Map((doc.shifts || []).map(s => [s.id, s]));
+      const nextById = new Map(nextShifts.map(s => [s.id, s]));
+      for (const [id, s] of nextById) {
+        const cur = curById.get(id);
+        if (!cur) await oneChange(office, { op: 'add', shift: s }, list => [...list, s]);
+        else if (JSON.stringify(cur) !== JSON.stringify(s)) await oneChange(office, { op: 'update', shift: s }, list => [...list.filter(x => x.id !== s.id), s]);
+      }
+      for (const id of curById.keys()) {
+        if (!nextById.has(id)) await oneChange(office, { op: 'remove', shiftId: id }, list => list.filter(x => x.id !== id));
+      }
+      return;
+    }
+    applyLocal(office, () => nextShifts); setDirty(true);
+  };
   /* repeat copies aimed at OTHER weeks: held here until Publish, then written into
      their own week documents (each week is its own doc in Cosmos) */
   const repeatsRef = useRef([]); // [{ office, weekKey, shift }]
@@ -254,7 +284,7 @@ function Scheduler({ me, access, onBack }) {
       if (wk === weekKey) await oneChange(form.office, { op: 'add', shift: copy }, list => [...list, copy]);
       else { repeatsRef.current.push({ office: form.office, weekKey: wk, shift: copy }); setDirty(true); }
     }
-    if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'} — saved when you publish.`);
+    if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'} — ${isSup ? 'saved or sent to your manager when you publish' : 'saved when you publish'}.`);
   };
   const deleteShift = async (form) => {
     setModal(null);
@@ -267,36 +297,43 @@ function Scheduler({ me, access, onBack }) {
   const [wkAsk, setWkAsk] = useState(false);     // which weekday a week starts on
   const publish = async (notifyMode) => {
     setPubAsk(false);
-    /* save-then-publish, per office: this is the ONLY write path for drafts.
-       An office whose shifts were emptied locally (Options → Delete all shifts) must
-       still be saved — skipping it left the deletion unwritten and load() pulled the
-       old shifts straight back, so "delete all" silently did nothing. Only skip an
-       office with nothing saved AND nothing to save. */
-    for (const office of offices) {
-      const doc = docsRef.current[office];
-      if (!doc) continue;
-      if (!(doc.shifts || []).length && !doc._dirty) continue;
-      if (doc._dirty) {
-        try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
-        catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
+    publishingRef.current = true;
+    /* pulled out before the office loop below: a self-triggered live-update reload
+       (guarded off above, but belt-and-suspenders) must never race this array empty
+       before these are written */
+    const held = repeatsRef.current.splice(0);
+    try {
+      /* save-then-publish, per office: this is the ONLY write path for drafts.
+         An office whose shifts were emptied locally (Options → Delete all shifts) must
+         still be saved — skipping it left the deletion unwritten and load() pulled the
+         old shifts straight back, so "delete all" silently did nothing. Only skip an
+         office with nothing saved AND nothing to save. */
+      for (const office of offices) {
+        const doc = docsRef.current[office];
+        if (!doc) continue;
+        if (!(doc.shifts || []).length && !doc._dirty) continue;
+        if (doc._dirty) {
+          try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
+          catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
+        }
+        try {
+          const res = await schedAction({ action: 'publish', office, weekKey, notify: notifyMode });
+          const n = res.notify; const parts = [];
+          if (n && !n.simulated) { if (n.gchat) parts.push('Google Chat'); if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`); }
+          const who = res.notified === 0 ? 'nobody to notify'
+            : `${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified${res.mode === 'updates' ? ' (changes only)' : ''}`;
+          flash(`${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`);
+        } catch (e) { flash(office + ' publish failed: ' + e.message); }
       }
-      try {
-        const res = await schedAction({ action: 'publish', office, weekKey, notify: notifyMode });
-        const n = res.notify; const parts = [];
-        if (n && !n.simulated) { if (n.gchat) parts.push('Google Chat'); if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`); }
-        const who = res.notified === 0 ? 'nobody to notify'
-          : `${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified${res.mode === 'updates' ? ' (changes only)' : ''}`;
-        flash(`${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`);
-      } catch (e) { flash(office + ' publish failed: ' + e.message); }
-    }
-    /* write the held repeat copies into their future weeks (saved, not published —
-       you publish those weeks when you build them) */
-    for (const r of repeatsRef.current.splice(0)) {
-      try { await schedAction({ action: 'edit', office: r.office, weekKey: r.weekKey, change: { op: 'add', shift: r.shift } }); }
-      catch (e) { flash(`Repeat for week of ${r.weekKey} failed: ` + e.message); }
-    }
-    setDirty(false);
-    load(true);
+      /* write the held repeat copies into their future weeks (saved, not published —
+         you publish those weeks when you build them) */
+      for (const r of held) {
+        try { await schedAction({ action: 'edit', office: r.office, weekKey: r.weekKey, change: { op: 'add', shift: r.shift } }); }
+        catch (e) { flash(`Repeat for week of ${r.weekKey} failed: ` + e.message); }
+      }
+      setDirty(false);
+      load(true);
+    } finally { publishingRef.current = false; }
   };
 
   /* ---- lay standing regular hours onto the week ----
@@ -393,11 +430,14 @@ function Scheduler({ me, access, onBack }) {
       if (kind === 'delete') await saveAll(office, []);
     }
     if (kind === 'delete') flash('All displayed shifts deleted.');
-    if (kind === 'unassign') flash('All displayed shifts are now open (unassigned).');
+    if (kind === 'unassign') flash('All displayed shifts are now up for grabs.');
   };
 
-  /* ---- status counts (§3.2) ---- */
-  const openCount = shifts.filter(s => s.open || s.offered).length;
+  /* ---- status counts (§3.2) ----
+     unassignedCount: nobody on the shift at all (the Open shifts lane).
+     grabsCount: still on someone's row, but flagged up for grabs or already offered. */
+  const unassignedCount = shifts.filter(s => !s.empId).length;
+  const grabsCount = shifts.filter(s => s.empId && (s.open || s.offered)).length;
   const emptyCount = roster.reduce((a, p) => a + days.filter(d => !shifts.some(s => s.empId === p.id && s.date === d.date)).length, 0);
 
   /* ---- per-person totals & sort ---- */
@@ -495,13 +535,19 @@ function Scheduler({ me, access, onBack }) {
   };
   const isDropping = (toEmpId, toDate, toOffice) => dropAt === ((toEmpId || '') + '|' + toDate + '|' + toOffice);
 
+    const deleteAllConfirmMsg = isSup && offices.some(o => docs[o] && docs[o].published)
+    ? 'Delete every shift currently displayed? Published weeks send this to your manager for approval, one change at a time.'
+    : 'Delete every shift currently displayed? This cannot be undone.';
   const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
   const openOn = (date) => openLane.filter(s => s.date === date);
   const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
   const colTemplate = `${fit.name}px repeat(7, minmax(${fit.day}px, 1fr))`;
-  const dim = s => statusHi === 'unpub' ? !!s.pub : statusHi === 'open' ? !(s.open || s.offered) : false;
+  const dim = s => statusHi === 'unpub' ? !!s.pub
+    : statusHi === 'unassigned' ? !!s.empId
+    : statusHi === 'grabs' ? !(s.empId && (s.open || s.offered))
+    : false;
 
   const toggleOffice = (o) => setOffices(cur => cur.length === OFFICES.length ? [o] : cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
 
@@ -588,7 +634,7 @@ function Scheduler({ me, access, onBack }) {
         </div>
 
         <div className="schm-status">
-          {[['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open']].map(([id, n, label]) => (
+          {[['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['unassigned', unassignedCount, 'unassigned'], ['grabs', grabsCount, 'up for grabs']].map(([id, n, label]) => (
             <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)} className={statusHi === id ? 'on' : ''}>
               <b className="mono">{n}</b> {label}
             </button>
@@ -603,14 +649,14 @@ function Scheduler({ me, access, onBack }) {
           <div className="schm-group">
             <div className="schm-group-head" style={{ background: 'var(--warn-soft)', color: 'oklch(0.42 0.11 60)' }}>
               <Icon name="bell" style={{ width: 13, height: 13, flex: 'none' }} />
-              <span>Open shifts</span>
+              <span>Unassigned</span>
               <small>{openOn(dayISO).length} unassigned</small>
             </div>
             {openOn(dayISO).map(s2 => (
               <button key={s2.id} className="schm-row" style={{ borderLeftColor: 'var(--warn)' }}
                 onClick={() => setModal({ office: s2._office, empId: null, date: dayISO, shift: s2 })}>
                 <span className="schm-row-txt">
-                  <span className="schm-row-name">Open shift</span>
+                  <span className="schm-row-name">Unassigned</span>
                   <span className="schm-row-time mono">{shiftRange(s2)}</span>
                   <span className="schm-row-sub">{shiftHrs(s2)}h{multi ? ' · ' + s2._office : ''}</span>
                   {s2.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s2.note}</span>}
@@ -647,7 +693,7 @@ function Scheduler({ me, access, onBack }) {
                           <span className="schm-row-name">{p.name}{otIds.has(p.id) && <em className="schm-ot">OT</em>}</span>
                           <span className="schm-row-time mono">{shiftRange(s)}</span>
                           <span className="schm-row-sub">
-                            {s.open ? 'Open shift' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
+                            {s.open ? 'Up for grabs' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
                             {multi ? ` · ${s._office}` : ''}{!s.pub && !s.open ? ' · new' : ''}{bo ? ' · blackout' : ''}
                           </span>
                           {s.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s.note}</span>}
@@ -696,8 +742,8 @@ function Scheduler({ me, access, onBack }) {
 
         {/* acts on the whole displayed week, so it sits below the week's content */}
         <div className="schm-danger">
-          <button onClick={() => bulk('unassign')}>Mark all shifts open</button>
-          <button className="d" onClick={() => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }}>Delete all shifts</button>
+          <button onClick={() => bulk('unassign')}>Mark all shifts up for grabs</button>
+          <button className="d" onClick={() => { if (window.confirm(deleteAllConfirmMsg)) bulk('delete'); }}>Delete all shifts</button>
           <button onClick={() => setImpOpen(true)}>Import a schedule CSV</button>
         </div>
 
@@ -747,11 +793,11 @@ function Scheduler({ me, access, onBack }) {
           <div style={{ position: 'relative' }}>
             <button className="btn btn-ghost" onClick={() => setMenu(m => m === 'options' ? null : 'options')}><Icon name="dots" /> Options</button>
             {menu === 'options' && <Dropdown onClose={() => setMenu(null)} items={[
-              ['Mark all shifts open', 'Every displayed shift stays in place but is flagged open — up for grabs', () => bulk('unassign')],
+              ['Mark all shifts up for grabs', 'Every displayed shift stays in place but is flagged up for grabs', () => bulk('unassign')],
               ['Regular hours…', 'Set someone’s standing weekly hours and overtime threshold', () => { setMenu(null); setRegOpen(true); }],
               ...(canOrg ? [['Week starts on…', 'Which weekday a schedule week begins — currently ' + (WEEK_STARTS.find(([k]) => k === weekStart()) || [,'Monday'])[1], () => { setMenu(null); setWkAsk(true); }]] : []),
               ['Import a schedule CSV…', 'Load a roster CSV export into this week’s schedule', () => { setMenu(null); setImpOpen(true); }],
-              ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm('Delete every shift currently displayed? This cannot be undone.')) bulk('delete'); }, true],
+              ['Delete all shifts', 'Removes every displayed shift — irreversible', () => { if (window.confirm(deleteAllConfirmMsg)) bulk('delete'); }, true],
             ]} />}
           </div>
           <button className="btn btn-primary" disabled={!dirty && unpubCount === 0} onClick={() => setPubAsk(true)}>
@@ -844,7 +890,7 @@ function Scheduler({ me, access, onBack }) {
                   <div style={{ padding: '8px 13px', display: 'flex', alignItems: 'center', gap: 8, borderRight: '1px solid var(--line)', minWidth: 0 }}>
                     <div style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--warn-soft)', color: 'oklch(0.45 0.12 60)' }}><Icon name="bell" style={{ width: 14, height: 14 }} /></div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>Open shifts</div>
+                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>Unassigned</div>
                       <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{openLane.length} unassigned</div>
                     </div>
                   </div>
@@ -927,7 +973,7 @@ function Scheduler({ me, access, onBack }) {
 
           {/* status overview bar (§3.2) — click to highlight */}
           <div style={{ display: 'flex', gap: 8, padding: '9px 14px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-            {[['empty', emptyCount, 'empty slots'], ['unpub', unpubCount, 'unpublished'], ['open', openCount, 'open / offered']].map(([id, n, label]) => (
+            {[['empty', emptyCount, 'empty slots'], ['unpub', unpubCount, 'unpublished'], ['unassigned', unassignedCount, 'unassigned'], ['grabs', grabsCount, 'up for grabs / offered']].map(([id, n, label]) => (
               <button key={id} onClick={() => setStatusHi(h => h === id ? null : id)}
                 style={{ border: '1px solid', borderColor: statusHi === id ? 'var(--accent)' : 'var(--line)', background: statusHi === id ? 'var(--accent-soft)' : 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: statusHi === id ? 'var(--accent-strong)' : 'var(--ink-2)' }}>
                 <b className="mono">{n}</b> {label}
@@ -1140,8 +1186,8 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
               </select>
             </label>
             {(
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', paddingBottom: 9, whiteSpace: 'nowrap', cursor: 'pointer' }} title="The shift stays on this row but is flagged open — visible for teammates to claim">
-                <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> Mark open
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', paddingBottom: 9, whiteSpace: 'nowrap', cursor: 'pointer' }} title="Stays on their row until someone's claim is approved — visible for teammates to claim">
+                <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> Up for grabs
               </label>
             )}
           </div>

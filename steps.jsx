@@ -190,12 +190,12 @@ function TeamStep({ me, onBack, onComplete }) {
 function AgendaStep({ me, onBack, onComplete, onOpenScheduler }) {
   return (
     <StepShell icon="calendar" eyebrow="Connect" title="Schedule & first week"
-      subtitle="Your shifts and first-week plan will appear here once your manager builds them in the scheduler."
+      subtitle="Your published shifts show under Schedule. Open it to see your week."
       onBack={onBack}
       aside={<button className="btn btn-ghost" onClick={onOpenScheduler}><Icon name="grid" /> Open scheduler</button>}>
       <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', color: 'var(--ink-2)' }}>
         <Icon name="calendar" style={{ width: 30, height: 30, color: 'var(--ink-3)', margin: '0 auto 10px', display: 'block' }} />
-        <p style={{ fontSize: 14, maxWidth: 440, margin: '0 auto', lineHeight: 1.5 }}>No first-week agenda yet. Once your manager publishes your schedule, your shifts and day-by-day plan will show up here.</p>
+        <p style={{ fontSize: 14, maxWidth: 440, margin: '0 auto', lineHeight: 1.5 }}>Nothing published yet. Once your manager publishes your schedule, your shifts will show up under Schedule.</p>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
         <button className="btn btn-primary btn-lg" onClick={onComplete}><Icon name="check" /> Looks good</button>

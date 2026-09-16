@@ -126,7 +126,7 @@ const TOUR_STEPS_ALL = [
   { view: 'people', icon: 'users', title: 'Directory', body: 'Search any colleague and see their role and work contact. Managers & HR can open full records from here.' },
   { view: 'ask', icon: 'sparkle', title: 'Ask Riley', body: 'Your AI assistant. Ask about pay, benefits, logins or time off and get instant answers — or it routes you to the right person.' },
   { view: 'timeclock', icon: 'clock', title: 'Time clock', body: 'Clock in and out by location, take breaks, and view your timesheet. It’s matched to your scheduled shift.' },
-  { view: 'scheduler', icon: 'calendar', title: 'Scheduling', body: 'Managers build the week with drag-and-drop, smart-fill by skill, and publish — staff see their shifts here.' },
+  { view: 'scheduler', icon: 'calendar', title: 'Scheduling', body: 'Managers build the week, fill it from regular hours, and publish — staff see their shifts here.' },
   { view: 'reviews', icon: 'star', title: 'Performance reviews', body: 'Complete your self-review and see your manager’s feedback once it’s shared.' },
   { view: 'reports', icon: 'list', title: 'Reports', body: 'Build reports by dragging data elements, and track scheduled vs. worked hours and overtime.' },
   { view: 'scrubs', icon: 'shirt', title: 'Scrub orders', body: 'Clinical staff order scrubs here — the company covers your allowance, and anything over is an easy payroll deduction. Managers approve, batch to the vendor (CID Resources), and track delivery.' },

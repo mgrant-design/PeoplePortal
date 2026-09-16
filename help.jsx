@@ -9,7 +9,7 @@ const HELP_PAGES = [
   { id: 'reviews', label: 'Reviews', icon: 'star', desc: 'Performance reviews. HR/exec set the questions; you complete a self-review; your manager reviews you and shares the results.' },
   { id: 'onboarding', label: 'My onboarding', icon: 'bolt', desc: 'Your role-specific setup checklist — paperwork, credentials (providers), policies, accounts, learning, team and benefits.' },
   { id: 'automations', label: 'Automations', icon: 'plus', desc: 'HR/Admin: add a new hire and the agent reaches out, gathers details, verifies credentials, and provisions accounts. Edit the agent in the Agent console.' },
-  { id: 'scheduler', label: 'Scheduling', icon: 'calendar', desc: 'Build the week with drag-and-drop, Smart fill by skills, copy a prior week, open shifts to claim, and publish. View by team & location.' },
+  { id: 'scheduler', label: 'Scheduling', icon: 'calendar', desc: 'Build the week by clicking a slot or dragging a shift, copy a prior week, fill from regular hours, open shifts to claim, and publish. View by team & location.' },
   { id: 'offboarding', label: 'Offboarding', icon: 'bell', desc: 'Termination & resignation requests with checklist (resignation letter, exit interview) and links to the employee record.' },
   { id: 'offices', label: 'Offices', icon: 'building', desc: 'View all locations with live headcounts; add or edit an office.' },
   { id: 'reports', label: 'Reports', icon: 'list', desc: 'Drag-and-drop report builder, headcount charts, and Time & overtime (scheduled vs worked, OT flags, approvals).' },

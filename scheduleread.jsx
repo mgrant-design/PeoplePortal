@@ -1,19 +1,15 @@
-/* scheduleread.jsx — THE schedule: a clone of the builder (scheduler.jsx) with every
-   editing control removed. Same grid, same layout, same week and office controls. It
-   shows the whole office — everyone's names and hours — for every person who opens it,
-   and only weeks a manager has published. Nothing here writes.
+/* scheduleread.jsx — THE schedule: the published week for every office, everyone's shifts,
+   readable by everyone, plus the personal actions that used to live on a separate page —
+   your note, offering a shift you can't work, claiming an offered one, and blackout dates.
+   It is a clone of the builder (scheduler.jsx) with every editing control removed, so the
+   grid, week/office/view controls and phone layout match exactly. Only weeks a manager has
+   published are ever shown; the server strips other people's shift notes and never sends a
+   draft.
 
    It is a clone on purpose: the builder is not modified to serve two jobs.
 
-   Original header follows.
-
-   scheduler.jsx — schedule builder (full rewrite per SCHEDULER.md).
-   Click-to-edit only (D9). Weekly grid, any week (past/future). Shift form has
-   presets AND typed times (D10). Everyone on the office roster appears (D11);
-   the by-Department view groups on the employee record's department field.
-   Publishing locks per office, per week (D5). Supervisor edits to a published
-   week queue for manager approval; the server decides, never the client.
-   No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. */
+   SchedulePage (bottom of this file) is the page itself: this view, plus the Builder as a
+   second tab for anyone who may schedule. */
 
 const RoSCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
 
@@ -108,98 +104,79 @@ function RoofficeRoster(office) {
 const RodeptHue = (() => { const cache = {}; let i = 0; const hues = [220, 155, 280, 75, 195, 25, 320, 110]; return d => (d in cache ? cache[d] : (cache[d] = hues[i++ % hues.length])); })();
 
 /* one shift block in the grid.
-   `pub` = published (the committed green state); `ot` = this person's week is over
-   their overtime threshold; `note` shows under the time with a speech bubble. */
-function RoSchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEnd, dragging }) {
-  const open = !!s.open, off = !!s.offered, pub = !!s.pub;
+   `pub` = published (the committed green state); `mineActions`, when given, renders under
+   the shift — the offer/withdraw/claim-pending controls for the viewer's own shift. */
+function RoSchedShift({ s, hue, multi, hi, mineActions }) {
+  /* two different things share `s.open`: no empId = UNASSIGNED (sits in the Open shifts
+     lane, nobody on it yet); empId + open = UP FOR GRABS (still this person's shift until
+     a claim is approved). Same styling either way — only the label text differs. */
+  const open = !!s.open, unassigned = !s.empId, off = !!s.offered, pub = !!s.pub;
   const tint = open ? 'oklch(0.7 0.14 75)' : off ? 'oklch(0.65 0.16 320)' : pub ? 'oklch(0.68 0.14 150)' : `oklch(0.65 0.13 ${hue})`;
   const edge = open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})`;
   const label = open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : pub ? 'oklch(0.44 0.13 150)' : `oklch(0.5 0.14 ${hue})`;
   return (
-    <button onClick={onClick} className="sched-shift" draggable={!!onDragStart} onDragStart={onDragStart} onDragEnd={onDragEnd}
-      style={{ display: 'block', width: '100%', textAlign: 'left', cursor: onDragStart ? 'grab' : 'pointer', border: 'none', position: 'relative',
+    <div className="sched-shift" style={{ display: 'block', width: '100%', textAlign: 'left', position: 'relative',
       background: `color-mix(in oklab, ${tint} ${pub && !open && !off ? 20 : open ? 18 : 16}%, var(--surface))`,
       borderLeft: `3px solid ${edge}`,
-      boxShadow: ot ? 'inset 0 0 0 1.5px oklch(0.58 0.19 25)' : 'none',
-      borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dragging ? 0.4 : dim ? 0.35 : 1,
+      borderRadius: 'var(--r-sm)', padding: '5px 8px',
       outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
-      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}{ot ? <span title="Over their weekly hours" style={{ marginLeft: 4, color: 'oklch(0.55 0.19 25)' }}>⚠</span> : null}</span>
+      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}</span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
-        {open ? 'Open shift' : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
+        {open ? (unassigned ? 'Unassigned' : 'Up for grabs') : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}
       </span>
       {s.note && <span style={{ display: 'flex', alignItems: 'flex-start', gap: 3, fontSize: 10, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.35 }}><Icon name="chat" style={{ width: 10, height: 10, flex: 'none', marginTop: 1 }} /> {s.note}</span>}
-    </button>
+      {mineActions}
+    </div>
   );
 }
 
 function ScheduleRead({ me, access }) {
-  const onBack = null;
   const OFFICES = useMemo(() => RoschedOffices(), []);
-  const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
-  /* org config is Admin / HR / Leadership on the server; mirror it so the menu entry only
-     shows to someone whose save would actually be accepted */
-  const canOrg = !!(access && access.flags && (access.flags.isAdmin || access.flags.isHR || access.flags.isExec));
   /* Opens on the office she is scheduled at this week. Two offices in one week is normal,
      so the chips stay and she can add or switch. Falls back to her home office when she
      has no shifts that week, so the page is never blank for a reason she can't see. */
   const [offices, setOffices] = useState(() => (me.loc && OFFICES.includes(me.loc)) ? [me.loc] : OFFICES.slice(0, 1));
   const pickedRef = useRef(false);
-  const [myShifts, setMyShifts] = useState([]);
+  /* Every published shift for the week, across every office — not just the ones selected
+     above. This is where "her own shifts across offices", the swap board and blackout
+     conflict checks all draw from; the grid below still scopes to `offices`. */
+  const [allShifts, setAllShifts] = useState([]);
   const [tick, setTick] = useState(0);
   const [weekKey, setWeekKey] = useState(() => thisWeekKey());
   const [view, setView] = useState('dept');
   const [docs, setDocs] = useState({});           // office → week doc
   const [requests, setRequests] = useState([]);   // edits / swaps / blackouts, scoped
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null);       // { office, empId|null, date, shift|null }
-  const search = '';
   const [dept, setDept] = useState('');           // '' = every department
-  /* hours-first by default: whoever is closest to overtime belongs at the top, which is
-     the reason to look at this list at all */
-  const sortBy = 'name';                          // readers scan alphabetically
-  const [statusHi, setStatusHi] = useState(null); // empty | unpub | open
-  const focusEmp = null;
   const [collapsed, setCollapsed] = useState({}); // 'office|dept' → true
-  const [menu, setMenu] = useState(null);         // 'copy' | 'options' | null
-  const [tplModal, setTplModal] = useState(null); // 'save' | 'load'
-  const [regOpen, setRegOpen] = useState(false);  // regular-hours editor
-  const [impOpen, setImpOpen] = useState(false);  // CSV schedule import
-  const [regHours, setRegHours] = useState([]);   // standing weekly-hours profiles
-  const [templates, setTemplates] = useState([]);
+  const [boOpen, setBoOpen] = useState(false);
+  const [confirmClaim, setConfirmClaim] = useState(null); // shift pending claim confirm
   const [toast, setToast] = useState(null);
-  /* phone layout (see RouseSchedFit): which day is showing, and which sheet is open */
+  /* phone layout (see RouseSchedFit): which day is showing */
   const fit = RouseSchedFit();
   const narrow = fit.narrow;
   const [mDay, setMDay] = useState(null);       // ISO date | null = auto (today, else Mon)
   const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
 
   const days = useMemo(() => weekDaysFor(weekKey), [weekKey]);
+  const search = '';
   const roster = useMemo(() => {
     let r = offices.flatMap(RoofficeRoster);
-    if (search.trim()) { const q = search.trim().toLowerCase(); r = r.filter(p => p.name.toLowerCase().includes(q)); }
     if (dept) r = r.filter(p => p.dept === dept);
     return r;
-  }, [offices, search, dept]);
+  }, [offices, dept]);
   const multi = offices.length > 1;
-  /* unfiltered team for the regular-hours picker (the search box scopes the grid, not this) */
   const allRoster = useMemo(() => offices.flatMap(RoofficeRoster), [offices]);
   /* every department present across the selected offices — "only the Dental Assistants
      in the offices I pick", which the name-only search box could never do */
   const DEPTS = useMemo(() => [...new Set(allRoster.map(p => p.dept).filter(Boolean))].sort(), [allRoster]);
-  useEffect(() => { fetchRegHours().then(setRegHours).catch(() => setRegHours([])); }, []);
 
-  /* every displayed shift, tagged with its office */
-  /* only weeks a manager has published — a draft is not the schedule yet */
+  /* every displayed shift, tagged with its office — only weeks a manager has published */
   const shifts = useMemo(() => offices.flatMap(o => ((docs[o] && docs[o].published) ? ((docs[o].shifts) || []).map(s => ({ ...s, _office: o })) : [])), [docs, offices]);
-  const allWeekShifts = shifts; // conflict checks run against the loaded week
   const blackouts = useMemo(() => requests.filter(r => r.type === 'blackout' && r.status === 'approved'), [requests]);
-  const pending = useMemo(() => requests.filter(r =>
-    (r.type === 'edit' && r.status === 'pending') || (r.type === 'swap' && r.status === 'pending') ||
-    (r.type === 'blackout' && (r.status === 'hr_review' || r.status === 'mgr_review'))), [requests]);
 
-  const load = (force) => {
-    if (dirty && !force && !window.confirm('You have unpublished changes — loading discards them. Continue?')) return;
-    repeatsRef.current = []; setDirty(false); setLoading(true);
+  const load = () => {
+    setLoading(true);
     Promise.all([
       fetchSchedules({ offices, weekKey }).catch(() => []),
       fetchSchedRequests().catch(() => []),
@@ -210,30 +187,39 @@ function ScheduleRead({ me, access }) {
     });
   };
   useEffect(load, [offices.join('|'), weekKey]);
-  /* no Refresh button: the week reloads when a manager publishes one */
+  /* live update: a manager published a week, or someone acted on an offer/claim/blackout
+     anywhere — reload the grid and the cross-office data below */
   useEffect(() => {
     const onPub = () => { load(); setTick(t => t + 1); };
     window.addEventListener('pd-schedule-changed', onPub);
     return () => window.removeEventListener('pd-schedule-changed', onPub);
-  });
+  }, [offices.join('|'), weekKey]);
 
-  /* Her own shifts come from every office, not just the ones on screen — someone at
-     Hauppauge on Monday and Garden City on Tuesday has to see both in her own strip. */
+  /* her own shifts and the swap board both come from every office, not just the ones on
+     screen — someone at Hauppauge on Monday and Garden City on Tuesday has to see both in
+     her own strip, and a shift offered at an office she isn't currently viewing still has
+     to show up here to be claimed. */
   useEffect(() => {
     let dead = false;
     fetchSchedules({ weekKey }).then(list => {
       if (dead) return;
-      const mine = (list || []).filter(d => d.published).flatMap(d => (d.shifts || []).filter(s => s.empId === me.id).map(s => ({ ...s, _office: d.office })));
-      setMyShifts(mine);
+      const flat = (list || []).filter(d => d.published).flatMap(d => (d.shifts || []).map(s => ({ ...s, _office: d.office })));
+      setAllShifts(flat);
       /* first load of the first week decides which office the page opens on */
-      if (!pickedRef.current && mine.length) {
-        pickedRef.current = true;
-        const her = Array.from(new Set(mine.map(s => s._office).filter(Boolean)));
-        if (her.length) setOffices(her);
+      if (!pickedRef.current) {
+        const her = Array.from(new Set(flat.filter(s => s.empId === me.id).map(s => s._office).filter(Boolean)));
+        if (her.length) { pickedRef.current = true; setOffices(her); }
       }
-    }).catch(() => { if (!dead) setMyShifts([]); });
+    }).catch(() => { if (!dead) setAllShifts([]); });
     return () => { dead = true; };
   }, [weekKey, me.id, tick]);
+
+  const myShifts = useMemo(() => allShifts.filter(s => s.empId === me.id), [allShifts, me.id]);
+  /* teammates' offered shifts + manager-flagged unassigned/up-for-grabs ones — the swap board */
+  const board = useMemo(() => allShifts.filter(s => (s.offered || s.open) && s.empId !== me.id), [allShifts, me.id]);
+  const myBlackouts = useMemo(() => requests.filter(r => r.type === 'blackout' && r.empId === me.id), [requests, me.id]);
+  const mySwaps = useMemo(() => requests.filter(r => r.type === 'swap' && (r.toEmpId === me.id || r.fromEmpId === me.id)), [requests, me.id]);
+  const pendingClaimIds = useMemo(() => new Set(requests.filter(r => r.type === 'swap' && r.status === 'pending').map(r => r.shiftId)), [requests]);
 
   const myWeek = useMemo(() => days.map(d => ({
     day: d,
@@ -244,218 +230,49 @@ function ScheduleRead({ me, access }) {
     return myShifts.slice().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).find(s => s.date >= today) || null;
   }, [myShifts]);
 
-  /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
-          Cosmos until Publish, which saves the week, locks it, and notifies.
-          One exception, because it's an approval queue rather than a save: a
-          SUPERVISOR editing a PUBLISHED week sends each change to the server
-          immediately so the manager can approve or reject it. ---- */
-  const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs; }, [docs]);
-  const [dirty, setDirty] = useState(false);
-  const applyLocal = (office, fn) => setDocs(d => {
-    const doc = d[office] || { id: `${weekKey}__${office}`, office, weekKey, published: false, shifts: [] };
-    return { ...d, [office]: { ...doc, shifts: fn(doc.shifts || []), _dirty: true } };
-  });
-  /* warn before the tab closes with unpublished local edits */
-  useEffect(() => {
-    const h = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
-    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
-  }, [dirty]);
-  const oneChange = async (office, change, localFn) => {
-    const doc = docsRef.current[office];
-    if (doc && doc.published && isSup) {
-      try {
-        const res = await schedAction({ action: 'edit', office, weekKey: change.weekKey || weekKey, change });
-        if (res.pending) { flash('Sent to your manager for approval — the schedule updates when they approve.'); fetchSchedRequests().then(setRequests).catch(() => {}); }
-      } catch (e) { flash('Change failed: ' + e.message); load(true); }
-      return;
+  /* ---- personal actions: offer a shift you can't work, retract it, claim someone else's
+          offered/unassigned one. Each is a server write with no local draft — the grid
+          always reflects what's actually saved, so a reload after any of these refreshes
+          both the office-scoped grid and the cross-office board/blackout data. ---- */
+  const refresh = () => { load(); setTick(t => t + 1); };
+  const offer = async (s) => {
+    try { await schedAction({ action: 'offer', office: s._office, weekKey, shiftId: s.id }); flash('Shift offered — teammates can now claim it; your manager approves the hand-off.'); refresh(); }
+    catch (e) { flash(e.message); }
+  };
+  const retract = async (s) => {
+    try { await schedAction({ action: 'retract', office: s._office, weekKey, shiftId: s.id }); flash('Offer withdrawn — the shift is yours again.'); refresh(); }
+    catch (e) { flash(e.message); }
+  };
+  const claim = async (s) => {
+    setConfirmClaim(null);
+    try { await schedAction({ action: 'claim', office: s._office, weekKey, shiftId: s.id }); flash('Claim sent to the manager — the schedule changes only when they approve.'); refresh(); }
+    catch (e) { flash(e.message); }
+  };
+  /* conflict check at claim time: warn, never block */
+  const startClaim = (s) => {
+    const c = shiftConflicts({ shifts: myShifts, blackouts: myBlackouts.filter(b => b.status === 'approved'), empId: me.id, date: s.date, start: s.start, end: s.end });
+    if (c.shifts.length || c.blackout) setConfirmClaim({ shift: s, conflict: c });
+    else claim(s);
+  };
+  /* the offer/withdraw/claim-pending controls rendered under the viewer's own shift chip */
+  const myShiftActions = (s) => {
+    if (s.empId !== me.id) return null;
+    if (s.offered) {
+      return pendingClaimIds.has(s.id)
+        ? <span style={{ display: 'block', marginTop: 5, fontSize: 10.5, color: 'var(--ink-3)' }}>claim awaiting manager</span>
+        : <button onClick={(e) => { e.stopPropagation(); retract(s); }} className="btn btn-quiet" style={{ marginTop: 5, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Withdraw offer</button>;
     }
-    applyLocal(office, localFn); setDirty(true);
-  };
-  const saveAll = async (office, nextShifts) => { applyLocal(office, () => nextShifts); setDirty(true); };
-  /* repeat copies aimed at OTHER weeks: held here until Publish, then written into
-     their own week documents (each week is its own doc in Cosmos) */
-  const repeatsRef = useRef([]); // [{ office, weekKey, shift }]
-
-  /* ---- shift form save / delete (incl. repeats §2.2) ---- */
-  const saveShift = async (form) => {
-    const base = { id: form.shift ? form.shift.id : newShiftId(), empId: form.empId, open: form.open || undefined, date: form.date, start: form.start, end: form.end };
-    if (Number(form.breakMins) > 0) base.breakMins = Math.round(Number(form.breakMins));
-    if (String(form.note || '').trim()) base.note = String(form.note).trim().slice(0, 280);
-    setModal(null);
-    await oneChange(form.office, { op: form.shift ? 'update' : 'add', shift: base }, list => [...list.filter(s => s.id !== base.id), base]);
-    /* repeats: daily or weekly × N, each lands in its own week doc via the same
-       queued-or-applied edit action */
-    const extra = [];
-    if (form.repeat === 'daily') for (let i = 1; i <= form.repeatN; i++) extra.push(addDaysISO(form.date, i));
-    if (form.repeat === 'weekly') for (let i = 1; i <= form.repeatN; i++) extra.push(addDaysISO(form.date, i * 7));
-    for (const date of extra) {
-      const wk = weekKeyOf(date);
-      const copy = { ...base, id: newShiftId(), date };
-      if (wk === weekKey) await oneChange(form.office, { op: 'add', shift: copy }, list => [...list, copy]);
-      else { repeatsRef.current.push({ office: form.office, weekKey: wk, shift: copy }); setDirty(true); }
-    }
-    if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'} — saved when you publish.`);
-  };
-  const deleteShift = async (form) => {
-    setModal(null);
-    await oneChange(form.office, { op: 'remove', shiftId: form.shift.id }, list => list.filter(s => s.id !== form.shift.id));
+    if (!s.open) return <button onClick={(e) => { e.stopPropagation(); offer(s); }} className="btn btn-ghost" style={{ marginTop: 5, padding: '3px 9px', fontSize: 11, width: '100%', justifyContent: 'center' }}>Can’t work — offer it</button>;
+    return <span style={{ display: 'block', marginTop: 5, fontSize: 10.5, fontWeight: 700, color: 'oklch(0.45 0.12 65)' }}>Up for grabs — yours until a claim is approved</span>;
   };
 
-  /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
-  const unpubCount = shifts.filter(s => !s.pub).length;
-  const [pubAsk, setPubAsk] = useState(false);   // publish-type step
-  const [wkAsk, setWkAsk] = useState(false);     // which weekday a week starts on
-  const publish = async (notifyMode) => {
-    setPubAsk(false);
-    /* save-then-publish, per office: this is the ONLY write path for drafts.
-       An office whose shifts were emptied locally (Options → Delete all shifts) must
-       still be saved — skipping it left the deletion unwritten and load() pulled the
-       old shifts straight back, so "delete all" silently did nothing. Only skip an
-       office with nothing saved AND nothing to save. */
-    for (const office of offices) {
-      const doc = docsRef.current[office];
-      if (!doc) continue;
-      if (!(doc.shifts || []).length && !doc._dirty) continue;
-      if (doc._dirty) {
-        try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
-        catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
-      }
-      try {
-        const res = await schedAction({ action: 'publish', office, weekKey, notify: notifyMode });
-        const n = res.notify; const parts = [];
-        if (n && !n.simulated) { if (n.gchat) parts.push('Google Chat'); if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`); }
-        const who = res.notified === 0 ? 'nobody to notify'
-          : `${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified${res.mode === 'updates' ? ' (changes only)' : ''}`;
-        flash(`${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`);
-      } catch (e) { flash(office + ' publish failed: ' + e.message); }
-    }
-    /* write the held repeat copies into their future weeks (saved, not published —
-       you publish those weeks when you build them) */
-    for (const r of repeatsRef.current.splice(0)) {
-      try { await schedAction({ action: 'edit', office: r.office, weekKey: r.weekKey, change: { op: 'add', shift: r.shift } }); }
-      catch (e) { flash(`Repeat for week of ${r.weekKey} failed: ` + e.message); }
-    }
-    setDirty(false);
-    load(true);
-  };
-
-  /* ---- lay standing regular hours onto the week ----
-     `mode` 'empty' fills only slots with nothing in them; 'rebuild' replaces whatever is
-     on the days a person's profile covers, which is the auto-schedule people expect.
-
-     This iterates PEOPLE, not offices, and routes each day to the office named on that
-     day of the profile. Iterating offices and taking RoofficeRoster(office) — everyone whose
-     HOME is that office — was the bug: someone working Monday at one site and Tuesday at
-     another got built into their home office all week, silently, in the wrong place. */
-  const fillFromRegular = async (mode) => {
-    setMenu(null);
-    const rebuild = mode === 'rebuild';
-    /* a shift may land in an office that isn't currently displayed; collect them so the
-       week can be pulled into view, because publish() only writes the selected offices —
-       an invisible shift would never be published and would look like data loss */
-    const byOffice = {};
-    const bucket = o => (byOffice[o] = byOffice[o] || { add: [], drop: new Set() });
-    let skipped = 0;
-
-    allRoster.forEach(p => {
-      if (!regHoursFor(regIndex, p)) { skipped++; return; }
-      days.forEach(d => {
-        const reg = regHoursOnDate(regIndex, p, d.date);
-        if (!reg) return;
-        const office = reg.office || p.office;
-        if (!office) return;
-        const existing = shifts.filter(s => s.empId === p.id && s.date === d.date);
-        if (existing.length && !rebuild) return;                 /* 'empty' never overwrites */
-        if (existing.length && rebuild) existing.forEach(s => bucket(s._office).drop.add(s.id));
-        const sh = { id: newShiftId(), empId: p.id, date: d.date, start: reg.start, end: reg.end };
-        if (reg.breakMins > 0) sh.breakMins = reg.breakMins;
-        bucket(office).add.push(sh);
-      });
-    });
-
-    const touched = Object.keys(byOffice);
-    let added = 0;
-    for (const office of touched) {
-      const { add, drop } = byOffice[office];
-      const cur = ((docsRef.current[office] && docsRef.current[office].shifts) || []).filter(s => !drop.has(s.id));
-      if (!add.length && !drop.size) continue;
-      await saveAll(office, [...cur, ...add]);
-      added += add.length;
-    }
-    /* bring any office we just wrote into the current selection so it is visible AND
-       publishable — writing somewhere you can't see is worse than not writing at all */
-    const unseen = touched.filter(o => !offices.includes(o));
-    if (unseen.length) setOffices(cur => [...new Set([...cur, ...unseen])]);
-
-    if (!added) flash(skipped ? 'No regular hours set for anyone in view — set them under Options → Regular hours.' : 'Everyone with regular hours is already scheduled.');
-    else flash(`${rebuild ? 'Built' : 'Filled'} ${added} shift${added === 1 ? '' : 's'} from regular hours${unseen.length ? ' — added ' + unseen.join(', ') + ' to the view' : ''}. Saved when you publish.`);
-  };
-
-  /* ---- copy & templates (§3.3) ---- */
-  const copyLastWeek = async () => {
-    setMenu(null);
-    const prev = addWeeks(weekKey, -1);
-    for (const office of offices) {
-      try {
-        const [prevDoc] = await fetchSchedules({ office, weekKey: prev });
-        if (!prevDoc || !(prevDoc.shifts || []).length) { flash(`Nothing saved for ${office} last week.`); continue; }
-        const moved = prevDoc.shifts.map(s => ({ ...s, id: newShiftId(), pub: undefined, offered: undefined, offeredBy: undefined, date: addDaysISO(s.date, 7) }));
-        const cur = (docs[office] && docs[office].shifts) || [];
-        await saveAll(office, [...cur, ...moved]);
-        flash(`Copied ${moved.length} shifts from last week into ${office}.`);
-      } catch (e) { flash('Copy failed: ' + e.message); }
-    }
-  };
-  const openTpl = (kind) => { setMenu(null); setTplModal(kind); if (kind === 'load') fetchSchedTemplates(offices[0]).then(setTemplates).catch(() => setTemplates([])); };
-  const saveTemplate = async (name) => {
-    setTplModal(null);
-    const office = offices[0];
-    const tShifts = ((docs[office] && docs[office].shifts) || []).map(s => ({ empId: s.empId, open: s.open, dow: Math.max(0, Math.round((parseISO(s.date) - parseISO(weekKey)) / 86400000)), start: s.start, end: s.end, breakMins: s.breakMins }));
-    try { await schedAction({ action: 'template_save', office, name, shifts: tShifts }); flash(`Template “${name}” saved for ${office}.`); }
-    catch (e) { flash('Template save failed: ' + e.message); }
-  };
-  const loadTemplate = async (tpl) => {
-    setTplModal(null);
-    const office = offices[0];
-    const cur = (docs[office] && docs[office].shifts) || [];
-    const added = (tpl.shifts || []).map(s => ({ id: newShiftId(), empId: s.empId, open: s.open || undefined, date: addDaysISO(weekKey, s.dow), start: s.start, end: s.end, breakMins: Number(s.breakMins) || undefined }));
-    await saveAll(office, [...cur, ...added]);
-    flash(`Loaded “${tpl.name}” — ${added.length} shifts added.`);
-  };
-
-  /* ---- options: bulk actions on what's displayed (WYSIWYG, §3.2) ---- */
-  const bulk = async (kind) => {
-    setMenu(null);
-    for (const office of offices) {
-      const cur = (docs[office] && docs[office].shifts) || [];
-      if (!cur.length) continue;
-      if (kind === 'unassign') await saveAll(office, cur.map(s => ({ ...s, open: true, offered: undefined, offeredBy: undefined })));
-      if (kind === 'delete') await saveAll(office, []);
-    }
-    if (kind === 'delete') flash('All displayed shifts deleted.');
-    if (kind === 'unassign') flash('All displayed shifts are now open (unassigned).');
-  };
-
-  /* ---- status counts (§3.2) ---- */
-  const openCount = shifts.filter(s => s.open || s.offered).length;
-  const emptyCount = roster.reduce((a, p) => a + days.filter(d => !shifts.some(s => s.empId === p.id && s.date === d.date)).length, 0);
-
-  /* ---- per-person totals & sort ---- */
-  const hoursOf = pid => shifts.filter(s => s.empId === pid && !s.open).reduce((a, s) => a + shiftHrs(s), 0);
-  /* overtime (MH #5): whose displayed week passes their threshold (own, else standard 40) */
-  const regIndex = useMemo(() => regHoursIndex(regHours), [regHours]);
-  const otIds = useMemo(() => {
-    const set = new Set();
-    allRoster.forEach(p => { if (hoursOf(p.id) > otThreshold(regIndex, p)) set.add(p.id); });
-    return set;
-  }, [allRoster, shifts, regIndex]);
   /* ---- row groups ----
      Dept view: one group per office+department ("Clinical Team — Islandia").
      Membership = everyone whose HOME office is that office (so unscheduled people
      have a row to click) PLUS anyone with a shift AT that office this week, even
      if their home is elsewhere — each row shows only that office's shifts. */
   const rows = useMemo(() => {
-    const list = focusEmp ? roster.filter(p => p.id === focusEmp) : roster;
+    const list = roster;
     if (view === 'person') {
       const seen = new Set();
       const people = list.filter(p => seen.has(p.id) ? false : seen.add(p.id)).sort((a, b) => a.name.localeCompare(b.name));
@@ -469,14 +286,13 @@ function ScheduleRead({ me, access }) {
       groups[k] = groups[k] || { office, dept: p.dept, people: [] };
       if (!groups[k].people.some(x => x.id === p.id)) groups[k].people.push(p);
     };
-    list.forEach(p => { if (!focusEmp || p.id === focusEmp) put(p.office, p); });
+    list.forEach(p => put(p.office, p));
     /* guests: scheduled at an office that isn't their home */
     shifts.forEach(s => {
       if (!s.empId) return;
       const e = all.find(x => x.id === s.empId);
       if (!e || (e.loc || e.location) === s._office) return;
       if (q && !(e.name || '').toLowerCase().includes(q)) return;
-      if (focusEmp && e.id !== focusEmp) return;
       const d = e.department || 'Unassigned';
       if (dept && d !== dept) return;   /* guests obey the department filter too */
       put(s._office, { id: e.id, name: e.name, dept: d, office: s._office });
@@ -484,66 +300,22 @@ function ScheduleRead({ me, access }) {
     return Object.values(groups)
       .sort((a, b) => a.dept.localeCompare(b.dept) || a.office.localeCompare(b.office))
       .map(g => ({ ...g, people: g.people.sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [roster, view, focusEmp, shifts, search, dept]);
+  }, [roster, view, shifts, dept]);
 
   /* dept view rows show only that group's office; person view shows all selected */
   const cellShifts = (pid, date, office) => shifts.filter(s => s.empId === pid && s.date === date && (!office || s._office === office));
-  /* Shifts with nobody on them. They cannot sit on a person's row — there is no person —
-     so they get a lane of their own at the top of the grid, which is also where a manager
-     looks to see what still needs covering. */
-  /* ---- drag and drop (desktop only) ----
-     Added ALONGSIDE click-to-edit, not replacing it: clicking a slot still opens the form,
-     and that stays the way to create or change a shift. Dragging only MOVES an existing
-     one — to another day, another person, or another office — because that is the bit
-     muscle memory reaches for and the bit clicking is clumsy at.
-
-     Not offered on the phone layout: it shows one day at a time in a single column, so
-     there is nothing to drag across, and a long-press to pick up fights with scrolling.
-
-     A move across offices is two edits, not one — a shift lives inside its office's week
-     document, so it is removed from one and added to the other. */
-  const [drag, setDrag] = useState(null);        // the shift being carried
-  const [dropAt, setDropAt] = useState(null);    // 'empId|date|office' currently under it
-  const moveShift = async (s2, toEmpId, toDate, toOffice) => {
-    setDrag(null); setDropAt(null);
-    const sameSlot = s2.empId === (toEmpId || '') && s2.date === toDate && s2._office === toOffice;
-    if (sameSlot) return;
-    const moved = { ...s2, empId: toEmpId || '', date: toDate };
-    delete moved._office; delete moved.pub;      /* moved = unpublished again */
-    if (!toEmpId) moved.open = true; else delete moved.open;
-    if (s2._office === toOffice) {
-      await oneChange(toOffice, { op: 'update', shift: moved }, list => [...list.filter(x => x.id !== moved.id), moved]);
-    } else {
-      const landed = { ...moved, id: newShiftId() };
-      await oneChange(s2._office, { op: 'remove', shiftId: s2.id }, list => list.filter(x => x.id !== s2.id));
-      await oneChange(toOffice, { op: 'add', shift: landed }, list => [...list, landed]);
-    }
-  };
-  const dropProps = (toEmpId, toDate, toOffice) => {
-    const key = (toEmpId || '') + '|' + toDate + '|' + toOffice;
-    return {
-      onDragOver: e => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropAt !== key) setDropAt(key); } },
-      onDragLeave: () => { if (dropAt === key) setDropAt(null); },
-      onDrop: e => { e.preventDefault(); },
-      'data-drop': dropAt === key ? 'on' : undefined,
-    };
-  };
-  const isDropping = (toEmpId, toDate, toOffice) => dropAt === ((toEmpId || '') + '|' + toDate + '|' + toOffice);
 
   const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
   const openOn = (date) => openLane.filter(s => s.date === date);
   /* a blackout is a person's own time-off request — shown only on their own row */
   const boFor = (pid, date) => pid === me.id && blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
-  const published = offices.every(o => docs[o] && docs[o].published);
-  const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
   const colTemplate = `${fit.name}px repeat(7, minmax(${fit.day}px, 1fr))`;
-  const dim = s => statusHi === 'unpub' ? !!s.pub : statusHi === 'open' ? !(s.open || s.offered) : false;
 
   const toggleOffice = (o) => setOffices(cur => cur.length === OFFICES.length ? [o] : cur.includes(o) ? (cur.length > 1 ? cur.filter(x => x !== o) : cur) : [...cur, o]);
 
   /* ================= PHONE LAYOUT =================
      A separate render path, reached only when RouseSchedFit() says the week grid cannot fit. The desktop
-     return below is untouched: same state, same handlers, same RoShiftModal. One axis at a
+     return below is untouched: same state, same handlers. One axis at a
      time — a week strip picks the day, the body lists that day's people in one column.
      Everything here is namespaced .schm-* in styles.css so it cannot reach the desktop. */
   if (narrow) {
@@ -559,14 +331,13 @@ function ScheduleRead({ me, access }) {
     }).filter(g => g.on.length || g.off.length);
     const dayTotal = dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.filter(s => !s.open).length, 0), 0);
     const dayHrs = Math.round(dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.reduce((c, s) => c + (s.open ? 0 : shiftHrs(s)), 0), 0), 0) * 10) / 10;
-    const openSlot = (office, empId) => void 0;
 
     return (
       <StepShell icon="grid" eyebrow="Scheduling" title="Schedule"
         subtitle="The published week. Pick a day to see who is on.">
 
-        {/* Week: name, back, forward, refresh. No menus anywhere on this screen — every
-           control from the desktop screen is drawn where it belongs. */}
+        {/* Week: name, back, forward, refresh, blackout dates. No menus anywhere on this
+           screen — nothing here writes to the schedule except your own offer/claim/blackout. */}
         <div className="schm-weekrow">
           <button className="schm-nav" onClick={() => setWeekKey(k => addWeeks(k, -1))} aria-label="Previous week"><Icon name="chevron" style={{ width: 18, height: 18, transform: 'rotate(180deg)' }} /></button>
           <button className="schm-weeknow" onClick={() => setWeekKey(thisWeekKey())}>
@@ -577,13 +348,8 @@ function ScheduleRead({ me, access }) {
           <button className="schm-nav" onClick={load} aria-label="Refresh"><Icon name="refresh" style={{ width: 18, height: 18 }} /></button>
         </div>
 
-        {/* the four ways to fill a week in from something else */}
         <div className="schm-acts">
-          <button onClick={copyLastWeek}>Copy last week</button>
-          <button onClick={() => fillFromRegular('empty')}>Fill empties from regular hours</button>
-          <button onClick={() => fillFromRegular('rebuild')}>Build week from regular hours</button>
-          <button onClick={() => openTpl('save')}>Save as template</button>
-          <button onClick={() => openTpl('load')}>Load template</button>
+          <button onClick={() => setBoOpen(true)}>Blackout dates</button>
         </div>
 
         <div className="schm-acts">
@@ -608,7 +374,6 @@ function ScheduleRead({ me, access }) {
           </select>
         )}
 
-        {/* the week, as seven tap targets — the second axis without rendering it */}
         <div className="schr-next">
           {myNext ? (
             <>
@@ -619,6 +384,7 @@ function ScheduleRead({ me, access }) {
           ) : <span className="schr-next-lbl">Nothing scheduled for you this week</span>}
         </div>
 
+        {/* the week, as seven tap targets — the second axis without rendering it */}
         <div className="schm-strip">
           {days.map(d => {
             const on = d.date === dayISO, n = nOn(d.date), o = nOpenOn(d.date);
@@ -637,26 +403,22 @@ function ScheduleRead({ me, access }) {
           <span className="mono schm-status-tot">{dayTotal} today · {dayHrs}h</span>
         </div>
 
-
-
         {openOn(dayISO).length > 0 && (
           <div className="schm-group">
             <div className="schm-group-head" style={{ background: 'var(--warn-soft)', color: 'oklch(0.42 0.11 60)' }}>
               <Icon name="bell" style={{ width: 13, height: 13, flex: 'none' }} />
-              <span>Open shifts</span>
+              <span>Unassigned</span>
               <small>{openOn(dayISO).length} unassigned</small>
             </div>
             {openOn(dayISO).map(s2 => (
-              <button key={s2.id} className="schm-row" style={{ borderLeftColor: 'var(--warn)' }}
-                onClick={undefined}>
+              <div key={s2.id} className="schm-row" style={{ borderLeftColor: 'var(--warn)' }}>
                 <span className="schm-row-txt">
-                  <span className="schm-row-name">Open shift</span>
+                  <span className="schm-row-name">Unassigned</span>
                   <span className="schm-row-time mono">{shiftRange(s2)}</span>
                   <span className="schm-row-sub">{shiftHrs(s2)}h{multi ? ' · ' + s2._office : ''}</span>
                   {s2.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s2.note}</span>}
                 </span>
-                <Icon name="chevron" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -679,53 +441,83 @@ function ScheduleRead({ me, access }) {
                 <>
                   {g.on.map(({ p, list }) => list.map(s => {
                     const bo = boFor(p.id, dayISO);
+                    const mine = p.id === me.id;
                     return (
-                      <button key={s.id} className="schm-row" onClick={undefined}
-                        style={{ opacity: dim(s) ? 0.35 : 1, borderLeftColor: s.open ? 'var(--warn)' : s.offered ? 'oklch(0.6 0.16 320)' : s.pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})` }}>
+                      <div key={s.id} className="schm-row"
+                        style={{ borderLeftColor: s.open ? 'var(--warn)' : s.offered ? 'oklch(0.6 0.16 320)' : s.pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})` }}>
                         <Avatar name={p.name} size={38} style={{ background: `linear-gradient(150deg, oklch(0.7 0.1 ${RodeptHue(p.dept)}), oklch(0.55 0.12 ${RodeptHue(p.dept)}))` }} />
                         <span className="schm-row-txt">
-                          <span className="schm-row-name">{p.name}</span>
+                          <span className="schm-row-name">{p.name}{mine ? ' · you' : ''}</span>
                           <span className="schm-row-time mono">{shiftRange(s)}</span>
                           <span className="schm-row-sub">
-                            {s.open ? 'Open shift' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
-                            {multi ? ` · ${s._office}` : ''}{!s.pub && !s.open ? ' · new' : ''}{bo ? ' · blackout' : ''}
+                            {s.open ? (s.empId ? 'Up for grabs' : 'Unassigned') : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
+                            {multi ? ` · ${s._office}` : ''}{bo ? ' · blackout' : ''}
                           </span>
                           {s.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s.note}</span>}
+                          {mine && myShiftActions(s)}
                         </span>
-                        <Icon name="chevron" style={{ width: 15, height: 15, color: 'var(--ink-3)', flex: 'none' }} />
-                      </button>
+                      </div>
                     );
                   }))}
                   {g.off.length > 0 && (
                     <div className="schm-off">
                       {g.off.map(({ p }) => (
-                        <button key={p.id} onClick={() => openSlot(g.office, p.id)} className={boFor(p.id, dayISO) ? 'bo' : ''}
-                          title={boFor(p.id, dayISO) ? 'Approved blackout — this person can’t work this day' : 'Not scheduled — tap to add'}>
+                        <span key={p.id} className={boFor(p.id, dayISO) ? 'bo' : ''}
+                          title={boFor(p.id, dayISO) ? 'Approved blackout — this person can’t work this day' : 'Not scheduled'}>
                           {p.name}{boFor(p.id, dayISO) ? ' ⃰' : ''}
-                        </button>
+                        </span>
                       ))}
                     </div>
                   )}
-
                 </>
               )}
             </div>
           );
         })}
 
+        {board.length > 0 && (
+          <div className="schm-group">
+            <div className="schm-group-head" style={{ background: 'oklch(0.96 0.04 320)', color: 'oklch(0.45 0.15 320)' }}>
+              <Icon name="refresh" style={{ width: 13, height: 13, flex: 'none' }} />
+              <span>Up for grabs this week</span>
+            </div>
+            {board.sort((a, b) => a.date.localeCompare(b.date)).map(s => {
+              const owner = schedAll().find(e => e.id === s.empId);
+              const claimed = pendingClaimIds.has(s.id);
+              return (
+                <div key={s.id + s._office} className="schm-row">
+                  <span className="schm-row-txt">
+                    <span className="schm-row-name">{s.date} · {shiftRange(s)}</span>
+                    <span className="schm-row-sub">{s.empId ? `${owner ? owner.name + "'s shift, " : ''}up for grabs` : 'Unassigned'} · {s._office}</span>
+                  </span>
+                  {claimed ? <span className="badge badge-warn" style={{ fontSize: 10.5 }}>claim pending</span> :
+                    <button className="btn btn-primary" style={{ padding: '4px 13px', fontSize: 12 }} onClick={() => startClaim(s)}>Claim</button>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {toast && (
           <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 95, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
             <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
           </div>
         )}
+
+        {boOpen && <BlackoutModal onClose={() => setBoOpen(false)} onSubmit={async (dates, reason) => {
+          setBoOpen(false);
+          try { await schedAction({ action: 'blackout_submit', dates, reason }); flash('Blackout request sent — HR confirms PTO first, then your manager approves.'); refresh(); }
+          catch (e) { flash(e.message); }
+        }} />}
+        {confirmClaim && <ClaimConfirm confirmClaim={confirmClaim} onCancel={() => setConfirmClaim(null)} onClaim={() => claim(confirmClaim.shift)} />}
       </StepShell>
     );
   }
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule"
-      subtitle="The published week for each office — who is on, and when. Your own shifts are marked."
-      >
+      subtitle="The published week for each office — who is on, and when. Your own shifts are marked; offer one you can't work, or claim one that's up for grabs."
+      aside={<button className="btn btn-ghost" onClick={() => setBoOpen(true)}><Icon name="calendar" /> Blackout dates</button>}>
 
       {/* her week first — one line per day, short enough that the office grid stays in view */}
       <div className="schr-mine">
@@ -777,7 +569,6 @@ function ScheduleRead({ me, access }) {
         </select>
       </div>
 
-
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--gap)', alignItems: 'start' }}>
         {/* the grid — minWidth:0 lets the 1fr track shrink below the 900px inner min-content,
             so the overflowX:auto scroller below actually scrolls instead of pushing the page.
@@ -802,21 +593,14 @@ function ScheduleRead({ me, access }) {
                   <div style={{ padding: '8px 13px', display: 'flex', alignItems: 'center', gap: 8, borderRight: '1px solid var(--line)', minWidth: 0 }}>
                     <div style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--warn-soft)', color: 'oklch(0.45 0.12 60)' }}><Icon name="bell" style={{ width: 14, height: 14 }} /></div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>Open shifts</div>
+                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>Unassigned</div>
                       <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{openLane.length} unassigned</div>
                     </div>
                   </div>
                   {days.map(d => (
-                    <div key={d.date} className="sched-cell" onClick={undefined}
-                      {...dropProps('', d.date, offices[0])}
-                      style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer',
-                        background: isDropping('', d.date, offices[0]) ? 'var(--accent-soft)' : 'transparent',
-                        outline: isDropping('', d.date, offices[0]) ? '2px solid var(--accent)' : 'none', outlineOffset: -2 }}>
+                    <div key={d.date} style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3 }}>
                       {openOn(d.date).map(s => (
-                        <RoSchedShift key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
-                          dragging={drag && drag.id === s.id}
-                          onDragStart={undefined} onDragEnd={() => { setDrag(null); setDropAt(null); }}
-                          onClick={undefined} />
+                        <RoSchedShift key={s.id + s._office} s={s} hue={75} multi={multi} />
                       ))}
                     </div>
                   ))}
@@ -858,18 +642,10 @@ function ScheduleRead({ me, access }) {
                         const bo = boFor(p.id, d.date);
                         const isEmpty = list.length === 0;
                         return (
-                          <div key={d.date} onClick={undefined}
-                            className="sched-cell"
-                            {...dropProps(p.id, d.date, group.office || p.office)}
-                            style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3, cursor: 'default',
-                              background: isDropping(p.id, d.date, group.office || p.office) ? 'var(--accent-soft)'
-                                : bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
-                              outline: isDropping(p.id, d.date, group.office || p.office) ? '2px solid var(--accent)' : statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
+                          <div key={d.date} style={{ borderLeft: '1px solid var(--line-soft)', padding: 4, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 3,
+                              background: bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent' }}
                             title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <RoSchedShift key={s.id + s._office} s={s} hue={RodeptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
-                              dragging={drag && drag.id === s.id}
-                              onDragStart={undefined} onDragEnd={() => { setDrag(null); setDropAt(null); }}
-                              onClick={undefined} />)}
+                            {list.map(s => <RoSchedShift key={s.id + s._office} s={s} hue={RodeptHue(p.dept)} multi={multi && !group.office} mineActions={p.id === me.id ? myShiftActions(s) : null} />)}
                           </div>
                         );
                       })}
@@ -882,14 +658,64 @@ function ScheduleRead({ me, access }) {
             </div>
           </div>
 
-          {/* status overview bar (§3.2) — click to highlight */}
           <div style={{ display: 'flex', gap: 8, padding: '9px 14px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-3)' }} className="mono">{shifts.filter(s => !s.open).length} shifts · {Math.round(shifts.reduce((a, s) => a + (s.open ? 0 : shiftHrs(s)), 0))} hrs</span>
           </div>
         </div>
       </div>
 
-                                          
+      {/* swap board: teammates' offered shifts + unassigned/up-for-grabs shifts, company-wide */}
+      {board.length > 0 && (
+        <div className="card" style={{ marginTop: 'var(--gap)', padding: 'var(--pad)' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'oklch(0.45 0.15 320)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" style={{ width: 14, height: 14 }} /> Up for grabs this week</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {board.sort((a, b) => a.date.localeCompare(b.date)).map(s => {
+              const owner = schedAll().find(e => e.id === s.empId);
+              const claimed = pendingClaimIds.has(s.id);
+              return (
+                <div key={s.id + s._office} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13, padding: '8px 10px', borderRadius: 'var(--r-md)', background: !s.empId ? 'var(--warn-soft)' : 'oklch(0.96 0.04 320)' }}>
+                  <span className="mono" style={{ fontWeight: 700 }}>{s.date}</span>
+                  <span className="mono">{shiftRange(s)}</span>
+                  <span style={{ color: 'var(--ink-2)', flex: 1 }}>{!s.empId ? 'Unassigned' : s.open ? `${owner ? owner.name + "'s shift, " : ''}up for grabs` : `${owner ? owner.name : 'A teammate'} can’t work it`} · {s._office}</span>
+                  {claimed ? <span className="badge badge-warn" style={{ fontSize: 10.5 }}>claim pending approval</span> :
+                    <button className="btn btn-primary" style={{ padding: '4px 13px', fontSize: 12 }} onClick={() => startClaim(s)}>Claim</button>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* my blackout & swap requests, with where they sit in the approval chain */}
+      {(myBlackouts.length > 0 || mySwaps.length > 0) && (
+        <div className="card" style={{ marginTop: 'var(--gap)', padding: 'var(--pad)' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-3)', marginBottom: 10 }}>My requests</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+            {myBlackouts.map(b => (
+              <div key={b.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ flex: 1 }}>Blackout · {b.dates.join(', ')}{b.reason ? ` — ${b.reason}` : ''}</span>
+                <span className={'badge ' + (b.status === 'approved' ? 'badge-ok' : b.status === 'denied' ? 'badge-warn' : 'badge-prog')} style={{ fontSize: 10.5 }}>
+                  {b.status === 'hr_review' ? 'awaiting HR (PTO check)' : b.status === 'mgr_review' ? 'HR confirmed — awaiting manager' : b.status}
+                </span>
+              </div>
+            ))}
+            {mySwaps.map(r => (
+              <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ flex: 1 }}>{r.toEmpId === me.id ? `Claim on ${r.fromName}'s` : `${r.toName} claimed your`} {r.date} {fmt12(r.start)}–{fmt12(r.end)} shift</span>
+                <span className={'badge ' + (r.status === 'approved' ? 'badge-ok' : r.status === 'rejected' ? 'badge-warn' : 'badge-prog')} style={{ fontSize: 10.5 }}>{r.status === 'pending' ? 'awaiting manager' : r.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {boOpen && <BlackoutModal onClose={() => setBoOpen(false)} onSubmit={async (dates, reason) => {
+        setBoOpen(false);
+        try { await schedAction({ action: 'blackout_submit', dates, reason }); flash('Blackout request sent — HR confirms PTO first, then your manager approves.'); refresh(); }
+        catch (e) { flash(e.message); }
+      }} />}
+      {confirmClaim && <ClaimConfirm confirmClaim={confirmClaim} onCancel={() => setConfirmClaim(null)} onClaim={() => claim(confirmClaim.shift)} />}
+
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
           <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
@@ -899,352 +725,79 @@ function ScheduleRead({ me, access }) {
   );
 }
 
-/* Which weekday a schedule week starts on. Saved to org config, so it is one setting for
-   everyone rather than a per-person view preference — a week has to mean the same thing to
-   the manager building it and the employee reading it.
-
-   The warning is not decoration: a week document's id IS its start date, so changing this
-   makes today's date resolve to a different document. Weeks already saved don't move, and
-   nothing looks for them at the old id any more. */
-function RoWeekStartModal({ onSaved, onClose, flash }) {
-  const [pick, setPick] = useState(weekStart());
-  const [saving, setSaving] = useState(false);
-  const changed = pick !== weekStart();
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await saveOrgSection('weekStart', pick);
-      setWeekStart(pick);
-      flash('Week now starts on ' + (WEEK_STARTS.find(([k]) => k === pick) || [, ''])[1] + '.');
-      onSaved();
-    } catch (e) { flash('Could not save: ' + e.message); setSaving(false); }
-  };
-  return (
-    <RoSchedPortal>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
-      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 89, width: 'min(430px, 94vw)', maxHeight: '94vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <h3 style={{ fontSize: 17, marginBottom: 3 }}>Week starts on</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>Applies to everyone — the schedule builder, My schedule and notifications.</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {WEEK_STARTS.map(([k, label]) => (
-            <label key={k} style={{ display: 'flex', gap: 9, alignItems: 'center', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: pick === k ? 'var(--accent)' : 'var(--line)', background: pick === k ? 'var(--accent-softer)' : 'transparent' }}>
-              <input type="radio" name="wkstart" checked={pick === k} onChange={() => setPick(k)} />
-              <b style={{ fontSize: 13.5 }}>{label}</b>
-              {k === 1 && <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>default</span>}
-            </label>
-          ))}
-        </div>
-        {changed && (
-          <div style={{ marginTop: 13, padding: '10px 13px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.42 0.11 60)' }}>
-            <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> This re-buckets saved weeks</b>
-            <div style={{ marginTop: 3 }}>A week is stored under its start date. Weeks already built stay where they are, but they'll no longer line up with the new week boundaries — expect to rebuild any week that spans the change.</div>
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button onClick={save} disabled={!changed || saving} className="btn btn-primary"><Icon name="check" /> {saving ? 'Saving…' : 'Save'}</button>
-        </div>
-      </div>
-    </RoSchedPortal>
-  );
-}
-
-/* Publish-type step: notify everyone with a shift, or only the people whose
-   week actually changed. Shown on both layouts so the choice is never desktop-only. */
-function RoPublishAsk({ unpubCount, onPick, onClose }) {
-  const [mode, setMode] = useState('all');
-  return (
-    <RoSchedPortal>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
-      <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 89, width: 'min(430px, 94vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <h3 style={{ fontSize: 17, marginBottom: 3 }}>Publish schedule</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>
-          {unpubCount ? `${unpubCount} unpublished change${unpubCount === 1 ? '' : 's'}. ` : ''}Team members only see shifts once they're published.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {[['all', 'Publish all', 'Everyone with a shift this week is notified'],
-            ['updates', 'Publish updates', 'Only people whose shifts were added, changed or removed']].map(([id, label, hint]) => (
-            <label key={id} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: mode === id ? 'var(--accent)' : 'var(--line)', background: mode === id ? 'var(--accent-softer)' : 'transparent' }}>
-              <input type="radio" name="pubmode" checked={mode === id} onChange={() => setMode(id)} style={{ marginTop: 2 }} />
-              <span><b style={{ fontSize: 13.5 }}>{label}</b><span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)' }}>{hint}</span></span>
-            </label>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button onClick={() => onPick(mode)} className="btn btn-primary"><Icon name="check" /> Publish</button>
-        </div>
-      </div>
-    </RoSchedPortal>
-  );
-}
-
-/* small anchored dropdown */
-function RoDropdown({ items, onClose }) {
+/* claim-time conflict warning — shared by both layouts */
+function ClaimConfirm({ confirmClaim, onCancel, onClaim }) {
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-      <div className="card fade-in" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 41, width: 250, padding: 6, boxShadow: 'var(--shadow-lg)' }}>
-        {items.map(([t, s, fn, danger]) => (
-          <button key={t} onClick={fn} className="copy-item" style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '9px 11px', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: danger ? 'oklch(0.55 0.15 25)' : 'var(--ink)' }}>{t}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{s}</div>
-          </button>
-        ))}
+      <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
+      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(400px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <h3 style={{ fontSize: 16, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="bell" style={{ width: 16, height: 16, color: 'var(--warn)' }} /> Heads up — conflict</h3>
+        <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)' }}>
+          {confirmClaim.conflict.shifts.map(c => <p key={c.id} style={{ margin: '0 0 6px' }}>You already work {shiftRange(c)} on {c.date}.</p>)}
+          {confirmClaim.conflict.blackout && <p style={{ margin: '0 0 6px' }}>You have an approved blackout on {confirmClaim.shift.date}.</p>}
+          <p style={{ margin: 0 }}>You can still claim it — your manager decides.</p>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button onClick={onCancel} className="btn btn-ghost">Never mind</button>
+          <button onClick={onClaim} className="btn btn-primary">Claim anyway</button>
+        </div>
       </div>
     </>
   );
 }
 
-/* modals render through a portal to document.body: an ancestor with a CSS transform
-   makes position:fixed anchor to that ancestor instead of the viewport, which is why
-   the popup was landing mid-scroll-area instead of mid-screen */
-function RoSchedPortal({ children }) { return ReactDOM.createPortal(children, document.body); }
-
-/* ---- the shift form (§2.1, §2.2, §2.3): presets + typed times, repeats,
-        conflict warning that never blocks ---- */
-function RoShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
-  const s = modal.shift;
-  const [office, setOffice] = useState(modal.office);
-  const [open, setOpen] = useState(s ? !!s.open : !!modal.open);
-  const [empId, setEmpId] = useState(s ? (s.empId || '') : (modal.empId || ''));
-  const [date, setDate] = useState(modal.date);
-  const [start, setStart] = useState(s ? s.start : '09:00');
-  const [end, setEnd] = useState(s ? s.end : '17:00');
-  const [breakMins, setBreakMins] = useState(s ? (Number(s.breakMins) || 0) : DEFAULT_MEAL_BREAK);
-  const [note, setNote] = useState(s ? (s.note || '') : '');
-  const [repeat, setRepeat] = useState('none');
-  const [repeatN, setRepeatN] = useState(3);
-  const team = RoofficeRoster(office);
-  const others = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
-    .filter(e => e.status === 'Active' && (e.loc || e.location) !== office && !['', 'Unassigned'].includes(e.loc || e.location || ''))
-    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const emp = team.find(p => p.id === empId) || others.find(p => p.id === empId);
-
-  const conflict = useMemo(() => open || !empId ? { shifts: [], blackout: null } :
-    shiftConflicts({ shifts: weekShifts, blackouts, empId, date, start, end, excludeId: s && s.id }),
-    [empId, date, start, end, open]);
-  const hasConflict = conflict.shifts.length > 0 || !!conflict.blackout;
-  /* an open shift is valid with nobody on it — being unassigned is the point */
-  const valid = date && start && end && timeMins(end) > timeMins(start) && (empId || open);
-
-  const preset = SHIFT_PRESETS.find(p => p.start === start && p.end === end);
-
-  /* regular hours (MH #2/#5): the person's standing hours for this weekday, and
-     whether this week's total would pass their overtime threshold */
-  const reg = useMemo(() => empId && emp ? regHoursOnDate(regIndex, emp, date) : null, [regIndex, empId, date, emp]);
-  const useReg = () => { if (reg) { setStart(reg.start); setEnd(reg.end); setBreakMins(reg.breakMins); } };
-  const ot = useMemo(() => {
-    if (!empId || open || !valid) return null;
-    const limit = otThreshold(regIndex, emp || { id: empId });
-    const others = (weekShifts || []).filter(x => x.empId === empId && !x.open && x.id !== (s && s.id));
-    const total = others.reduce((a, x) => a + shiftHrs(x), 0) + shiftHrs({ start, end, breakMins });
-    const over = Math.round((total - limit) * 10) / 10;
-    return over > 0 ? { over, limit, total: Math.round(total * 10) / 10 } : null;
-  }, [regIndex, empId, open, valid, weekShifts, start, end, breakMins, emp]);
+/* blackout-date submission: pick dates, optional reason; HR → Manager */
+function BlackoutModal({ onClose, onSubmit }) {
+  const [dates, setDates] = useState([]);
+  const [pick, setPick] = useState('');
+  const [reason, setReason] = useState('');
+  const add = () => { if (pick && !dates.includes(pick)) setDates(d => [...d, pick].sort()); setPick(''); };
   return (
-    <RoSchedPortal>
+    <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-<div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 81, width: 'min(480px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 0, boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>{s ? 'Edit shift' : 'New shift'}</div>
-            <h3 style={{ fontSize: 17, margin: '2px 0 0' }}>{office} · {date}</h3>
-          </div>
-          <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
+      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <h3 style={{ fontSize: 16, marginBottom: 4 }}>Blackout dates</h3>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12, lineHeight: 1.5 }}>Days you can’t work. HR confirms you have the PTO to cover them, then your manager approves — only then do they take effect on the schedule.</p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <input type="date" value={pick} onChange={e => setPick(e.target.value)} style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
+          <button className="btn btn-ghost" disabled={!pick} onClick={add}><Icon name="plus" /> Add</button>
         </div>
-        <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 13 }}>
-          {ot && (
-            <div style={{ border: '1.5px solid oklch(0.58 0.19 25)', background: 'color-mix(in oklab, oklch(0.6 0.19 25) 10%, var(--surface))', borderRadius: 'var(--r-md)', padding: '10px 13px', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.45 0.16 25)' }}>
-              <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Regular working hours exceeded by {ot.over} {ot.over === 1 ? 'hour' : 'hours'}</b>
-              <div style={{ marginTop: 3 }}>This week would total <b className="mono">{ot.total}h</b> against a {ot.limit}h limit. You can still save.</div>
-            </div>
-          )}
-          {offices.length > 1 && !s && (
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Office
-              <select value={office} onChange={e => { setOffice(e.target.value); setEmpId(''); }} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
-                {offices.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </label>
-          )}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-            <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Employee
-              <select value={empId} onChange={e => setEmpId(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
-                <option value="">— pick —</option>
-                <optgroup label={office}>
-                  {team.map(p => <option key={p.id} value={p.id}>{p.name} · {p.dept}</option>)}
-                </optgroup>
-                <optgroup label="Other offices">
-                  {others.map(p => <option key={p.id} value={p.id}>{p.name} · {p.office}</option>)}
-                </optgroup>
-              </select>
-            </label>
-            {(
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', paddingBottom: 9, whiteSpace: 'nowrap', cursor: 'pointer' }} title="The shift stays on this row but is flagged open — visible for teammates to claim">
-                <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> Mark open
-              </label>
-            )}
+        {dates.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {dates.map(d => (
+              <span key={d} className="badge badge-prog" style={{ cursor: 'pointer' }} title="Remove" onClick={() => setDates(x => x.filter(y => y !== d))}>{d} ✕</span>
+            ))}
           </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Date
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
-          </label>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Time — pick a preset or type exact times</div>
-              {reg && (
-                <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
-                  Regular hours <span className="mono">{fmt12(reg.start)}–{fmt12(reg.end)}</span>
-                  <button onClick={useReg} className="btn btn-quiet" style={{ marginLeft: 6, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>Use</button>
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
-              {SHIFT_PRESETS.map(p => (
-                <button key={p.label} onClick={() => { setStart(p.start); setEnd(p.end); }}
-                  style={{ border: '1px solid', borderColor: preset && preset.label === p.label ? 'var(--accent)' : 'var(--line)', background: preset && preset.label === p.label ? 'var(--accent-soft)' : 'var(--surface)', color: preset && preset.label === p.label ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  {p.label} <span className="mono" style={{ opacity: 0.7 }}>{fmt12(p.start)}–{fmt12(p.end)}</span>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <input type="time" value={start} onChange={e => setStart(e.target.value)} style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
-              <span style={{ color: 'var(--ink-3)' }}>→</span>
-              <input type="time" value={end} onChange={e => setEnd(e.target.value)} style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
-              <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{valid ? shiftHrs({ start, end, breakMins }) + 'h' : '—'}</span>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 9, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Unpaid break
-              <input type="number" min="0" max="480" step="5" value={breakMins} onChange={e => setBreakMins(Math.max(0, Number(e.target.value) || 0))} className="mono" style={{ width: 68, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, background: 'var(--surface)' }} />
-              <span style={{ fontWeight: 600, color: 'var(--ink-3)' }}>minutes — deducted from the total{breakMins ? ` (${fmt12(start)}–${fmt12(end)} less ${breakLabel(breakMins)})` : ''}</span>
-            </label>
-          </div>
-          {!s && (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>Repeat
-                <select value={repeat} onChange={e => setRepeat(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }}>
-                  <option value="none">Don’t repeat</option>
-                  <option value="daily">Daily — following days</option>
-                  <option value="weekly">Weekly — same day, future weeks</option>
-                </select>
-              </label>
-              {repeat !== 'none' && (
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', width: 110 }}>× {repeat === 'daily' ? 'days' : 'weeks'}
-                  <input type="number" min="1" max="12" value={repeatN} onChange={e => setRepeatN(Math.min(12, Math.max(1, Number(e.target.value) || 1)))} className="mono" style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)' }} />
-                </label>
-              )}
-            </div>
-          )}
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chat" style={{ width: 13, height: 13 }} /> Note for this shift <span style={{ fontWeight: 600, color: 'var(--ink-3)' }}>— the employee sees it once published</span></span>
-            <textarea value={note} onChange={e => setNote(e.target.value.slice(0, 280))} rows="2" placeholder="e.g. Lab case manager — cover front desk at lunch" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)', resize: 'vertical', fontFamily: 'inherit' }}></textarea>
-          </label>
-          {hasConflict && (
-            <div style={{ border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', borderRadius: 'var(--r-md)', padding: '10px 13px', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.42 0.11 60)' }}>
-              <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Conflict</b>
-              {conflict.shifts.map(c => <div key={c.id}>{emp ? emp.name : 'They'} already work{emp ? 's' : ''} {shiftRange(c)} this day{c._office && c._office !== office ? ` at ${c._office}` : ''}.</div>)}
-              {conflict.blackout && <div>{emp ? emp.name : 'This person'} has an approved blackout on {date}.</div>}
-              <div style={{ marginTop: 4, fontWeight: 600 }}>You can still save — the warning never blocks.</div>
-            </div>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8, padding: '13px 20px 16px', borderTop: '1px solid var(--line)' }}>
-          {s && <button onClick={() => onDelete({ office, shift: s })} className="btn btn-ghost" style={{ color: 'oklch(0.55 0.15 25)' }}><Icon name="trash" /> Delete</button>}
-          <div style={{ flex: 1 }} />
+        )}
+        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (optional)" rows="2" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13.5, background: 'var(--surface)', resize: 'vertical', fontFamily: 'inherit' }}></textarea>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button disabled={!valid} onClick={() => onSave({ office, empId, open, date, start, end, breakMins, note, repeat, repeatN, shift: s })} className="btn btn-primary">
-            <Icon name="check" /> {hasConflict ? 'Save anyway' : 'Save shift'}
-          </button>
+          <button disabled={!dates.length} onClick={() => onSubmit(dates, reason)} className="btn btn-primary"><Icon name="check" /> Submit</button>
         </div>
       </div>
-    </RoSchedPortal>
+    </>
   );
 }
 
-/* ---- approvals inline panel: pending supervisor edits, swap claims, blackout
-        stages — the same items the notifications bar deep-links to ---- */
-function RoApprovalsPanel({ me, access, requests, onActed, flash }) {
-  const isMgr = !!(access && access.flags && (access.flags.isManager || access.flags.isAdmin));
-  const myEmail = ((me && me.workEmail) || '').toLowerCase();
-  const act = async (body, okMsg) => {
-    try { await schedAction(body); flash(okMsg); onActed(); }
-    catch (e) { flash(e.message); }
-  };
-  const label = r =>
-    r.type === 'edit' ? `${r.createdByName || r.createdBy} ${r.op === 'remove' ? 'removed a shift' : r.op === 'add' ? 'added a shift' : 'changed a shift'} · ${r.office} · wk ${r.weekKey}` :
-    r.type === 'swap' ? `${r.toName} wants ${r.fromName}'s ${r.date} ${fmt12(r.start)}–${fmt12(r.end)} shift · ${r.office}` :
-    `${r.name} — blackout ${r.dates.length === 1 ? r.dates[0] : r.dates[0] + ' +' + (r.dates.length - 1)}${r.reason ? ' · ' + r.reason : ''} · ${r.status === 'hr_review' ? 'awaiting HR (PTO check)' : 'awaiting manager'}`;
-  const actions = r => {
-    if (r.type === 'edit' && isMgr) return [['edit_decide', true, 'Approve'], ['edit_decide', false, 'Reject']];
-    if (r.type === 'swap' && isMgr) return [['swap_decide', true, 'Approve'], ['swap_decide', false, 'Reject']];
-    if (r.type === 'blackout' && r.status === 'mgr_review' && isMgr) return [['blackout_mgr', true, 'Approve'], ['blackout_mgr', false, 'Deny']];
-    if (r.type === 'blackout' && r.status === 'hr_review') return [['blackout_hr', true, 'PTO confirmed'], ['blackout_hr', false, 'Insufficient PTO']]; // server verifies the HR approver identity
-    return [];
-  };
-  const mine = requests.filter(r => actions(r).length || r.createdBy === myEmail);
-  if (!mine.length) return null;
+/* The page: the schedule everyone reads, and the builder for anyone who may schedule.
+   With no scheduling permission there is one view and no tab bar. */
+function SchedulePage({ me, access }) {
+  const canBuild = !!(access && access.caps && access.caps.schedule);
+  const [tab, setTab] = useState('schedule');
+  if (!canBuild) return <ScheduleRead me={me} access={access} />;
+  const Tab = ({ id, children }) => (
+    <button onClick={() => setTab(id)} style={{ border: 'none', background: 'none', padding: '9px 2px', margin: 0, cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'var(--font-display)',
+      color: tab === id ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: '2.5px solid ' + (tab === id ? 'var(--accent)' : 'transparent') }}>{children}</button>
+  );
   return (
-    <div className="card" style={{ padding: '12px 16px', marginBottom: 14, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
-      <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Pending approvals</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {mine.map(r => (
-          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
-            <span style={{ flex: 1, minWidth: 220 }}>{label(r)}</span>
-            {actions(r).map(([action, approve, text]) => (
-              <button key={text} className={approve ? 'btn btn-primary' : 'btn btn-ghost'} style={{ padding: '4px 12px', fontSize: 12 }}
-                onClick={() => act({ action, id: r.id, office: r.office, approve }, approve ? 'Approved.' : 'Rejected.')}>{text}</button>
-            ))}
-            {!actions(r).length && <span className="badge badge-warn" style={{ fontSize: 10.5 }}>waiting</span>}
-          </div>
-        ))}
+    <div>
+      <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid var(--line)', marginBottom: 18 }}>
+        <Tab id="schedule">Schedule</Tab>
+        <Tab id="builder">Builder</Tab>
       </div>
+      {tab === 'schedule' ? <ScheduleRead me={me} access={access} /> : <Scheduler me={me} access={access} />}
     </div>
   );
 }
 
-function RoNameModal({ title, hint, onSave, onClose }) {
-  const [name, setName] = useState('');
-  return (
-<>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(380px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <h3 style={{ fontSize: 16, marginBottom: 4 }}>{title}</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>{hint}</p>
-        <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Template name" onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onSave(name.trim()); }}
-          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 14, background: 'var(--surface)' }} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button disabled={!name.trim()} onClick={() => onSave(name.trim())} className="btn btn-primary"><Icon name="check" /> Save</button>
-        </div>
-      </div>
-</>
-  );
-}
-
-function RoLoadTplModal({ office, templates, onPick, onDelete, onClose }) {
-  return (
-<>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 80 }} />
-      <div className="card fade-in" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', maxHeight: '94vh', overflowY: 'auto', zIndex: 81, width: 'min(420px, 92vw)', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <h3 style={{ fontSize: 16, marginBottom: 4 }}>Load a template</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>Adds the template’s shifts to {office}’s displayed week.</p>
-        {templates.length === 0 && <div style={{ fontSize: 13.5, color: 'var(--ink-3)', padding: '10px 0' }}>No templates saved for {office} yet.</div>}
-        {templates.map(t => (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{(t.shifts || []).length} shifts</div>
-            </div>
-            <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => onPick(t)}>Load</button>
-            <button className="btn btn-quiet" style={{ padding: '4px 8px' }} title="Delete template" onClick={() => onDelete(t)}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>
-          </div>
-        ))}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
-        </div>
-      </div>
-</>
-  );
-}
-
-Object.assign(window, { ScheduleRead });
+Object.assign(window, { ScheduleRead, SchedulePage });
