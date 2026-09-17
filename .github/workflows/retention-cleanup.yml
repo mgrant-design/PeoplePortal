@@ -1,0 +1,13 @@
+name: Daily Retention Cleanup
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+jobs:
+  run_cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call retentionCleanup
+        run: |
+          curl -sf -X POST "https://nice-mud-064dd7610.7.azurestaticapps.net/api/retentionCleanup" \
+            -H "X-Retention-Secret: ${{ secrets.RETENTION_JOB_SECRET }}"

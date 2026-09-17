@@ -14,6 +14,7 @@
 const https = require('https');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
+const { logAudit } = require('../_shared/audit');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 // Only she may approve+send an offer — checked server-side, never trusted from the client.
@@ -122,6 +123,9 @@ module.exports = async function (context, req) {
       try { docs = (await listAll(coll)).map(strip); }
       catch (e) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', detail: e.message }) }; return; }
       if (!access.viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
+      // One audit entry per view request (not per record) — enough to answer "who looked
+      // at the pool and when" without a write per row on every page load.
+      logAudit({ subjectType: 'applicant', subjectId: 'pool', action: 'viewed', actorEmail: identity.email, detail: `Viewed ${docs.length} applicant record(s)` });
       context.res = { status: 200, headers, body: JSON.stringify({ applicants: docs }) };
       return;
     }
@@ -135,6 +139,39 @@ module.exports = async function (context, req) {
     // team-level callers may only write applicants at their own office
     if (!access.viewAll && normLoc(doc.office) !== myLoc) {
       context.res = { status: 403, headers, body: JSON.stringify({ error: 'Applicant is outside your office' }) }; return;
+    }
+
+    // One read of the prior record, reused below both to gate offer-status transitions and
+    // to diff for the audit log — avoids re-listing the whole container twice per write.
+    let prevRec = null;
+    try { prevRec = (await listAll(coll)).find(d => d.id === doc.id) || null; } catch (e) { /* treat as new record if this fails */ }
+
+    // HIRE transition: candidate is leaving the applicant pool for the HRIS roster.
+    // Tagged by the client with _lifecycleAction (never persisted), same pattern as
+    // _offerAction. Copies the minimal identity fields into `roster` as a new employee
+    // record, then removes the applicant doc entirely — hired candidates are governed by
+    // employee retention rules from this point on, not the 3-year applicant rule below.
+    if (doc._lifecycleAction === 'hire') {
+      if (!access.isAdmin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to hire an applicant' }) }; return; }
+      const empStub = {
+        id: 'emp-' + doc.id, workEmail: doc.newWorkEmail || '', name: doc.name || '',
+        jobTitle: doc.role || '', location: doc.office || '', department: doc.department || '',
+        managerEmail: doc.managerEmail || '', startDate: doc.offer && doc.offer.startDate || '',
+        status: 'active', hiredFromApplicantId: doc.id, hiredAt: new Date().toISOString(),
+        // NOTE: this is a minimal stub — expand to match the full roster schema (see
+        // hradmin.jsx / roster container) before this path is used for a real hire.
+      };
+      try {
+        const rw = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: empStub, partitionKey: empStub.location, upsert: true });
+        if (rw.status !== 200 && rw.status !== 201) throw new Error('roster write failed: ' + rw.status);
+        const dl = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${doc.id}`, path: `/${coll}/docs/${doc.id}`, partitionKey: doc.office });
+        if (dl.status !== 200 && dl.status !== 204) throw new Error('applicant delete failed: ' + dl.status + ' (roster record ' + empStub.id + ' was created — check for a duplicate)');
+        await logAudit({ subjectType: 'applicant', subjectId: doc.id, action: 'hired', actorEmail: identity.email, detail: 'Transferred to roster as ' + empStub.id + '; removed from applicant pool' });
+        context.res = { status: 200, headers, body: JSON.stringify({ ok: true, hired: true, employeeId: empStub.id }) };
+      } catch (e) {
+        context.res = { status: 500, headers, body: JSON.stringify({ error: 'hire transition failed', detail: e.message }) };
+      }
+      return;
     }
     // Both offer-flow transitions (submit-for-approval, approve-and-send) are tagged by the
     // client with _offerAction so we know to fire the matching Chat message. Approve is further
@@ -150,11 +187,7 @@ module.exports = async function (context, req) {
     // against the stored record, not the client's tag: if the incoming doc's offer.status
     // differs from what's on file and moves into sent/signed, only the approver may write it.
     if (doc.offer && ['sent', 'signed', 'declined'].includes(doc.offer.status) && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
-      let prevStatus = null;
-      try {
-        const prev = (await listAll(coll)).find(d => d.id === doc.id);
-        prevStatus = prev && prev.offer ? prev.offer.status : null;
-      } catch (e) { /* if the read fails, fall through to reject — never allow on error */ }
+      const prevStatus = prevRec && prevRec.offer ? prevRec.offer.status : null;
       if (prevStatus !== doc.offer.status) {
         context.res = { status: 403, headers, body: JSON.stringify({ error: `Only ${OFFER_APPROVER_NAME} can send, sign or decline an offer` }) }; return;
       }
@@ -169,6 +202,20 @@ module.exports = async function (context, req) {
     if (isApproveAction) notify = await notifyOfferEvent(rec, 'approved');
     else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
     else if (isDeclineAction) notify = await notifyOfferEvent(rec, 'declined');
+
+    // Audit trail: one entry per write, picking the most specific thing that changed.
+    // Never includes the applicant's name — subjectId (the record id) is the only
+    // reference, so this stays meaningful after the record is hard-deleted at 3 years.
+    if (!prevRec) {
+      await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: 'created', actorEmail: identity.email, detail: 'Applicant record created' });
+    } else if (rec.rejected && !prevRec.rejected) {
+      await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: 'rejected', actorEmail: identity.email, detail: 'Rejected from stage: ' + (rec.rejectedFrom || prevRec.stage || 'unknown') });
+    } else if ((prevRec.stage || null) !== (rec.stage || null)) {
+      await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: 'statusChanged', actorEmail: identity.email, detail: (prevRec.stage || '?') + ' -> ' + (rec.stage || '?') });
+    } else {
+      await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: 'edited', actorEmail: identity.email, detail: 'Record updated' });
+    }
+
     context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body), notify }) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
