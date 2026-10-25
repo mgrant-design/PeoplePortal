@@ -58,7 +58,7 @@ function ComingSoon({ label }) {
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', show: () => true },
-  { id: 'applicants', label: 'Applicants', show: a => a.flags.isAdmin, flag: 'applicants' },
+  { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
   { id: 'onboarding', label: 'My onboarding', show: () => true },
   { id: 'people', label: 'Directory', show: () => true },
   { id: 'scheduler', label: 'Schedule', show: () => true, flag: 'scheduler' },
@@ -96,7 +96,7 @@ const NAV_GROUPS = [
   ] },
   { id: 'g_people', label: 'People', children: [
     { id: 'people', label: 'Directory', show: () => true },
-    { id: 'applicants', label: 'Applicants', show: a => a.flags.isAdmin, flag: 'applicants' },
+    { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
   ] },
   { id: 'g_manage', label: 'Manage', children: [
     { id: 'onboarding', label: 'My onboarding', show: () => true },
@@ -509,7 +509,9 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
     // The Agent Automations section (console + runs + add-hire) is Admin-only. autodetail is
     // NOT gated — it's the post-hire pipeline the ATS and manager pre-hire flows land on.
-    let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole', 'applicants'].includes(view)) ? 'dashboard' : view;
+    // Applicants is gated by the broader recruiting capability (Admin/HR/Exec/Manager).
+    let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole'].includes(view)) ? 'dashboard'
+      : (!access.caps.recruiting && view === 'applicants') ? 'dashboard' : view;
     if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;

@@ -508,7 +508,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Sent by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate’s signature.</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Emailed by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate's response. They can accept/sign or decline directly from the link in their email; use the options below only if they responded by phone or in person instead.</div>
               {isApprover && !declining && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
@@ -848,7 +848,13 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const n = data.notify;
-      if (flash) flash(n && n.gchat ? 'Offer approved — sent to candidate, onboarding team notified in Chat' : n && !n.simulated ? 'Offer approved and sent to candidate (Chat notice failed)' : 'Offer approved and sent to candidate');
+      const em = data.emailResult;
+      const base = n && n.gchat ? 'Offer approved — onboarding team notified in Chat.' : 'Offer approved.';
+      const emailNote = em && em.sent ? ' Emailed to the candidate to review & sign.'
+        : em && em.reason === 'not configured' ? ' Candidate email not sent — email sending isn’t set up yet.'
+        : em && em.reason === 'applicant has no email on file' ? ' Candidate email not sent — no email address on file for them.'
+        : em ? ' Candidate email failed to send (' + em.reason + ').' : '';
+      if (flash) flash(base + emailNote);
     } catch (e) {
       if (flash) flash('Couldn’t save the approval (' + ((e && e.message) || 'error') + ')');
     }

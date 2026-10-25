@@ -12,9 +12,11 @@
    Supervisor). Team-level callers only see and write applicants at their own office. */
 
 const https = require('https');
+const crypto = require('crypto');
 const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
 const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
 const { logAudit } = require('../_shared/audit');
+const { sendEmail } = require('../_shared/email');
 
 const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 // Only she may approve+send an offer — checked server-side, never trusted from the client.
@@ -53,6 +55,31 @@ async function notifyOfferEvent(rec, kind) {
     if (!summary.gchat) summary.errors.push('gchat ' + r.status);
   } catch (e) { summary.errors.push('gchat ' + e.message); }
   return summary;
+}
+
+/* Base URL for the candidate-facing offer link. Derived from the request rather than a
+   new env var — req.headers.host is the Static Web Apps front door, same for every env. */
+function siteOrigin(req) {
+  const host = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
+  return process.env.PORTAL_URL || (host ? `https://${host}` : '');
+}
+
+/* Email the candidate a one-time link to review and sign/decline the offer themselves —
+   no app login, no roster account, just the token. Fires once per approve-and-send;
+   best-effort like the Chat webhook, never blocks the save if email isn't configured. */
+async function emailOfferToCandidate(rec, req) {
+  if (!rec.email) return { sent: false, reason: 'applicant has no email on file' };
+  const origin = siteOrigin(req);
+  const link = `${origin}/offersign.html?id=${encodeURIComponent(rec.id)}&token=${encodeURIComponent(rec.offer.signToken)}`;
+  const firstName = (rec.name || '').split(' ')[0] || 'there';
+  const html = `
+    <p>Hi ${firstName},</p>
+    <p>Congratulations — Pure Dental would like to offer you the <b>${rec.offer.role || rec.role || 'position'}</b> role${rec.office ? ` at our ${rec.office} office` : ''}.</p>
+    <p>Please review the full offer and let us know your decision here:</p>
+    <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#3f82b4;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; respond to your offer</a></p>
+    <p>This link is unique to you — please don't forward it. If you have questions, just reply to this email.</p>
+    <p>Welcome to the team,<br>${OFFER_APPROVER_NAME}<br>Pure Dental</p>`;
+  return sendEmail({ to: rec.email, subject: `Your offer from Pure Dental — ${rec.offer.role || rec.role || ''}`, html, fromName: OFFER_APPROVER_NAME });
 }
 
 /* Fold the office name to the same canonical label the client uses (rbac.jsx normLoc). */
@@ -114,7 +141,7 @@ module.exports = async function (context, req) {
     const usersByEmail = {};
     ((support && support.users) || []).forEach(u => { if (u && u.email) usersByEmail[u.email.toLowerCase()] = u; });
     const access = recruitingAccess(me, usersByEmail, employees);
-    if (!access.isAdmin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to view applicants' }) }; return; }
+    if (!access.canRecruit) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to view applicants' }) }; return; }
     const myLoc = normLoc(me.location);
 
     /* ---------- READ ---------- */
@@ -123,6 +150,9 @@ module.exports = async function (context, req) {
       try { docs = (await listAll(coll)).map(strip); }
       catch (e) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', detail: e.message }) }; return; }
       if (!access.viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
+      // Never hand the candidate's self-service sign token to anyone browsing the pipeline —
+      // it's effectively a bearer credential for accepting/declining that one offer.
+      docs = docs.map(d => d.offer && d.offer.signToken ? { ...d, offer: { ...d.offer, signToken: undefined, signTokenExpires: undefined } } : d);
       // One audit entry per view request (not per record) — enough to answer "who looked
       // at the pool and when" without a write per row on every page load.
       logAudit({ subjectType: 'applicant', subjectId: 'pool', action: 'viewed', actorEmail: identity.email, detail: `Viewed ${docs.length} applicant record(s)` });
@@ -194,12 +224,21 @@ module.exports = async function (context, req) {
     }
     const { _offerAction, ...clean } = doc;
     const rec = { ...clean, updatedBy: identity.email, updatedAt: new Date().toISOString() };
+    // Approve-and-send mints the candidate's one-time self-service token here, server-side
+    // only — never accepted from the client — so the link mailed out always matches what's
+    // actually stored. Valid 14 days; offersign.js clears it the moment it's used.
+    if (isApproveAction && rec.offer) {
+      rec.offer = { ...rec.offer, signToken: crypto.randomBytes(24).toString('hex'), signTokenExpires: Date.now() + 14 * 24 * 60 * 60 * 1000 };
+    }
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: rec, partitionKey: rec.office, upsert: true });
     if (up.status !== 200 && up.status !== 201) {
       context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status, detail: up.body }) }; return;
     }
-    let notify;
-    if (isApproveAction) notify = await notifyOfferEvent(rec, 'approved');
+    let notify, emailResult;
+    if (isApproveAction) {
+      notify = await notifyOfferEvent(rec, 'approved');
+      emailResult = await emailOfferToCandidate(rec, req);
+    }
     else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
     else if (isDeclineAction) notify = await notifyOfferEvent(rec, 'declined');
 
@@ -216,7 +255,11 @@ module.exports = async function (context, req) {
       await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: 'edited', actorEmail: identity.email, detail: 'Record updated' });
     }
 
-    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: strip(up.body), notify }) };
+    // Strip the sign token out of what goes back to the browser — same reasoning as the
+    // GET path above; the approver's own client doesn't need the bearer value either.
+    const outApplicant = strip(up.body);
+    if (outApplicant.offer && outApplicant.offer.signToken) outApplicant.offer = { ...outApplicant.offer, signToken: undefined, signTokenExpires: undefined };
+    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: outApplicant, notify, emailResult }) };
   } catch (err) {
     context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
   }

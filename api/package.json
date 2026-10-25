@@ -9,7 +9,8 @@
   "dependencies": {
     "@azure/cosmos": "^4.0.0",
     "@azure/storage-blob": "^12.17.0",
-    "google-auth-library": "^9.14.1"
+    "google-auth-library": "^9.14.1",
+    "googleapis": "^144.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
