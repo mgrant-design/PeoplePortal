@@ -897,6 +897,9 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
         resume: (f.resumeText || '').replace(/\s+/g, ' ').trim().slice(0, 240),
         resumeText: f.resumeText || '', resumes,
         stage: 'applied', rating: 0, applied: today, feedback: [], notes: [],
+        // Who requested this hire — kept distinct from updatedBy (which shifts to whoever
+        // last touched the record) so the offer step can always CC the right manager.
+        requestedByEmail: (me.workEmail || '').toLowerCase(), requestedByName: me.first + ' ' + ((me.last || '')[0] || '') + '.',
       });
     }
     setList(cur => [...built, ...(cur || [])]);

@@ -37,24 +37,51 @@ function httpPost(urlStr, { headers = {}, body = '' } = {}) {
   });
 }
 
-/* Google Chat ping to the onboarding team at two points in the offer flow: when it's
-   submitted for approval, and when it's approved & sent to the candidate. Wired to a
-   fixed webhook for now; swap in APPLICANTS_GCHAT_WEBHOOK once IT provisions one per env. */
-async function notifyOfferEvent(rec, kind) {
+/* One Chat ping to the onboarding team. Wired to a fixed webhook for now; swap in
+   APPLICANTS_GCHAT_WEBHOOK once IT provisions one per env. Never includes pay/salary \u2014
+   that detail stays inside the offer letter itself (and the candidate's own emailed
+   copy of it), nowhere else. */
+async function notifyChat(text) {
   const summary = { gchat: false, simulated: false, errors: [] };
   const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
-  const declined = rec && rec.offer && rec.offer.status === 'declined' ? rec.offer : null;
-  const text = kind === 'declined'
-    ? `\u274c *Offer declined* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined${declined && declined.declineReason ? `: ${declined.declineReason}` : ''}. ${OFFER_APPROVER_NAME} can revise and re-send, or archive.`
-    : kind === 'submitted'
-    ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${OFFER_APPROVER_NAME}'s review.`
-    : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
   try {
     const r = await httpPost(webhook, { body: { text } });
     summary.gchat = r.status >= 200 && r.status < 300;
     if (!summary.gchat) summary.errors.push('gchat ' + r.status);
   } catch (e) { summary.errors.push('gchat ' + e.message); }
   return summary;
+}
+
+/* Offer-step notice: submitted for approval, approved & sent, or declined. */
+async function notifyOfferEvent(rec, kind) {
+  const declined = rec && rec.offer && rec.offer.status === 'declined' ? rec.offer : null;
+  const text = kind === 'declined'
+    ? `\u274c *Offer declined* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined${declined && declined.declineReason ? `: ${declined.declineReason}` : ''}. ${OFFER_APPROVER_NAME} can revise and re-send, or archive.`
+    : kind === 'submitted'
+    ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${OFFER_APPROVER_NAME}'s review.`
+    : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
+  return notifyChat(text);
+}
+
+/* Pipeline-phase notice: a new applicant entering the pool, or moving stage (screening,
+   interview, working interview, offer, hired) or being archived. Keeps the onboarding
+   team posted at every phase, not just the offer steps \u2014 this mirrors the original
+   design intent before the Chat ping narrowed to offer events only. Skipped when the
+   write is itself an offer-flow transition (notifyOfferEvent already covers those,
+   including the stage flip to "hired" that happens at approval) to avoid double-posting. */
+const STAGE_LABEL = { applied: 'Applied', screening: 'Screening', interview: 'Interview', working: 'Working interview', offer: 'Offer', hired: 'Hired', rejected: 'Archived' };
+async function notifyStageEvent(rec, prevRec) {
+  if (!prevRec) {
+    return notifyChat(`\ud83c\udf1f *New applicant* \u2014 ${rec.name || 'Applicant'} entered the pipeline for ${rec.role || 'role TBD'} (${rec.office || 'office TBD'}).`);
+  }
+  if (rec.rejected && !prevRec.rejected) {
+    return notifyChat(`\ud83d\udcc1 *Archived* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) was archived from ${STAGE_LABEL[rec.rejectedFrom] || rec.rejectedFrom || 'the pipeline'}.`);
+  }
+  if ((prevRec.stage || null) !== (rec.stage || null)) {
+    const from = STAGE_LABEL[prevRec.stage] || prevRec.stage || '\u2014';
+    const to = STAGE_LABEL[rec.stage] || rec.stage || '\u2014';
+    return notifyChat(`\ud83d\udccc *${rec.name || 'Applicant'}* moved: ${from} \u2192 ${to} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}).`);
+  }
 }
 
 /* Base URL for the candidate-facing offer link. Derived from the request rather than a
@@ -72,6 +99,8 @@ async function emailOfferToCandidate(rec, req) {
   const origin = siteOrigin(req);
   const link = `${origin}/offersign.html?id=${encodeURIComponent(rec.id)}&token=${encodeURIComponent(rec.offer.signToken)}`;
   const firstName = (rec.name || '').split(' ')[0] || 'there';
+  // The letter itself carries pay (that's its job); this notice email does not, matching
+  // the "pay stays in the offer letter, nowhere else" rule.
   const html = `
     <p>Hi ${firstName},</p>
     <p>Congratulations — Pure Dental would like to offer you the <b>${rec.offer.role || rec.role || 'position'}</b> role${rec.office ? ` at our ${rec.office} office` : ''}.</p>
@@ -79,7 +108,10 @@ async function emailOfferToCandidate(rec, req) {
     <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#3f82b4;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; respond to your offer</a></p>
     <p>This link is unique to you — please don't forward it. If you have questions, just reply to this email.</p>
     <p>Welcome to the team,<br>${OFFER_APPROVER_NAME}<br>Pure Dental</p>`;
-  return sendEmail({ to: rec.email, subject: `Your offer from Pure Dental — ${rec.offer.role || rec.role || ''}`, html, fromName: OFFER_APPROVER_NAME });
+  // CC the manager who requested this hire, so they see the offer go out without being
+  // on the candidate-facing thread's reply-all by default.
+  const cc = rec.requestedByEmail && rec.requestedByEmail !== OFFER_APPROVER_EMAIL ? rec.requestedByEmail : undefined;
+  return sendEmail({ to: rec.email, cc, subject: `Your offer from Pure Dental — ${rec.offer.role || rec.role || ''}`, html, fromName: OFFER_APPROVER_NAME });
 }
 
 /* Fold the office name to the same canonical label the client uses (rbac.jsx normLoc). */
@@ -241,6 +273,7 @@ module.exports = async function (context, req) {
     }
     else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
     else if (isDeclineAction) notify = await notifyOfferEvent(rec, 'declined');
+    else notify = await notifyStageEvent(rec, prevRec);
 
     // Audit trail: one entry per write, picking the most specific thing that changed.
     // Never includes the applicant's name — subjectId (the record id) is the only
