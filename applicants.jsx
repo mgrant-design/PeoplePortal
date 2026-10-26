@@ -519,6 +519,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
                   <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--accent-strong)' }} onClick={() => onApprove(a.id)}><Icon name="mail" style={{ width: 12, height: 12 }} /> Resend offer email</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Mark declined (phone/in person)</button>
                 </div>
@@ -553,11 +554,14 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
 
 /* ------- Applicant detail ------- */
 function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
-  const myFb = (a.feedback || []).find(f => f.byId === me.id);
+  // Most recent entry from me — with multiple rounds allowed, "my feedback" means the
+  // latest one, not the first one found.
+  const myFb = [...(a.feedback || [])].reverse().find(f => f.byId === me.id);
+  const myFbEditable = myFb && myFb.postedAt && (Date.now() - myFb.postedAt) < 24 * 60 * 60 * 1000;
   const [fbOpen, setFbOpen] = useState(false);
   const [fbEditing, setFbEditing] = useState(false);
-  const [myRating, setMyRating] = useState(myFb ? myFb.rating : 0);
-  const [myComment, setMyComment] = useState(myFb ? myFb.comment : '');
+  const [myRating, setMyRating] = useState(myFbEditable ? myFb.rating : 0);
+  const [myComment, setMyComment] = useState(myFbEditable ? myFb.comment : '');
   const [editInfo, setEditInfo] = useState(false);
   const [form, setForm] = useState(null);
   const startEdit = () => {
@@ -703,17 +707,18 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
           {fbEditing ? (
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '12px 13px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFb ? 'Update your feedback' : 'Add your feedback'}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFbEditable ? 'Update your feedback' : 'Add new feedback'}</span>
                 <Stars value={myRating} onChange={setMyRating} />
               </div>
+              {myFb && !myFbEditable && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 8 }}>Your last entry is locked (posted more than 24h ago) — this adds another, e.g. for a follow-up interview.</div>}
               <textarea value={myComment} onChange={e => setMyComment(e.target.value)} rows={2} placeholder="Your comments on this candidate…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 9 }}>
                 <button className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setFbEditing(false)}>Cancel</button>
-                <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={() => { postFb(); setFbEditing(false); }}>{myFb ? 'Update' : 'Post'} feedback</button>
+                <button className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={!myRating && !myComment.trim()} onClick={() => { postFb(); setFbEditing(false); }}>{myFbEditable ? 'Update' : 'Post'} feedback</button>
               </div>
             </div>
           ) : (
-            <button className="btn btn-ghost" onClick={() => setFbEditing(true)}><Icon name="pen" style={{ width: 14, height: 14 }} /> {myFb ? 'Update your feedback' : 'Add your feedback'}</button>
+            <button className="btn btn-ghost" onClick={() => { setMyRating(myFbEditable ? myFb.rating : 0); setMyComment(myFbEditable ? myFb.comment : ''); setFbEditing(true); }}><Icon name="pen" style={{ width: 14, height: 14 }} /> {myFbEditable ? 'Update your feedback' : myFb ? 'Add new feedback' : 'Add your feedback'}</button>
           )}
           </>}
         </div>}
@@ -729,9 +734,12 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
             <button className="btn btn-ghost" onClick={() => onReject(a.id)} style={{ color: 'var(--ink-2)' }}>Reject</button>
             <div style={{ flex: 1 }} />
             {a.stage === 'hired' ? (
-              <span className="badge badge-ok"><Icon name="check" /> {a.offer && a.offer.status === 'signed' ? 'Offer signed · in onboarding' : 'Offer sent'}</span>
+              <span className="badge badge-ok"><Icon name="check" /> Offer signed · in onboarding</span>
             ) : a.stage === 'offer' ? (
-              isApprover && a.offer && a.offer.status === 'pending_approval' ? <button className="btn btn-primary" onClick={() => onApproveOffer(a.id)}><Icon name="mail" /> Send offer</button> : null
+              isApprover && a.offer && a.offer.status === 'pending_approval' ? <button className="btn btn-primary" onClick={() => onApproveOffer(a.id)}><Icon name="mail" /> Send offer</button>
+              : a.offer && a.offer.status === 'sent' ? <span className="badge badge-prog"><Icon name="mail" /> Offer sent · awaiting signature</span>
+              : a.offer && a.offer.status === 'declined' ? <span className="badge badge-warn">Offer declined</span>
+              : null
             ) : (
               <button className="btn btn-primary" disabled={!(a.role || '').trim()} title={!(a.role || '').trim() ? 'Add a role / title first' : ''} onClick={() => { onStage(a.id, ATS_STAGES[skipIdx].id); onClose(); }}>Advance to {ATS_STAGES[skipIdx].label} <Icon name="arrowRight" /></button>
             )}
@@ -812,12 +820,22 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   const commitOne = (next) => { setList(cur => (cur || []).map(a => a.id === next.id ? next : a)); saveApplicant(next); };
   const update = (id, patch) => { const r = list.find(a => a.id === id); if (r) commitOne({ ...r, ...patch }); };
   const setStage = (id, stage) => { const r = list.find(a => a.id === id); if (!r) return; const target = ATS_IDX[stage] != null ? ATS_IDX[stage] : 0; const cur = ATS_IDX[r.stage] != null ? ATS_IDX[r.stage] : 0; if (target > cur && !(r.role || '').trim()) { if (flash) flash('Add a role / title before advancing'); return; } const next = { ...r, stage }; if (stage === 'offer' && !r.offer) next.offer = draftOffer(r); commitOne(next); };
+  // A reviewer can edit their own feedback for 24h after posting it, then it locks —
+  // posting again past that window adds a NEW entry instead of overwriting (the read
+  // as "a second interview round, not a correction"). Edit window is checked against the
+  // most RECENT entry from this reviewer, not the first.
+  const FEEDBACK_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
   const postFeedback = (id, rating, comment) => {
     const r = list.find(a => a.id === id); if (!r) return;
     const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
-    const entry = { byId: me.id, by: who, role: me.jobTitle, rating, comment, at: atsFmt(new Date().toISOString().slice(0, 10)) };
-    const arr = (r.feedback || []).slice(); const i = arr.findIndex(x => x.byId === me.id);
-    if (i >= 0) arr[i] = entry; else arr.push(entry);
+    const now = Date.now();
+    const entry = { byId: me.id, by: who, role: me.jobTitle, rating, comment, postedAt: now, at: atsFmt(new Date().toISOString().slice(0, 10)) };
+    const arr = (r.feedback || []).slice();
+    let lastIdx = -1;
+    for (let j = arr.length - 1; j >= 0; j--) { if (arr[j].byId === me.id) { lastIdx = j; break; } }
+    const last = lastIdx >= 0 ? arr[lastIdx] : null;
+    const stillEditable = last && (now - (last.postedAt || 0)) < FEEDBACK_EDIT_WINDOW_MS;
+    if (stillEditable) arr[lastIdx] = entry; else arr.push(entry);
     commitOne({ ...r, feedback: arr });
   };
   const setWI = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: { ...(r.workingInterview || {}), ...patch } }); };
@@ -845,9 +863,15 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     }
   };
   const sendBackOffer = (id) => { setOffer(id, { status: 'draft' }); if (flash) flash('Sent back to draft'); };
+  // Also doubles as "resend": calling this again on an already-'sent' offer mints a fresh
+  // token and re-emails the candidate — useful if the first email failed, or for testing.
+  // Stage stays 'offer' here on purpose — it only becomes 'hired' once the candidate
+  // actually signs (signOffer, or their own accept via the emailed link), not at send time,
+  // so the pipeline stepper and the back-arrow/"Edit, revise offer" undo path stay accurate
+  // while an offer is still just awaiting a response.
   const approveOffer = async (id) => {
     const r = list.find(a => a.id === id); if (!r) return;
-    const next = { ...r, stage: 'hired', offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
+    const next = { ...r, offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
     setList(cur => cur.map(x => x.id === next.id ? next : x));
     try {
       const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'approve' }) });
