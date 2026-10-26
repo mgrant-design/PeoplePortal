@@ -371,7 +371,9 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const reviewList = seesAll(access, 'reviews') ? EMPLOYEES.filter(e => e.status === 'Active')
     : access.caps.viewTeam ? pageEmployees(me, access, 'reviews').filter(e => e.id !== me.id && e.status === 'Active') : [me];
   const [toast, setToast] = useState(null);
-  const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
+  // 5s, not 2.6s — some flashes (e.g. an offer-email failure reason) run long enough that
+  // the old duration cut them off before they could be read.
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 5000); };
   const tcOffices = useMemo(() => Array.from(new Set([me.loc, ...(window.HR.offices || []).map(o => normLoc(o.name))].filter(Boolean))), [me]);
   const tcTeam = seesAll(access, 'timeclock') ? EMPLOYEES.filter(e => e.status === 'Active').slice(0, 12) : pageEmployees(me, access, 'timeclock').filter(e => e.id !== me.id && e.status === 'Active');
 
@@ -799,8 +801,11 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       </div>
 
       {toast && (
-        <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
+        // zIndex 95: above ModalShell's overlay (90) so a flash fired from inside an open
+        // modal (e.g. approving an offer from the Applicant Detail view) is still visible —
+        // it was previously rendering invisibly behind the modal.
+        <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 95, maxWidth: '90vw', background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
+          <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)', flex: 'none' }} /> {toast}
         </div>
       )}
 

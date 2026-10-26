@@ -509,12 +509,18 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
           ) : (
             <>
               <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Emailed by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate's response. They can accept/sign or decline directly from the link in their email; use the options below only if they responded by phone or in person instead.</div>
+              {a._emailResult && (
+                <div style={{ fontSize: 12, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, color: a._emailResult.sent ? 'var(--ok)' : 'oklch(0.55 0.15 25)' }}>
+                  <Icon name={a._emailResult.sent ? 'check' : 'bell'} style={{ width: 12, height: 12 }} />
+                  {a._emailResult.sent ? 'Candidate email delivered to Gmail for sending.' : 'Candidate email NOT sent — ' + (a._emailResult.reason || 'unknown error') + '.'}
+                </div>
+              )}
               {isApprover && !declining && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
                   <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
-                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Candidate declined</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Mark declined (phone/in person)</button>
                 </div>
               )}
               {isApprover && declining && (
@@ -855,6 +861,11 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
         : em && em.reason === 'applicant has no email on file' ? ' Candidate email not sent — no email address on file for them.'
         : em ? ' Candidate email failed to send (' + em.reason + ').' : '';
       if (flash) flash(base + emailNote);
+      // Keep the email outcome attached to the record (UI-only — not round-tripped to the
+      // server) so it's visible in the offer card itself, not just a toast that can be
+      // missed or that disappears before anyone reads a failure reason.
+      if (data.applicant) setList(cur => cur.map(x => x.id === id ? { ...data.applicant, _emailResult: em } : x));
+      setSel(null);
     } catch (e) {
       if (flash) flash('Couldn’t save the approval (' + ((e && e.message) || 'error') + ')');
     }
