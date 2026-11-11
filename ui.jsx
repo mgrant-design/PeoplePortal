@@ -67,15 +67,28 @@ function Avatar({ name, size = 38, src, style }) {
   );
 }
 
-/* Avatar that shows an uploaded photo (from localStorage via getPhoto) if present */
+/* a person's photo: the one they uploaded (shared through /api/photo), else a photo link on
+   their roster record, else null */
 function empPhoto(emp) {
   if (!emp) return null;
-  const uploaded = (typeof getPhoto === 'function') ? getPhoto(emp.id) : null;
+  const uploaded = window.PD_PHOTOS ? window.PD_PHOTOS.get(emp.id) : null;
   if (uploaded) return uploaded;
   return /^https?:\/\//.test(emp.photo || '') ? emp.photo : null;
 }
+/* empPhoto that loads the person's photo and redraws when it arrives or changes */
+function usePhoto(emp) {
+  const id = emp && emp.id;
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    if (!id || !window.PD_PHOTOS) return;
+    const off = window.PD_PHOTOS.subscribe(id, () => redraw(n => n + 1));
+    window.PD_PHOTOS.load(id);
+    return off;
+  }, [id]);
+  return empPhoto(emp);
+}
 function PhotoAvatar({ emp, size = 38, style }) {
-  const photo = empPhoto(emp);
+  const photo = usePhoto(emp);
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [photo]);
   if (photo && !failed) return <img src={photo} alt={emp.name} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flex: 'none', ...style }} />;
@@ -112,5 +125,5 @@ function StatusBadge({ status }) {
   return <span className={`badge ${s.cls}`}>{s.icon && <Icon name={s.icon} />}{s.label}</span>;
 }
 
-Object.assign(window, { Icon, ICON, Avatar, PhotoAvatar, empPhoto, ProgressRing, StatusBadge, STATUS_BADGE,
+Object.assign(window, { Icon, ICON, Avatar, PhotoAvatar, empPhoto, usePhoto, ProgressRing, StatusBadge, STATUS_BADGE,
   useState, useRef, useEffect, useMemo, useCallback });

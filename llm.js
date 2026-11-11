@@ -33,8 +33,7 @@ window.PD_LLM = (function () {
     transport: 'auto',
     endpoint: '/api/ai',
     model: null,          // null → let the host/server pick its default
-    maxTokens: 1024,
-    headers: {}           // extra headers for the server transport (e.g. auth)
+    maxTokens: 1024
   }, window.PD_AI || {});
 
   function activeTransport() {
@@ -68,22 +67,15 @@ window.PD_LLM = (function () {
   }
 
   async function viaServer(opts) {
-    var hdrs = Object.assign({ 'Content-Type': 'application/json' }, cfg.headers);
-    // Send the Google token so /api/ai can authenticate the caller (protects the budget).
-    // Custom header, because Azure overwrites Authorization (same reason as /api/roster).
-    if (window.PD_GOOGLE_TOKEN) hdrs['X-Google-Token'] = window.PD_GOOGLE_TOKEN;
-    var res = await fetch(cfg.endpoint, {
+    var data = await window.pdApi(cfg.endpoint, {
       method: 'POST',
-      headers: hdrs,
-      body: JSON.stringify({
+      body: {
         system: opts.system || '',
         messages: normalize(opts.messages),
         model: opts.model || cfg.model,
         max_tokens: opts.maxTokens || cfg.maxTokens
-      })
+      }
     });
-    if (!res.ok) throw new Error('PD_LLM server transport HTTP ' + res.status);
-    var data = await res.json();
     return data.text || data.completion ||
       (data.content && data.content[0] && data.content[0].text) || '';
   }

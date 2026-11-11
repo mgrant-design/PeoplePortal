@@ -18,8 +18,6 @@
    reason: 'not configured' } rather than throwing — callers should treat email as
    best-effort, the same way api/applicants treats the Chat webhook. */
 
-const { google } = require('googleapis');
-
 const SEND_AS = process.env.GMAIL_SEND_AS || 'hr@puredental.com';
 
 function emailConfigured() {
@@ -28,6 +26,7 @@ function emailConfigured() {
 
 let cachedClient = null;
 function gmailClient() {
+  const { google } = require('googleapis');
   if (cachedClient) return cachedClient;
   const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const auth = new google.auth.JWT({

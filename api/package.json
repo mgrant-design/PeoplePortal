@@ -4,7 +4,11 @@
   "description": "Pure Dental People Portal — Azure Functions API",
   "main": "index.js",
   "scripts": {
-    "start": "func start"
+    "start": "func start",
+    "prestart": "npm run sync",
+    "sync": "cp ../access-rules.js ../approvals-text.js ../weekmerge.js _shared/",
+    "pretest": "npm run sync",
+    "test": "node --test tests/"
   },
   "dependencies": {
     "@azure/cosmos": "^4.0.0",

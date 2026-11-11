@@ -36,7 +36,7 @@ module.exports = async function (context, req) {
   try {
     const apiRoot = path.join(__dirname, '..');
     routes = fs.readdirSync(apiRoot, { withFileTypes: true })
-      .filter(d => d.isDirectory() && d.name !== 'node_modules' && !d.name.startsWith('_') && !d.name.startsWith('.'))
+      .filter(d => d.isDirectory() && d.name !== 'node_modules' && d.name !== 'tests' && !d.name.startsWith('_') && !d.name.startsWith('.'))
       .map(d => ({ name: d.name, registered: fs.existsSync(path.join(apiRoot, d.name, 'function.json')) }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) { routes = []; }

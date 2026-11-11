@@ -1,21 +1,14 @@
-/* api/ai/index.js — server-side Claude proxy for Riley & Harper.
-   The browser NEVER sees the API key. llm.js (transport: 'server') POSTs here with
-   { system, messages, model?, max_tokens? }; we authenticate the caller (same Google
-   token + domain lock as /api/roster so randoms can't burn the budget), call Anthropic's
-   Messages API, and return { text }.
-
-   Azure config required (Static Web App → Environment variables):
-     ANTHROPIC_API_KEY   (required)  your sk-ant-... key
-     ANTHROPIC_MODEL     (optional)  defaults to claude-haiku-4-5 (cheap). Set to a
-                                     sonnet model for higher-quality answers. */
+/* api/ai/index.js — server-side language model proxy for Riley and Harper, so the key
+   never reaches the browser. POST { system, messages, model?, max_tokens? } → { text }.
+   Signed-in staff only. Settings: ANTHROPIC_API_KEY (required), ANTHROPIC_MODEL (optional). */
 
 const https = require('https');
-const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
+const { handler, resolveCaller, HttpError } = require('../_shared/caller');
 
-function anthropicMessages({ apiKey, model, system, messages, maxTokens }) {
+function modelMessages({ apiKey, model, system, messages, maxTokens }) {
   return new Promise((resolve, reject) => {
     // Prompt caching: send the (large, stable) system prompt — Riley's KB / Harper's
-    // handbook — as a cached content block. Anthropic caches the prefix up to this block,
+    // handbook — as a cached content block. The service caches the prefix up to this block,
     // so every later turn in the ~5-min window reads it back at ~10% of input cost and
     // lower latency instead of re-billing the whole knowledge base each message. No-op if
     // the prompt is under the model's cache minimum; harmless either way.
@@ -51,48 +44,19 @@ function anthropicMessages({ apiKey, model, system, messages, maxTokens }) {
   });
 }
 
-module.exports = async function (context, req) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Google-Token',
-  };
-  if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
-
-  // --- auth: only signed-in company users may spend the budget ---
-  let identity;
-  try {
-    identity = await verifyGoogleToken(tokenFromReq(req));
-  } catch (e) {
-    context.res = { status: 401, headers, body: JSON.stringify({ error: 'Not authenticated', detail: e.message }) };
-    return;
-  }
-  const allowedDomains = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-  if (!allowedDomains.includes(identity.email.split('@')[1] || '')) {
-    context.res = { status: 403, headers, body: JSON.stringify({ error: 'Domain not allowed' }) };
-    return;
-  }
-
+module.exports = handler(['POST'], async ({ req, body }) => {
+  await resolveCaller(req);
   const apiKey = process.env.ANTHROPIC_API_KEY || '';
-  if (!apiKey) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'Server missing ANTHROPIC_API_KEY' }) }; return; }
+  if (!apiKey) throw new Error('Server missing ANTHROPIC_API_KEY');
 
-  const body = req.body || {};
+  body = body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
-  if (!messages.length) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'No messages' }) }; return; }
+  if (!messages.length) throw new HttpError(400, 'No messages');
   const model = body.model || process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
   const maxTokens = Math.min(Number(body.max_tokens) || 1024, 2048);
 
-  try {
-    const r = await anthropicMessages({ apiKey, model, system: body.system || '', messages, maxTokens });
-    if (r.status !== 200) {
-      const detail = (r.body && r.body.error && r.body.error.message) || ('HTTP ' + r.status);
-      context.res = { status: 502, headers, body: JSON.stringify({ error: 'Model error', detail }) };
-      return;
-    }
-    const text = (r.body.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
-    context.res = { status: 200, headers, body: JSON.stringify({ text }) };
-  } catch (err) {
-    context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
-  }
-};
+  const r = await modelMessages({ apiKey, model, system: body.system || '', messages, maxTokens });
+  if (r.status !== 200) throw new HttpError(502, 'The assistant is unavailable right now', new Error('model ' + r.status + ' ' + (((r.body || {}).error || {}).message || '')));
+  const text = (r.body.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  return { status: 200, body: { text } };
+});

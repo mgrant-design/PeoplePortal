@@ -100,7 +100,7 @@ function Reports({ access }) {
         </div>
       </div>
 
-      {!access.caps.payroll && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Compensation & payroll reports are restricted to HR, Accounting, and Admins.</div>}
+      {!access.caps.payroll && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Compensation & payroll reports are restricted to HR and Accounting.</div>}
     </div>
   );
 }
@@ -166,7 +166,65 @@ function SeeEveryoneModal({ name, pages, onCancel, onSave }) {
   ), document.body);
 }
 
-function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) {
+function SchedCheck({ on, label, onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', padding: '6px 0', cursor: disabled ? 'default' : 'pointer', textAlign: 'left', width: '100%', color: 'var(--ink)' }}>
+      <span style={{ width: 16, height: 16, borderRadius: 4, border: '2px solid', borderColor: on ? 'var(--accent)' : 'var(--line)', background: on ? 'var(--accent)' : 'transparent', display: 'grid', placeItems: 'center', flex: 'none' }}>
+        {on && <Icon name="check" style={{ width: 11, height: 11, color: '#fff' }} />}
+      </span>
+      <span style={{ fontSize: 13.5 }}>{label}</span>
+    </button>
+  );
+}
+
+function SchedSection({ title, allLabel, all, setAll, items, picked, onFlip, noneNote, canEdit }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, flex: 1 }}>{title}</div>
+        <span style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>{allLabel}</span>
+        <Toggle on={all} onClick={() => setAll(!all)} disabled={!canEdit} />
+      </div>
+      {!all && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', columnGap: 12 }}>
+          {items.map(v => <SchedCheck key={v} on={picked.has(v)} label={v} onClick={() => onFlip(v)} disabled={!canEdit} />)}
+        </div>
+      )}
+      {!all && !picked.size && <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>{noneNote}</div>}
+    </div>
+  );
+}
+
+/* Which offices and teams a person schedules. Nothing picked means their own office;
+   ['*'] means all. Offices come from HR.offices, teams from HR.departments; a stored name
+   that is no longer in those lists is dropped when the picker opens. */
+function SchedulesModal({ name, locations, teams, canEdit, onCancel, onSave }) {
+  const OFFICES = ((window.HR && window.HR.offices) || []).map(o => o.name).filter(Boolean);
+  const TEAMS = ((window.HR && window.HR.departments) || []).map(d => d.name).filter(Boolean);
+  const [allLoc, setAllLoc] = useState((locations || []).includes('*'));
+  const [allTeams, setAllTeams] = useState((teams || []).includes('*'));
+  const [locs, setLocs] = useState(() => new Set((locations || []).filter(v => OFFICES.includes(v))));
+  const [tms, setTms] = useState(() => new Set((teams || []).filter(v => TEAMS.includes(v))));
+  const flip = (setter) => (v) => setter(p => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  return ReactDOM.createPortal((
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
+      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
+        <h2 style={{ fontSize: 18 }}>Schedules</h2>
+        <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 6 }}>The locations and teams {name} can schedule.</p>
+        <SchedSection title="Locations" allLabel="All locations" all={allLoc} setAll={setAllLoc} items={OFFICES} picked={locs} onFlip={flip(setLocs)} noneNote="None picked: their own office only." canEdit={canEdit} />
+        <SchedSection title="Teams" allLabel="All teams" all={allTeams} setAll={setAllTeams} items={TEAMS} picked={tms} onFlip={flip(setTms)} noneNote="None picked: no team limit." canEdit={canEdit} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button className="btn btn-quiet" style={{ flex: 1, justifyContent: 'center' }} onClick={onCancel}>{canEdit ? 'Cancel' : 'Close'}</button>
+          {canEdit && <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onSave(allLoc ? ['*'] : Array.from(locs), allTeams ? ['*'] : Array.from(tms))}><Icon name="check" /> Apply</button>}
+        </div>
+      </div>
+    </div>
+  ), document.body);
+}
+
+const schedLabel = (list, all, many) => !list || !list.length ? '' : list.includes('*') ? all : list.length === 1 ? list[0] : `${list.length} ${many}`;
+
+function AdminUsers({ me, access, flags, flagDefs, onFlag, flagSaving, page = 'security' }) {
   // Permissions live in the dedicated accessControl store (/api/accesscontrol), one
   // doc per person keyed by email. Rows = every active employee, overlaid with their
   // current overrides; saving writes each person you changed to that store.
@@ -182,17 +240,22 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
      permissions, but the column and its dialogue do not render for them. */
   const canSeeAll = !!(access && access.flags && access.flags.isAdmin);
   const [seeAllRow, setSeeAllRow] = useState(null);   // row index being configured
+  const [schedRow, setSchedRow] = useState(null);
   const [q, setQ] = useState('');
   const changed = useRef(new Set());
 
+  /* nothing is editable until the saved permissions load, so a save never sends blanks over them */
+  const [loadState, setLoadState] = useState('loading');
+  const canEdit = canSeeAll && loadState === 'ready';
   useEffect(() => {
-    if (typeof fetchAccessControl !== 'function') return;
+    if (typeof fetchAccessControl !== 'function') { setLoadState('error'); return; }
     let cancelled = false;
     fetchAccessControl().then(overrides => {
       if (cancelled) return;
       const byEmail = {}; (overrides || []).forEach(o => { if (o.email) byEmail[o.email.toLowerCase()] = o; });
       setRows(rs => rs.map(r => ({ ...r, ...(byEmail[r.email.toLowerCase()] || {}) })));
-    }).catch(() => {});
+      setLoadState('ready');
+    }).catch(() => { if (!cancelled) setLoadState('error'); });
     return () => { cancelled = true; };
   }, []);
 
@@ -214,13 +277,29 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
     setSeeAllRow(null);
   };
 
+  /* whether this person's role, with the switches as set on screen, can schedule at all;
+     a Schedules setting means nothing without that */
+  const canSchedule = (u) => {
+    const emp = (typeof findByEmail === 'function') ? findByEmail(u.email) : null;
+    if (!emp) return true;
+    const email = (u.email || '').toLowerCase();
+    const hasReports = (window.EMPLOYEES || []).some(e => (e.managerEmail || '').toLowerCase() === email);
+    return !!window.PD_ACCESS_RULES.deriveAccessCore({ me: emp, perms: u, hasReports }).caps.schedule;
+  };
+  const applySched = (locations, teams) => {
+    const i = schedRow;
+    setDirty(true);
+    setRows(rs => rs.map((r, j) => { if (j !== i) return r; changed.current.add(r.email.toLowerCase()); return { ...r, schedLocations: locations, schedTeams: teams }; }));
+    setSchedRow(null);
+  };
+
   const save = async () => {
     if (typeof saveAccessOverride !== 'function') { setStatus('error'); return; }
     setStatus('saving');
     try {
       const toSave = rows.filter(r => changed.current.has(r.email.toLowerCase()));
       for (const r of toSave) {
-        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete, supervisor: !!r.supervisor, seeAll: !!r.seeAll, seeAllPages: r.seeAllPages || [] });
+        await saveAccessOverride({ email: r.email, admin: !!r.admin, manager: !!r.manager, canPrint: !!r.canPrint, canSuspend: !!r.canSuspend, canTerminate: !!r.canTerminate, canDelete: !!r.canDelete, supervisor: !!r.supervisor, seeAll: !!r.seeAll, seeAllPages: r.seeAllPages || [], schedLocations: r.schedLocations || [], schedTeams: r.schedTeams || [] });
       }
       changed.current.clear();
       setStatus('saved'); setDirty(false);
@@ -228,7 +307,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
     } catch (e) { setStatus('error'); }
   };
   const groups = flagDefs ? [...new Set(flagDefs.map(f => f.group))] : [];
-  const COLS = `220px repeat(${PERM_COLS.length + (canSeeAll ? 1 : 0)}, 1fr)`;
+  const COLS = `220px repeat(${PERM_COLS.length + (canSeeAll ? 1 : 0)}, 1fr) 130px`;
   /* The toggles address a row by its index in `rows`, so the search carries the real
      index with each match instead of re-indexing a filtered copy. */
   const shownRows = useMemo(() => {
@@ -257,7 +336,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
                       {f.note && <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{f.note}</div>}
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 600, color: flags[f.id] !== false ? 'var(--ok)' : 'var(--ink-3)' }}>{flags[f.id] !== false ? 'Live' : 'Off'}</span>
-                    <Toggle on={flags[f.id] !== false} onClick={() => onFlag(f.id, flags[f.id] === false)} />
+                    <Toggle on={flags[f.id] !== false} onClick={() => onFlag(f.id, flags[f.id] === false)} disabled={!!flagSaving} />
                   </div>
                 ))}
               </div>
@@ -276,6 +355,15 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
           onCancel={() => setSeeAllRow(null)}
           onSave={applySeeAll} />
       )}
+      {schedRow != null && (
+        <SchedulesModal
+          name={`${rows[schedRow].first} ${rows[schedRow].last}`.trim() || rows[schedRow].email}
+          locations={rows[schedRow].schedLocations || []}
+          teams={rows[schedRow].schedTeams || []}
+          onCancel={() => setSchedRow(null)}
+          canEdit={canEdit}
+          onSave={applySched} />
+      )}
       <div style={{ position: 'relative', marginBottom: 12, maxWidth: 340 }}>
         <Icon name="search" style={{ width: 15, height: 15, position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' }} />
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name or email"
@@ -283,11 +371,12 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
       </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: canSeeAll ? 930 : 820 }}>
+          <div style={{ minWidth: canSeeAll ? 1060 : 950 }}>
             <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
               <div>User</div>
               {PERM_COLS.map(([k, l]) => <div key={k} style={{ textAlign: 'center' }}>{l}</div>)}
               {canSeeAll && <div style={{ textAlign: 'center' }}>See Everyone</div>}
+              <div style={{ textAlign: 'center' }}>Schedules</div>
             </div>
             {shownRows.map(({ u, i }, n) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: COLS, padding: '12px var(--pad)', borderBottom: n < shownRows.length - 1 ? '1px solid var(--line-soft)' : 'none', alignItems: 'center' }}>
@@ -295,10 +384,10 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
                   <Avatar name={`${u.first} ${u.last}`} size={32} />
                   <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13.5 }}>{u.first} {u.last}</div><div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div></div>
                 </div>
-                {PERM_COLS.map(([k]) => <div key={k} style={{ display: 'grid', placeItems: 'center' }}><Toggle on={!!u[k]} onClick={() => toggle(i, k)} /></div>)}
+                {PERM_COLS.map(([k]) => <div key={k} style={{ display: 'grid', placeItems: 'center' }}><Toggle on={!!u[k]} onClick={() => toggle(i, k)} disabled={!canEdit} /></div>)}
                 {canSeeAll && (
                   <div style={{ display: 'grid', placeItems: 'center', gap: 3 }}>
-                    <Toggle on={!!u.seeAll} onClick={() => toggleSeeAll(i)} />
+                    <Toggle on={!!u.seeAll} onClick={() => toggleSeeAll(i)} disabled={!canEdit} />
                     {u.seeAll && (
                       <button onClick={() => setSeeAllRow(i)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, fontWeight: 600, color: 'var(--accent-strong)' }}>
                         {(u.seeAllPages && u.seeAllPages.length) ? `${u.seeAllPages.length} page${u.seeAllPages.length > 1 ? 's' : ''}` : 'Globally'}
@@ -306,12 +395,21 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
                     )}
                   </div>
                 )}
+                <div style={{ display: 'grid', placeItems: 'center' }}>
+                  {canSchedule(u) ? (
+                    <button onClick={() => setSchedRow(i)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-strong)', textAlign: 'center', lineHeight: 1.35 }}>
+                      <div>{schedLabel(u.schedLocations, 'All locations', 'locations') || 'Own office'}</div>
+                      {schedLabel(u.schedTeams, 'All teams', 'teams') && <div style={{ color: 'var(--ink-3)' }}>{schedLabel(u.schedTeams, 'All teams', 'teams')}</div>}
+                    </button>
+                  ) : <span title="This person’s role can’t schedule. Turn on Manager or Supervisor first." style={{ fontSize: 11, color: 'var(--ink-3)', textAlign: 'center', lineHeight: 1.35 }}>No scheduling access</span>}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
       {!shownRows.length && <div style={{ padding: '18px var(--pad)', fontSize: 13.5, color: 'var(--ink-3)' }}>No one matches “{q}”.</div>}
+      {loadState === 'error' && <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>Couldn’t load the saved permissions. Reload the page before changing anything.</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="shield" style={{ width: 14, height: 14, color: 'var(--accent)' }} /> Changes are logged. Only Admins can grant Delete.</span>
         {saveStatus !== 'idle' && saveStatus !== 'saved' && <span style={{ fontSize: 12.5, fontWeight: 600, color: saveStatus === 'conflict' || saveStatus === 'error' ? 'var(--danger)' : 'var(--ink-3)' }}>{SAVE_LABEL[saveStatus]}</span>}
@@ -324,4 +422,4 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, page = 'security' }) 
   );
 }
 
-Object.assign(window, { Reports, AdminUsers, Toggle, SeeEveryoneModal });
+Object.assign(window, { Reports, AdminUsers, Toggle, SeeEveryoneModal, SchedulesModal });

@@ -1,9 +1,7 @@
 /* agentconfig.jsx — client persistence for Riley's editable config (the Agent Dashboard):
    knowledge base, routing rules, and channel toggles.
 
-   Talks to /api/agentconfig (Cosmos appState/riley-config). Mirrors orgconfig.jsx's
-   fetch/push pattern and sends the Google token in X-Google-Token (Azure overwrites the
-   standard Authorization header — same reason as /api/roster & /api/orgconfig).
+   Talks to /api/agentconfig (Cosmos appState/riley-config) through pdApi.
 
    The single source of truth once an admin has edited it is Cosmos; the RILEY_* / AGENT_*
    constants in riley-data.jsx are only the initial SEED, used when the config doc doesn't
@@ -13,26 +11,20 @@
 
 const AGENT_SECTIONS = ['knowledge', 'routing', 'channels'];
 
-async function fetchAgentConfig() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/agentconfig', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('agentconfig read failed (' + res.status + ')');
-  return res.json(); // { knowledge, routing, channels }
+function fetchAgentConfig() {
+  return pdApi('/api/agentconfig'); // { knowledge, routing, channels }
 }
 
 /* Persist ONE section (knowledge | routing | channels). Throws 'conflict' on a 409 so the
    caller can refetch and retry; returns the server's echo of the saved section. */
 async function saveAgentSection(section, value) {
   if (!AGENT_SECTIONS.includes(section)) throw new Error('unknown section: ' + section);
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/agentconfig', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify({ section, value }),
-  });
-  if (res.status === 409) throw new Error('conflict');
-  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || ('save failed (' + res.status + ')')); }
-  return res.json();
+  try {
+    return await pdApi('/api/agentconfig', { method: 'POST', body: { section, value } });
+  } catch (e) {
+    if (e.status === 409) throw new Error('conflict');
+    throw e;
+  }
 }
 
 /* React hook owning Riley's config → { knowledge, routing, channels, save*, status }.

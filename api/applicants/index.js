@@ -6,22 +6,28 @@
    notes, offer, working-interview, and a `resumes` list of pointers to PDFs held in Blob
    Storage — see api/resumeupload). Container partition key: /office.
 
-   Security mirrors the other endpoints: valid Google token + domain lock, then the caller's
-   identity is resolved from the live roster (never trusted from the client) and must have
-   recruiting reach — company-wide (Admin / HR / Leadership) or team-level (Manager /
-   Supervisor). Team-level callers only see and write applicants at their own office. */
+   Admins, HR, leadership and managers can open it. Managers see and write only their own office. */
 
 const https = require('https');
 const crypto = require('crypto');
-const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
+const { handler, resolveCaller, accessFor } = require('../_shared/caller');
+const { dayLabel } = require('../_shared/approvals-text');
+const { normLoc, isActive } = require('../_shared/access-rules');
+const { cosmos, listAll, strip, collPath } = require('../_shared/cosmos');
 const { logAudit } = require('../_shared/audit');
 const { sendEmail } = require('../_shared/email');
+const { writeNotice } = require('../_shared/notices');
+const { sendSms } = require('../_shared/sms');
+const { hireSigned } = require('../_shared/hire');
 
-const ALLOWED_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-// Only she may approve+send an offer — checked server-side, never trusted from the client.
-const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR
-const OFFER_APPROVER_NAME = 'Amanda Vibert';
+/* The offer approver is the approvers.offer setting (Organization page, Approvers tab),
+   checked here on the server. */
+const nameOf = (e) => e.name || `${e.first || ''} ${e.last || ''}`.trim();
+function offerApprover(c) {
+  const email = String((((c.support || {}).approvers) || {}).offer || '').toLowerCase();
+  const emp = email ? c.employees.find(e => (e.workEmail || '').toLowerCase() === email) : null;
+  return { email, emp, name: emp ? nameOf(emp) : 'the offer approver' };
+}
 
 /* generic HTTPS POST, used for the Google Chat webhook (same pattern as api/schedule) */
 function httpPost(urlStr, { headers = {}, body = '' } = {}) {
@@ -37,13 +43,12 @@ function httpPost(urlStr, { headers = {}, body = '' } = {}) {
   });
 }
 
-/* One Chat ping to the onboarding team. Wired to a fixed webhook for now; swap in
-   APPLICANTS_GCHAT_WEBHOOK once IT provisions one per env. Never includes pay/salary \u2014
-   that detail stays inside the offer letter itself (and the candidate's own emailed
-   copy of it), nowhere else. */
+/* One Chat ping to the onboarding team, to the address in the APPLICANTS_GCHAT_WEBHOOK
+   setting; with none set, nothing is posted. Never includes pay. */
 async function notifyChat(text) {
   const summary = { gchat: false, simulated: false, errors: [] };
-  const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
+  const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK;
+  if (!webhook) return { ...summary, skipped: 'no Chat address set' };
   try {
     const r = await httpPost(webhook, { body: { text } });
     summary.gchat = r.status >= 200 && r.status < 300;
@@ -53,13 +58,13 @@ async function notifyChat(text) {
 }
 
 /* Offer-step notice: submitted for approval, approved & sent, or declined. */
-async function notifyOfferEvent(rec, kind) {
+async function notifyOfferEvent(rec, kind, approverName) {
   const declined = rec && rec.offer && rec.offer.status === 'declined' ? rec.offer : null;
   const text = kind === 'declined'
-    ? `\u274c *Offer declined* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined${declined && declined.declineReason ? `: ${declined.declineReason}` : ''}. ${OFFER_APPROVER_NAME} can revise and re-send, or archive.`
+    ? `\u274c *Offer declined* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined${declined && declined.declineReason ? `: ${declined.declineReason}` : ''}. ${approverName} can revise and re-send, or archive.`
     : kind === 'submitted'
-    ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${OFFER_APPROVER_NAME}'s review.`
-    : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${OFFER_APPROVER_NAME} and sent to the candidate for signature.`;
+    ? `\ud83d\udcdd *Offer submitted for approval* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) is awaiting ${approverName}'s review.`
+    : `\ud83d\udce8 *Offer sent* \u2014 ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) approved by ${approverName} and sent to the candidate for signature.`;
   return notifyChat(text);
 }
 
@@ -91,13 +96,22 @@ function siteOrigin(req) {
   return process.env.PORTAL_URL || (host ? `https://${host}` : '');
 }
 
+/* the candidate's one-time page for reviewing and signing or declining the offer */
+function offerLink(rec, req) {
+  return `${siteOrigin(req)}/offersign.html?id=${encodeURIComponent(rec.id)}&token=${encodeURIComponent(rec.offer.signToken)}`;
+}
+
+/* Text the candidate the same link. The text never carries pay. */
+function textOfferToCandidate(rec, req) {
+  return sendSms({ to: rec.phone, body: `Pure Dental: your offer for the ${rec.offer.role || rec.role || 'position'} role is ready. Review and respond here: ${offerLink(rec, req)}` });
+}
+
 /* Email the candidate a one-time link to review and sign/decline the offer themselves —
    no app login, no roster account, just the token. Fires once per approve-and-send;
    best-effort like the Chat webhook, never blocks the save if email isn't configured. */
-async function emailOfferToCandidate(rec, req) {
+async function emailOfferToCandidate(rec, req, approver) {
   if (!rec.email) return { sent: false, reason: 'applicant has no email on file' };
-  const origin = siteOrigin(req);
-  const link = `${origin}/offersign.html?id=${encodeURIComponent(rec.id)}&token=${encodeURIComponent(rec.offer.signToken)}`;
+  const link = offerLink(rec, req);
   const firstName = (rec.name || '').split(' ')[0] || 'there';
   // The letter itself carries pay (that's its job); this notice email does not, matching
   // the "pay stays in the offer letter, nowhere else" rule.
@@ -107,134 +121,115 @@ async function emailOfferToCandidate(rec, req) {
     <p>Please review the full offer and let us know your decision here:</p>
     <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#3f82b4;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; respond to your offer</a></p>
     <p>This link is unique to you — please don't forward it. If you have questions, just reply to this email.</p>
-    <p>Welcome to the team,<br>${OFFER_APPROVER_NAME}<br>Pure Dental</p>`;
+    <p>Welcome to the team,<br>${approver.name}<br>Pure Dental</p>`;
   // CC the manager who requested this hire, so they see the offer go out without being
   // on the candidate-facing thread's reply-all by default.
-  const cc = rec.requestedByEmail && rec.requestedByEmail !== OFFER_APPROVER_EMAIL ? rec.requestedByEmail : undefined;
-  return sendEmail({ to: rec.email, cc, subject: `Your offer from Pure Dental — ${rec.offer.role || rec.role || ''}`, html, fromName: OFFER_APPROVER_NAME });
+  const cc = rec.requestedByEmail && rec.requestedByEmail !== approver.email ? rec.requestedByEmail : undefined;
+  return sendEmail({ to: rec.email, cc, subject: `Your offer from Pure Dental — ${rec.offer.role || rec.role || ''}`, html, fromName: approver.name });
 }
 
-/* Fold the office name to the same canonical label the client uses (rbac.jsx normLoc). */
-function normLoc(l) {
-  const s = (l || '').toLowerCase();
-  if (!s) return 'Unassigned';
-  if (s.includes('remote')) return 'Remote';
-  if (s.includes('hauppauge')) return 'Hauppauge';
-  if (s.includes('garden')) return 'Garden City';
-  if (s.includes('manorville')) return 'Manorville';
-  if (s.includes('wading')) return 'Wading River';
-  if (s.includes('islandia')) return 'Islandia';
-  if (s.includes('jersey')) return 'New Jersey';
-  if (s.includes('buffalo')) return 'Buffalo';
-  return l;
+/* Pay is for HR and Accounting only (caps.payroll): the offer's pay and the working
+   interview's rate. Everyone else receives records without them, and their saves keep
+   whatever pay is stored. */
+const PAY_FIELDS = [['offer', 'pay'], ['workingInterview', 'rate']];
+/* what goes to someone without pay rights: no amount, only whether one is on file */
+function withoutPay(rec) {
+  const out = { ...rec };
+  PAY_FIELDS.forEach(([part, field]) => {
+    if (out[part] && typeof out[part] === 'object') { const { [field]: pay, ...rest } = out[part]; out[part] = { ...rest, payOnFile: !!String(pay || '').trim() }; }
+  });
+  return out;
+}
+/* the on-file marker is for the screen only and never stored */
+function withoutPayMarker(rec) {
+  const out = { ...rec };
+  PAY_FIELDS.forEach(([part]) => { if (out[part] && typeof out[part] === 'object' && 'payOnFile' in out[part]) { const { payOnFile, ...rest } = out[part]; out[part] = rest; } });
+  return out;
+}
+function withStoredPay(rec, stored) {
+  const out = withoutPayMarker(withoutPay(rec));
+  PAY_FIELDS.forEach(([part, field]) => {
+    const had = stored && stored[part] && typeof stored[part] === 'object' && field in stored[part];
+    if (had && out[part] && typeof out[part] === 'object') out[part] = { ...out[part], [field]: stored[part][field] };
+  });
+  return out;
 }
 
-/* Compact port of deriveAccess (rbac.jsx): who can reach the ATS, and how wide. */
-function recruitingAccess(me, usersByEmail, employees) {
-  const perms = usersByEmail[(me.workEmail || '').toLowerCase()] || {};
-  const dept = (me.department || '').toLowerCase();
-  const title = (me.jobTitle || '').toLowerCase();
-  const meEmail = (me.workEmail || '').toLowerCase();
-  const isExec = /\b(ceo|chief|coo|cfo|president|owner|principal)\b/.test(title) || ['leadership', 'management team', 'management', 'pure management'].includes(dept);
-  const isHR = /human resources|payroll/.test(dept) || /\b(human resources|payroll|people ops)\b/.test(title);
-  const hasReports = employees.some(e => e.managerEmail && e.managerEmail.toLowerCase() === meEmail);
-  const isSupervisor = (!!perms.supervisor || /\b(supervisor|team lead|lead)\b/.test(title)) && !/\b(manager|director)\b/.test(title) && !hasReports;
-  const isManager = (!!perms.manager || me.isManager || hasReports || /\b(manager|director)\b/.test(title)) && !isSupervisor;
-  const isAdmin = !!perms.admin;
-  const viewAll = isAdmin || isHR || isExec;
-  const viewTeam = isManager || isSupervisor;
-  return { isAdmin, viewAll, viewTeam, canRecruit: viewAll || viewTeam };
+/* The candidate's signing link is made only by approving. Every other save keeps the
+   stored link while the offer stays sent, and never takes one from the browser. */
+function withStoredLink(rec, stored) {
+  if (!rec.offer || typeof rec.offer !== 'object') return rec;
+  const { signToken, signTokenExpires, ...offer } = rec.offer;
+  const so = stored && stored.offer;
+  if (so && so.signToken && so.status === 'sent' && offer.status === 'sent') { offer.signToken = so.signToken; offer.signTokenExpires = so.signTokenExpires; }
+  // the candidate's drawn signature is never sent to a browser, so a save keeps the stored one
+  if (so && so.signatureImage && offer.status === 'signed') offer.signatureImage = so.signatureImage;
+  return { ...rec, offer };
+}
+const LOCKED = ['sent', 'signed', 'declined'];
+/* the drawn signature stays in the database and is left out of what browsers receive */
+function withoutSignatureImage(rec) {
+  if (!rec.offer || !rec.offer.signatureImage) return rec;
+  const { signatureImage, ...offer } = rec.offer;
+  return { ...rec, offer };
 }
 
-module.exports = async function (context, req) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Google-Token',
-  };
-  if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
-
-  let identity;
-  try { identity = await verifyGoogleToken(tokenFromReq(req)); }
-  catch (e) { context.res = { status: 401, headers, body: JSON.stringify({ error: 'Not authenticated', detail: e.message }) }; return; }
-  if (!ALLOWED_DOMAINS.includes(identity.email.split('@')[1] || '')) {
-    context.res = { status: 403, headers, body: JSON.stringify({ error: 'Domain not allowed' }) }; return;
-  }
-  if (!cosmosConfigured()) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing Cosmos config' }) }; return; }
-
+module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {
+  const c = await resolveCaller(req);
+  const { identity, me } = c;
+  const viewAll = c.access.caps.viewAll;
+  const seesPay = c.access.caps.payroll;
+  if (!c.access.caps.recruiting) return { status: 403, body: { error: 'Not allowed to view applicants' } };
   const coll = collPath('applicants');
-
-  try {
-    const { employees, support } = await loadRosterAndSupport();
-    const me = employees.find(e => (e.workEmail || '').toLowerCase() === identity.email);
-    if (!me) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'No roster account for ' + identity.email }) }; return; }
-
-    const usersByEmail = {};
-    ((support && support.users) || []).forEach(u => { if (u && u.email) usersByEmail[u.email.toLowerCase()] = u; });
-    const access = recruitingAccess(me, usersByEmail, employees);
-    if (!access.canRecruit) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to view applicants' }) }; return; }
     const myLoc = normLoc(me.location);
 
     /* ---------- READ ---------- */
     if (req.method === 'GET') {
       let docs;
       try { docs = (await listAll(coll)).map(strip); }
-      catch (e) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', detail: e.message }) }; return; }
-      if (!access.viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
+      catch (e) { throw new Error('applicants read failed: ' + e.message); }
+      if (!viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
       // Never hand the candidate's self-service sign token to anyone browsing the pipeline —
       // it's effectively a bearer credential for accepting/declining that one offer.
       docs = docs.map(d => d.offer && d.offer.signToken ? { ...d, offer: { ...d.offer, signToken: undefined, signTokenExpires: undefined } } : d);
+      docs = docs.map(withoutSignatureImage);
+      if (!seesPay) docs = docs.map(withoutPay);
       // One audit entry per view request (not per record) — enough to answer "who looked
       // at the pool and when" without a write per row on every page load.
       logAudit({ subjectType: 'applicant', subjectId: 'pool', action: 'viewed', actorEmail: identity.email, detail: `Viewed ${docs.length} applicant record(s)` });
-      context.res = { status: 200, headers, body: JSON.stringify({ applicants: docs }) };
-      return;
+      return { status: 200, body: { applicants: docs } };
     }
 
     /* ---------- WRITE: upsert one applicant ---------- */
-    let doc = req.body;
-    if (typeof doc === 'string') { try { doc = JSON.parse(doc); } catch (e) { doc = null; } }
+    let doc = body;
     if (!doc || typeof doc !== 'object' || !doc.id) {
-      context.res = { status: 400, headers, body: JSON.stringify({ error: 'Body must be an applicant record with an id' }) }; return;
+      return { status: 400, body: { error: 'Body must be an applicant record with an id' } };
     }
     // team-level callers may only write applicants at their own office
-    if (!access.viewAll && normLoc(doc.office) !== myLoc) {
-      context.res = { status: 403, headers, body: JSON.stringify({ error: 'Applicant is outside your office' }) }; return;
+    if (!viewAll && normLoc(doc.office) !== myLoc) {
+      return { status: 403, body: { error: 'Applicant is outside your office' } };
+    }
+    for (const part of ['offer', 'workingInterview']) {
+      const v = doc[part];
+      if (v != null && (typeof v !== 'object' || Array.isArray(v))) return { status: 400, body: { error: part + ' must be a record' } };
     }
 
     // One read of the prior record, reused below both to gate offer-status transitions and
     // to diff for the audit log — avoids re-listing the whole container twice per write.
     let prevRec = null;
-    try { prevRec = (await listAll(coll)).find(d => d.id === doc.id) || null; } catch (e) { /* treat as new record if this fails */ }
-
-    // HIRE transition: candidate is leaving the applicant pool for the HRIS roster.
-    // Tagged by the client with _lifecycleAction (never persisted), same pattern as
-    // _offerAction. Copies the minimal identity fields into `roster` as a new employee
-    // record, then removes the applicant doc entirely — hired candidates are governed by
-    // employee retention rules from this point on, not the 3-year applicant rule below.
-    if (doc._lifecycleAction === 'hire') {
-      if (!access.isAdmin) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'Not allowed to hire an applicant' }) }; return; }
-      const empStub = {
-        id: 'emp-' + doc.id, workEmail: doc.newWorkEmail || '', name: doc.name || '',
-        jobTitle: doc.role || '', location: doc.office || '', department: doc.department || '',
-        managerEmail: doc.managerEmail || '', startDate: doc.offer && doc.offer.startDate || '',
-        status: 'active', hiredFromApplicantId: doc.id, hiredAt: new Date().toISOString(),
-        // NOTE: this is a minimal stub — expand to match the full roster schema (see
-        // hradmin.jsx / roster container) before this path is used for a real hire.
-      };
-      try {
-        const rw = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: empStub, partitionKey: empStub.location, upsert: true });
-        if (rw.status !== 200 && rw.status !== 201) throw new Error('roster write failed: ' + rw.status);
-        const dl = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${doc.id}`, path: `/${coll}/docs/${doc.id}`, partitionKey: doc.office });
-        if (dl.status !== 200 && dl.status !== 204) throw new Error('applicant delete failed: ' + dl.status + ' (roster record ' + empStub.id + ' was created — check for a duplicate)');
-        await logAudit({ subjectType: 'applicant', subjectId: doc.id, action: 'hired', actorEmail: identity.email, detail: 'Transferred to roster as ' + empStub.id + '; removed from applicant pool' });
-        context.res = { status: 200, headers, body: JSON.stringify({ ok: true, hired: true, employeeId: empStub.id }) };
-      } catch (e) {
-        context.res = { status: 500, headers, body: JSON.stringify({ error: 'hire transition failed', detail: e.message }) };
-      }
-      return;
+    // Records are stored per office, so one id can exist at two offices after a move. The
+    // copy at this save's office is the stored record; any other copy is removed below.
+    let prevUnread = null, copies = [];
+    try { copies = (await listAll(coll)).filter(d => d.id === doc.id); } catch (e) { prevUnread = e; }
+    // without the stored record there is no stored pay, link or offer to keep, so no save goes through
+    if (prevUnread) throw new Error('applicant read failed before a save: ' + prevUnread.message);
+    prevRec = copies.find(d => d.office === doc.office) || copies[0] || null;
+    if (!viewAll && copies.some(d => normLoc(d.office) !== myLoc)) {
+      return { status: 403, body: { error: 'Applicant is outside your office' } };
     }
+    if (!seesPay) doc = withStoredPay(doc, prevRec);
+    doc = withStoredLink(doc, prevRec);
+
     // Both offer-flow transitions (submit-for-approval, approve-and-send) are tagged by the
     // client with _offerAction so we know to fire the matching Chat message. Approve is further
     // gated to the approver's identity, checked server-side; submit has no extra gate beyond
@@ -242,20 +237,50 @@ module.exports = async function (context, req) {
     const isApproveAction = doc._offerAction === 'approve';
     const isSubmitAction = doc._offerAction === 'submit';
     const isDeclineAction = doc._offerAction === 'declined';
-    if (isApproveAction && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
-      context.res = { status: 403, headers, body: JSON.stringify({ error: 'Only Amanda Vibert can approve and send an offer' }) }; return;
+    const approver = offerApprover(c);
+    const isTheApprover = !!approver.email && identity.email === approver.email;
+    if (isSubmitAction && !isActive(approver.emp)) {
+      return { status: 409, body: { error: 'No approver is set for this yet. An admin sets it on the Organization page.' } };
+    }
+    if (isApproveAction && !isTheApprover) {
+      return { status: 403, body: { error: `Only ${approver.name} can approve and send an offer` } };
+    }
+    if (isApproveAction && !(doc.offer && String(doc.offer.pay || '').trim())) {
+      return { status: 400, body: { error: 'Add the pay before the offer goes out' } };
+    }
+    // Once an offer is sent, signed or declined, only the approver changes it. Anyone else's
+    // save of the applicant (feedback, notes, stage) goes through with the stored offer kept.
+    const storedOffer = (prevRec && prevRec.offer) || null;
+    if (storedOffer && LOCKED.includes(storedOffer.status) && !isTheApprover) doc = { ...doc, offer: storedOffer };
+    if (doc.offer && doc.offer.status === 'sent' && (!storedOffer || storedOffer.status !== 'sent') && !isApproveAction) {
+      return { status: 400, body: { error: 'An offer is sent by approving it' } };
     }
     // Any transition of offer.status beyond draft/pending is the approver's alone — enforced
     // against the stored record, not the client's tag: if the incoming doc's offer.status
     // differs from what's on file and moves into sent/signed, only the approver may write it.
-    if (doc.offer && ['sent', 'signed', 'declined'].includes(doc.offer.status) && identity.email.toLowerCase() !== OFFER_APPROVER_EMAIL) {
+    if (doc.offer && ['sent', 'signed', 'declined'].includes(doc.offer.status) && !isTheApprover) {
       const prevStatus = prevRec && prevRec.offer ? prevRec.offer.status : null;
       if (prevStatus !== doc.offer.status) {
-        context.res = { status: 403, headers, body: JSON.stringify({ error: `Only ${OFFER_APPROVER_NAME} can send, sign or decline an offer` }) }; return;
+        return { status: 403, body: { error: `Only ${approver.name} can send, sign or decline an offer` } };
       }
     }
-    const { _offerAction, ...clean } = doc;
-    const rec = { ...clean, updatedBy: identity.email, updatedAt: new Date().toISOString() };
+    // working interview hours go to HR and Accounting once, when the day is marked sent
+    const wi = doc.workingInterview || null;
+    const hoursSentNow = !!wi && wi.status === 'sent' && !(prevRec && prevRec.workingInterview && prevRec.workingInterview.status === 'sent');
+    if (hoursSentNow && !(wi.date && Number(wi.hours) > 0)) {
+      return { status: 400, body: { error: 'Enter the day and the hours worked first' } };
+    }
+    const { _offerAction, hirePending: _hp, employeeId: _eid, ...clean } = withoutPayMarker(doc);
+    // once the signature made an employee, the applicant stays hired: a save from a browser that hasn't seen the hire can't move it back
+    if (prevRec && prevRec.stage === 'hired' && (prevRec.employeeId || prevRec.hirePending)) {
+      clean.stage = 'hired';
+      for (const k of ['rejected', 'rejectedAt', 'rejectedFrom']) { if (k in prevRec) clean[k] = prevRec[k]; else delete clean[k]; }
+    }
+    // the hire marker and the employee link are the server's: a browser never sets or clears them
+    const signedNow = !!(doc.offer && doc.offer.status === 'signed') && !(storedOffer && storedOffer.status === 'signed');
+    const hireMarks = { ...((prevRec && prevRec.employeeId) ? { employeeId: prevRec.employeeId } : {}),
+      ...((signedNow || (prevRec && prevRec.hirePending)) ? { hirePending: true } : {}) };
+    const rec = { ...clean, ...hireMarks, updatedBy: identity.email, updatedAt: new Date().toISOString() };
     // Approve-and-send mints the candidate's one-time self-service token here, server-side
     // only — never accepted from the client — so the link mailed out always matches what's
     // actually stored. Valid 14 days; offersign.js clears it the moment it's used.
@@ -263,17 +288,56 @@ module.exports = async function (context, req) {
       rec.offer = { ...rec.offer, signToken: crypto.randomBytes(24).toString('hex'), signTokenExpires: Date.now() + 14 * 24 * 60 * 60 * 1000 };
     }
     const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: rec, partitionKey: rec.office, upsert: true });
-    if (up.status !== 200 && up.status !== 201) {
-      context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status, detail: up.body }) }; return;
+    if (up.status !== 200 && up.status !== 201) throw new Error('applicant save failed: ' + up.status);
+    for (const old of copies.filter(d => d.office !== rec.office)) {
+      const dl = await cosmos({ verb: 'DELETE', resId: `${coll}/docs/${old.id}`, path: `/${coll}/docs/${old.id}`, partitionKey: old.office });
+      if (dl.status !== 200 && dl.status !== 204 && dl.status !== 404) context.log.warn('old applicant copy not removed', old.id, old.office, dl.status);
     }
-    let notify, emailResult;
+    // a Chat post or notice about an offer step goes out only when the offer really took that step
+    const wasStatus = storedOffer ? storedOffer.status : null;
+    const nowStatus = rec.offer ? rec.offer.status : null;
+    const submitted = isSubmitAction && nowStatus === 'pending_approval' && wasStatus !== 'pending_approval';
+    const declined = isDeclineAction && nowStatus === 'declined' && wasStatus !== 'declined';
+    let notify, emailResult, textResult;
     if (isApproveAction) {
-      notify = await notifyOfferEvent(rec, 'approved');
-      emailResult = await emailOfferToCandidate(rec, req);
+      notify = await notifyOfferEvent(rec, 'approved', approver.name);
+      if (!siteOrigin(req)) emailResult = textResult = { sent: false, reason: 'no site address' };   // the link would not open
+      else {
+        emailResult = await emailOfferToCandidate(rec, req, approver);
+        textResult = await textOfferToCandidate(rec, req);
+      }
     }
-    else if (isSubmitAction) notify = await notifyOfferEvent(rec, 'submitted');
-    else if (isDeclineAction) notify = await notifyOfferEvent(rec, 'declined');
+    else if (submitted) {
+      notify = await notifyOfferEvent(rec, 'submitted', approver.name);
+      // the approver is told in the portal; a notice failure never fails the submission
+      if (!isTheApprover) {
+        try {
+          await writeNotice(context, { to: approver.email, from: { email: identity.email, name: nameOf(me) }, recipient: approver.emp,
+            title: 'Offer ready for approval — ' + (rec.name || 'Applicant'),
+            body: `${rec.name || 'Applicant'} (${(rec.offer && rec.offer.role) || rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) has an offer ready for your review.`,
+            deepLink: { view: 'applicants', applicantId: rec.id } });
+        } catch (e) { context.log.warn('offer notice failed', e); }
+      }
+    }
+    else if (declined) notify = await notifyOfferEvent(rec, 'declined', approver.name);
     else notify = await notifyStageEvent(rec, prevRec);
+
+    let hoursNotice;
+    if (hoursSentNow) {
+      const hours = Number(wi.hours);
+      const to = c.employees.filter(e => isActive(e) && e.workEmail && accessFor(e, c).caps.payroll && e.workEmail.toLowerCase() !== identity.email);
+      let sent = 0;
+      for (const person of to) {
+        try {
+          await writeNotice(context, { to: person.workEmail, from: { email: identity.email, name: nameOf(me) }, recipient: person,
+            title: 'Working interview hours — ' + (rec.name || 'Applicant'),
+            body: `${rec.name || 'Applicant'} worked ${hours} hour${hours === 1 ? '' : 's'} on ${dayLabel(wi.date)} at ${rec.office || 'office TBD'}.`,
+            deepLink: { view: 'applicants', applicantId: rec.id } });
+          sent++;
+        } catch (e) { context.log.warn('hours notice failed', e); }
+      }
+      hoursNotice = { sent };
+    }
 
     // Audit trail: one entry per write, picking the most specific thing that changed.
     // Never includes the applicant's name — subjectId (the record id) is the only
@@ -290,10 +354,10 @@ module.exports = async function (context, req) {
 
     // Strip the sign token out of what goes back to the browser — same reasoning as the
     // GET path above; the approver's own client doesn't need the bearer value either.
-    const outApplicant = strip(up.body);
+    // a signed offer with no employee yet: create the employee (also the retry after a failure)
+    let stored = strip(up.body);
+    if (stored.hirePending && !stored.employeeId) stored = await hireSigned(context, stored, identity.email);
+    const outApplicant = withoutSignatureImage(seesPay ? stored : withoutPay(stored));
     if (outApplicant.offer && outApplicant.offer.signToken) outApplicant.offer = { ...outApplicant.offer, signToken: undefined, signTokenExpires: undefined };
-    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, applicant: outApplicant, notify, emailResult }) };
-  } catch (err) {
-    context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
-  }
-};
+    return { status: 200, body: { ok: true, applicant: outApplicant, notify, emailResult, textResult, hoursNotice } };
+});

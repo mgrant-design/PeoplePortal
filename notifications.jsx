@@ -1,12 +1,5 @@
-/* notifications.jsx — manager notifications: open shifts by location + time-off
-   requests (approve / deny / route). Employees submit requests. Persists to localStorage. */
-
-/* NO local fallback. Time-off lives in Cosmos (/api/timeoff). These stubs remain only
-   so older callers don't break; they hold nothing. */
-function loadTimeoff() { return []; }
-function saveTimeoff(t) {}
-function approvedTimeoff() { return loadTimeoff().filter(r => r.status === 'approved'); }
-const TO_STATUS = { hr_review: ['badge-prog', 'With HR · balance check'], mgr_review: ['badge-warn', 'With manager'], approved: ['badge-ok', 'Approved'], denied: ['badge-todo', 'Denied'], insufficient: ['badge-todo', 'Not enough balance'] };
+/* notifications.jsx — the bell panel: approvals waiting on you and the requests you
+   sent, notices and messages, open shifts for managers, and the time-off request form. */
 
 /* Empty-state: no "0 notifications" noise — just a soft, satisfied kaomoji that
    quietly exhales. Lines pick at random (never the same twice in a row) and start
@@ -78,7 +71,7 @@ function ZenEmpty({ isMgr, onRequest, onCompose }) {
         {onCompose && (
           <button onClick={onCompose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>send a message</button>
         )}
-        {!isMgr && (
+        {onRequest && (
           <button onClick={onRequest} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>request time off</button>
         )}
       </div>
@@ -86,42 +79,56 @@ function ZenEmpty({ isMgr, onRequest, onCompose }) {
   );
 }
 
-function scopedRequests(all, me, access) {
-  if (typeof seesAll === 'function' ? seesAll(access, 'notifications') : access.caps.viewAll) return all;
-  if (access.caps.viewTeam) return all.filter(r => r.loc === me.loc);
-  return all.filter(r => r.empId === me.id);
-}
-function notifCount(requests, me, access) {
-  const scoped = scopedRequests(requests || [], me, access);
-  const isMgr = access.caps.viewAll || access.caps.viewTeam;
-  let actionable = 0;
-  if (access.flags.isHR || access.caps.viewAll) actionable += scoped.filter(r => r.status === 'hr_review').length;
-  if (isMgr) actionable += scoped.filter(r => r.status === 'mgr_review').length;
-  return actionable;
+/* Monday-to-Friday days from start to end, both included (YYYY-MM-DD) */
+function weekdaysBetween(start, end) {
+  let n = 0;
+  for (let t = Date.parse(start + 'T00:00:00Z'), last = Date.parse(end + 'T00:00:00Z'); t <= last; t += 86400000) {
+    const dow = new Date(t).getUTCDay();
+    if (dow !== 0 && dow !== 6) n++;
+  }
+  return n;
 }
 
-function TimeOffForm({ me, onSubmit, onCancel }) {
-  const [f, setF] = useState({ type: 'Vacation', hours: 8, start: '', reason: '' });
+/* a time-off request: start and end dates, hours, type and an optional reason; it goes
+   to the person's manager, then to the final time-off approver */
+const TIMEOFF_TYPES = ['Vacation', 'Sick', 'Unpaid', 'Bereavement'];
+function TimeOffForm({ onDone, onCancel, flash }) {
+  const [f, setF] = useState({ type: 'Vacation', start: '', end: '', hours: '', reason: '' });
+  const [busy, setBusy] = useState(false);
   const inp = { width: '100%', padding: '9px 11px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
-  const paid = f.type !== 'Unpaid';
+  const lab = { fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 };
+  const days = f.start && f.end && f.end >= f.start ? Math.round((Date.parse(f.end) - Date.parse(f.start)) / 86400000) + 1 : 0;
+  // hours follow the dates (8 for each weekday) until the person types their own
+  const setDates = (patch) => setF(cur => { const n = { ...cur, ...patch }; const h = n.start && n.end && n.end >= n.start ? weekdaysBetween(n.start, n.end) * 8 : 0; return cur.hoursTyped ? n : { ...n, hours: h ? String(h) : '' }; });
+  const endBeforeStart = f.start && f.end && f.end < f.start;
+  const ok = days > 0 && Number(f.hours) > 0 && !busy;
+  const finalEmail = (window.HR && window.HR.approvers && window.HR.approvers.timeoffFinal) || '';
+  const finalEmp = finalEmail && typeof findByEmail === 'function' ? findByEmail(finalEmail) : null;
+  const send = () => {
+    setBusy(true);
+    submitApproval('timeoff', { start: f.start, end: f.end, hours: Number(f.hours), type: f.type, reason: f.reason.trim() })
+      .then(() => { flash && flash('Time-off request sent to your manager.'); onDone && onDone(); })
+      .catch(e => { setBusy(false); flash && flash('Couldn’t send the request (' + ((e && e.message) || 'error') + ')', false); });
+  };
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 9 }}>
-        <label><div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>Type</div>
-          <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })} style={{ ...inp, appearance: 'auto' }}>{['Vacation', 'Sick', 'Unpaid', 'Bereavement'].map(t => <option key={t}>{t}</option>)}</select></label>
-        <label><div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>Hours</div>
-          <select value={f.hours} onChange={e => setF({ ...f, hours: +e.target.value })} style={{ ...inp, appearance: 'auto' }}>{[4, 8, 12, 16, 24, 32, 40].map(h => <option key={h} value={h}>{h} hrs{h === 4 ? ' (half day)' : h === 8 ? ' (full day)' : ''}</option>)}</select></label>
+        <label><div style={lab}>First day</div><input type="date" value={f.start} onChange={e => setDates({ start: e.target.value, end: f.end || e.target.value })} style={inp} /></label>
+        <label><div style={lab}>Last day</div><input type="date" value={f.end} min={f.start || undefined} onChange={e => setDates({ end: e.target.value })} style={inp} /></label>
+        <label><div style={lab}>Type</div>
+          <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })} style={{ ...inp, appearance: 'auto' }}>{TIMEOFF_TYPES.map(t => <option key={t}>{t}</option>)}</select></label>
+        <label><div style={lab}>Hours</div><input type="number" min="1" step="0.5" value={f.hours} onChange={e => setF({ ...f, hours: e.target.value, hoursTyped: e.target.value !== '' })} style={inp} /></label>
       </div>
-      <label style={{ display: 'block', marginBottom: 9 }}><div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 }}>Date(s)</div>
-        <input value={f.start} onChange={e => setF({ ...f, start: e.target.value })} placeholder="e.g. Jul 8 or Jul 8–11" style={inp} /></label>
+      {endBeforeStart && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>The last day is before the first day.</div>}
+      {days > 0 && !(Number(f.hours) > 0) && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>Enter the hours.</div>}
       <textarea value={f.reason} onChange={e => setF({ ...f, reason: e.target.value })} rows={2} placeholder="Reason (optional)" style={{ ...inp, resize: 'vertical' }} />
       <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 9, display: 'flex', gap: 7, alignItems: 'flex-start' }}>
         <Icon name="link" style={{ width: 13, height: 13, color: 'var(--accent)', flex: 'none', marginTop: 1 }} />
-        {paid ? 'Goes to HR & Payroll to confirm your balance, then to your manager to approve.' : 'Unpaid time goes straight to your manager to approve.'}
+        {`Goes to your manager, then to ${finalEmp ? finalEmp.name : 'the final approver'}, who approves it as paid or unpaid.`}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
         <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!f.start.trim()} onClick={() => onSubmit({ id: 'to' + Date.now(), empId: me.id, name: me.name, loc: me.loc, office: me.loc, type: f.type, paid, hours: f.hours, avail: null, start: f.start, end: '', reason: f.reason, status: paid ? 'hr_review' : 'mgr_review' })}><Icon name="check" /> Submit</button>
+        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!ok} onClick={send}><Icon name="check" /> {busy ? 'Sending…' : 'Send request'}</button>
       </div>
     </div>
   );
@@ -176,7 +183,6 @@ function MessageComposer({ me, access, onSend, onCancel }) {
 }
 
 function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, onMarkRead, onDelete, onRestore, onOpenDeepLink }) {
-  const [reqs, setReqs] = useState([]);
   const [composing, setComposing] = useState(false);
   const [historyMode, setHistoryMode] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
@@ -188,24 +194,39 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   const toggleSndMute = () => { if (!window.PDSound) return; const m = !sndMuted; window.PDSound.setMuted(m); setSndMuted(m); };
   const sndCirc = (active) => ({ width: 26, height: 26, borderRadius: '50%', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--line)'), background: active ? 'var(--accent)' : 'var(--surface)', color: active ? 'var(--on-accent)' : 'var(--ink-3)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, lineHeight: 1, flex: 'none' });
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
-  const isHR = access.flags.isHR || access.caps.viewAll;
   const locs = Object.keys(openByOffice);
-  const myScope = scopedRequests(reqs, me, access);
-  const actionable = myScope.filter(r => (isHR && r.status === 'hr_review') || (isMgr && r.status === 'mgr_review'));
   const live = notices.filter(n => !n.dismissed);
   const dismissed = notices.filter(n => n.dismissed);
   const catOf = (n) => n.category || 'message';
-  const needYou = live.filter(n => catOf(n) === 'action');
+  // approvals waiting on this person, and requests they sent; reloaded when any changes
+  const [appr, setAppr] = useState({ toApprove: [], mine: [] });
+  const [apprLoaded, setApprLoaded] = useState(false);
+  const [apprAsOf, setApprAsOf] = useState('');   // when the approvals on screen were requested
+  const reloadApprovals = () => { if (typeof fetchApprovals === 'function') { const asked = new Date().toISOString(); fetchApprovals().then(a => { setAppr({ toApprove: a.toApprove || [], mine: a.mine || [] }); setApprAsOf(asked); setApprLoaded(true); }).catch(e => flash && flash('Couldn’t load approvals (' + ((e && e.message) || 'no backend') + ')')); } };
+  useEffect(() => { reloadApprovals(); const h = () => reloadApprovals(); window.addEventListener('pd-approvals-changed', h); return () => window.removeEventListener('pd-approvals-changed', h); }, []);
+  const decide = (record, decision, note, option) => decideApproval(record.id, decision, note, option)
+    .then((res) => { reloadApprovals(); flash && flash(decision === 'deny' ? 'Request denied.' : (res && res.record && res.record.effect === 'failed') ? 'Approved, but nothing was changed — the schedule changed after the request was sent. It needs to be sent again.' : 'Approved.'); })
+    .catch(e => { reloadApprovals(); flash && flash('Couldn’t save the decision (' + ((e && e.message) || 'error') + ')'); });
+  const pendingIds = new Set(appr.toApprove.map(r => r.id));
+  // approvals waiting here show as their rows, so their notices stay out of Needs you
+  const aboutApproval = (n) => !!(n.deepLink && n.deepLink.approvalId);
+  const needYou = live.filter(n => catOf(n) === 'action' && !aboutApproval(n));
+  // a request notice whose approval no longer waits on this person is done: mark it read
+  useEffect(() => {
+    if (!apprLoaded || !onMarkRead) return;
+    // only notices older than the approvals list, so one that just arrived isn't judged against a stale list
+    live.filter(n => catOf(n) === 'action' && aboutApproval(n) && !n.read && (n.createdAt || '') < apprAsOf && !pendingIds.has(n.deepLink.approvalId)).forEach(n => onMarkRead(n.id));
+  }, [apprLoaded, apprAsOf, appr, notices]);
   const messages = live.filter(n => catOf(n) === 'message' || catOf(n) === 'mention');
   const activity = live.filter(n => catOf(n) === 'social');
-  const fullyEmpty = (isMgr ? locs.length === 0 : true) && myScope.length === 0 && live.length === 0;
+  const fullyEmpty = (isMgr ? locs.length === 0 : true) && live.length === 0 && !appr.toApprove.length && !appr.mine.length;
   // One notice card, reused across the tiers and the history view. Reactions ('social') render
   // muted and never as “unread”; history items swap dismiss (×) for a restore action.
   const NoticeCard = (n, historyItem) => {
     const social = catOf(n) === 'social';
     const unread = !n.read && !social && !historyItem;
     return (
-      <div key={n.id} className="card" onClick={() => { if (!historyItem && !n.read && onMarkRead) onMarkRead(n.id); if (n.deepLink && onOpenDeepLink) onOpenDeepLink(n.deepLink); }}
+      <div key={n.id} className="card" onClick={() => { if (!historyItem && !n.read && onMarkRead) onMarkRead(n.id); if (n.deepLink && n.deepLink.view !== 'approvals' && onOpenDeepLink) onOpenDeepLink(n.deepLink); }}
         style={{ padding: 12, cursor: n.deepLink ? 'pointer' : ((n.read || historyItem) ? 'default' : 'pointer'), borderColor: unread ? 'var(--accent)' : 'var(--line)', background: unread ? 'var(--accent-softer)' : 'var(--surface)', opacity: (social || historyItem) ? 0.92 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, color: social ? 'var(--ink-2)' : 'var(--ink)' }}>{n.title || '(no subject)'}</div>
@@ -222,10 +243,6 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   };
 
   useEffect(() => { const h = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
-
-  // Load requests from Cosmos. No local fallback: if there's no backend the list stays empty.
-  const reload = () => { if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setReqs).catch(e => flash && flash('Could not load time-off: ' + ((e && e.message) || 'no backend'))); };
-  useEffect(() => { reload(); }, []);
 
   // Open & offered shifts come from this week's published schedules (new shift-list shape).
   useEffect(() => {
@@ -245,27 +262,6 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [isMgr]);
-
-  // Each action goes to Cosmos. No local fallback — if the backend isn't there or the
-  // call fails, it surfaces the error and changes nothing.
-  const act = (r, action, okMsg) => {
-    if (typeof timeoffAction !== 'function') { flash && flash('No backend — time-off action unavailable.'); return; }
-    timeoffAction({ action, id: r.id, office: r.office || r.loc })
-      .then(() => { reload(); flash && flash(okMsg); })
-      .catch(e => flash && flash((e && e.message) || 'Action failed.'));
-  };
-  const hrConfirm = (r) => act(r, 'hr_confirm', `Balance confirmed — moved to ${r.name.split(' ')[0]}’s manager.`, 'mgr_review', { hrConfirmed: true });
-  const hrInsufficient = (r) => act(r, 'hr_insufficient', 'Marked as not enough balance.', 'insufficient');
-  const mgrApprove = (r) => act(r, 'approve', 'Time off approved.', 'approved');
-  const deny = (r) => act(r, 'deny', 'Request denied.', 'denied');
-  const submit = (r) => {
-    setAdding(false);
-    const msg = r.paid ? 'Request submitted — pending HR balance check.' : 'Request submitted — pending manager approval.';
-    if (typeof timeoffAction !== 'function') { flash && flash('No backend — request not submitted.'); return; }
-    timeoffAction({ action: 'submit', type: r.type, hours: r.hours, start: r.start, end: r.end, reason: r.reason })
-      .then(() => { reload(); flash && flash(msg); })
-      .catch(e => flash && flash((e && e.message) || 'Submit failed.'));
-  };
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 85, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -298,14 +294,27 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{dismissed.map(n => NoticeCard(n, true))}</div>
             </div>
           ) : (fullyEmpty && !adding && !composing) ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} onCompose={() => setComposing(true)} /> : <>
-          {/* NEEDS YOU — action-required notices */}
-          {needYou.length > 0 && (
+          {/* NEEDS YOU — approvals waiting on this person, then action-required notices */}
+          {(appr.toApprove.length > 0 || needYou.length > 0) && (
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <Icon name="bell" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
                 <h3 style={{ fontSize: 14, flex: 1 }}>Needs you</h3>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{needYou.map(n => NoticeCard(n, false))}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {appr.toApprove.map(r => <ApprovalRow key={r.id} record={r} onDecide={decide} />)}
+                {needYou.map(n => NoticeCard(n, false))}
+              </div>
+            </div>
+          )}
+          {/* MY REQUESTS — what this person sent and where each one is */}
+          {appr.mine.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Icon name="list" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
+                <h3 style={{ fontSize: 14, flex: 1 }}>My requests</h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{appr.mine.map(r => <MyRequestRow key={r.id} record={r} />)}</div>
             </div>
           )}
           {/* MESSAGES & MENTIONS — direct messages + comment/reply mentions, with composer */}
@@ -349,60 +358,15 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
             </div>
           )}
 
-          {/* time-off requests */}
+          {/* time off — the form; sent requests show under My requests */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Icon name="clock" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-              <h3 style={{ fontSize: 14, flex: 1 }}>{isMgr ? 'Time-off requests' : 'My time off'}</h3>
-              {!isMgr && <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => setAdding(a => !a)}><Icon name="plus" /> Request</button>}
+              <h3 style={{ fontSize: 14, flex: 1 }}>Time off</h3>
+              {!adding && <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => setAdding(true)}><Icon name="plus" /> Request</button>}
             </div>
-            {!isMgr && adding && <TimeOffForm me={me} onSubmit={submit} onCancel={() => setAdding(false)} />}
-            {isMgr && actionable.length > 0 && <div style={{ fontSize: 12, color: 'oklch(0.5 0.13 60)', fontWeight: 600, marginBottom: 8 }}>{actionable.length} awaiting your {isHR ? 'review' : 'approval'}</div>}
-            {myScope.length === 0 && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No requests.</p>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {myScope.map(r => {
-                const st = TO_STATUS[r.status] || ['badge-todo', r.status];
-                const lowBal = r.paid && r.avail != null && r.avail < r.hours;
-                return (
-                <div key={r.id} className="card" style={{ padding: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isMgr && <PhotoAvatar emp={{ id: r.empId, name: r.name }} size={32} />}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{isMgr ? r.name : r.type}{isMgr ? '' : (r.paid ? '' : ' · Unpaid')}</div>
-                      <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{isMgr ? `${r.type} · ` : ''}{r.hours} hrs · {r.start}{r.end ? '–' + r.end : ''}{isMgr ? ' · ' + r.loc : ''}</div>
-                    </div>
-                    <span className={`badge ${st[0]}`}>{st[1]}</span>
-                  </div>
-                  {r.reason && <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 7 }}>{r.reason}</p>}
-
-                  {/* HR balance-check step (paid only) */}
-                  {isHR && r.status === 'hr_review' && (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '7px 10px', borderRadius: 'var(--r-sm)', background: lowBal ? 'var(--warn-soft)' : 'var(--surface-2)', marginBottom: 8 }}>
-                        <Icon name="clock" style={{ width: 13, height: 13, color: lowBal ? 'oklch(0.5 0.13 60)' : 'var(--accent)' }} />
-                        <span>{r.avail != null ? <><b>{r.avail} hrs</b> available</> : 'Balance not available yet (no payroll link)'} · requesting <b>{r.hours} hrs</b>{lowBal ? ' — not enough' : ''}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 7 }}>
-                        <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12.5, flex: 1, justifyContent: 'center' }} disabled={lowBal} onClick={() => hrConfirm(r)}><Icon name="check" /> Confirm balance → manager</button>
-                        <button className="btn btn-quiet" style={{ padding: '6px 10px', fontSize: 12.5 }} onClick={() => hrInsufficient(r)}>Insufficient</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Manager approval step */}
-                  {isMgr && r.status === 'mgr_review' && (
-                    <div style={{ marginTop: 10 }}>
-                      {r.paid && r.hrConfirmed && <div style={{ fontSize: 11.5, color: 'oklch(0.42 0.12 155)', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" style={{ width: 13, height: 13 }} /> HR confirmed {r.hours} hrs available</div>}
-                      {!r.paid && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 7 }}>Unpaid — no balance needed</div>}
-                      <div style={{ display: 'flex', gap: 7 }}>
-                        <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12.5, flex: 1, justifyContent: 'center' }} onClick={() => mgrApprove(r)}><Icon name="check" /> Approve</button>
-                        <button className="btn btn-quiet" style={{ padding: '6px 10px', fontSize: 12.5 }} onClick={() => deny(r)}>Deny</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ); })}
-            </div>
+            {adding ? <TimeOffForm flash={flash} onCancel={() => setAdding(false)} onDone={() => { setAdding(false); reloadApprovals(); }} />
+              : <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>{appr.mine.some(r => r.kind === 'timeoff') ? 'Your requests are under My requests.' : 'No time-off requests yet.'}</p>}
           </div>
           </>}
         </div>
@@ -411,28 +375,4 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   );
 }
 
-/* Signatures of the notifications that count as "done TO you" — the ones that should ding
-   when they newly appear. Deliberately excludes anything the user causes themselves, so a
-   ding is always "someone/something acted on you," never "you did a thing":
-     • Employee  → their own request was DECIDED (approved / denied / insufficient). These can
-                  never be self-triggered (you can't approve yourself), so no false dings.
-                  (mgr_review is skipped on purpose: an unpaid request the employee submits
-                   themselves starts there, which would be a self-ding.)
-     • Manager   → a request in scope is newly awaiting their approval (mgr_review).
-     • HR/admin  → a request in scope is newly awaiting a balance check (hr_review).
-   Signature is id:status, so a request moving between stages reads as a new notification
-   for whoever it just landed on. Used by app.jsx to diff poll-over-poll and ding the new. */
-function myNotifSignatures(reqs, me, access) {
-  const scoped = scopedRequests(reqs || [], me, access);
-  const isMgr = access.caps.viewAll || access.caps.viewTeam;
-  const isHR = access.flags.isHR || access.caps.viewAll;
-  const out = [];
-  scoped.forEach(r => {
-    if (!isMgr && r.empId === me.id && (r.status === 'approved' || r.status === 'denied' || r.status === 'insufficient')) out.push(r.id + ':' + r.status);
-    if (isMgr && r.status === 'mgr_review') out.push(r.id + ':' + r.status);
-    if (isHR && r.status === 'hr_review') out.push(r.id + ':' + r.status);
-  });
-  return out;
-}
-
-Object.assign(window, { NotificationsPanel, notifCount, approvedTimeoff, myNotifSignatures });
+Object.assign(window, { NotificationsPanel, TimeOffForm });

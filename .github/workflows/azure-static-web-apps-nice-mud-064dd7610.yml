@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - overhaul
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
@@ -17,6 +18,8 @@ jobs:
         with:
           submodules: true
           lfs: false
+      - name: Share the rule files with the API
+        run: cp access-rules.js approvals-text.js weekmerge.js api/_shared/
       - name: Install API dependencies
         run: cd api && npm install
       # Stamps the commit being deployed into version.json, read by the login screen and
@@ -37,6 +40,7 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_MUD_064DD7610 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
+          production_branch: "main"
           app_location: "/"
           api_location: "api"
           output_location: ""

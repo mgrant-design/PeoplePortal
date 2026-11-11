@@ -1,40 +1,34 @@
-/* orgconfig.jsx — client persistence for the shared org-config doc:
-   offices, departments, titles, managers, users, offboarding.
+/* orgconfig.jsx — client persistence for the shared org-config doc: the sections in
+   ORG_SECTIONS.
 
-   Talks to /api/orgconfig (Cosmos appState/roster-support). Mirrors appearance.jsx's
-   fetch/push pattern and sends the Google token in X-Google-Token (Azure overwrites
-   the standard Authorization header — same reason as /api/roster & /api/settings).
+   Talks to /api/orgconfig (Cosmos appState/roster-support) through pdApi.
 
    These sections arrive with the roster at sign-in and live on window.HR. Writes here
    update window.HR in place (so every module that reads window.HR[section] sees the
    change immediately) and then persist to Cosmos. Off-prod (no /api) the write rejects
    and the hook surfaces status 'error' while keeping the local value, so sandbox UI
-   work still functions — same graceful degradation as the schedule/coverage helpers. */
+   work still functions — same graceful degradation as the schedule helpers. */
 
-const ORG_SECTIONS = ['offices', 'departments', 'titles', 'managers', 'users', 'offboarding', 'weekStart', 'refLinks'];
+const ORG_SECTIONS = ['offices', 'departments', 'titles', 'managers', 'offboarding', 'weekStart', 'refLinks', 'flags', 'approvers'];
 
-async function fetchOrgConfig() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/orgconfig', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('orgconfig read failed (' + res.status + ')');
-  return res.json(); // { offices, departments, titles, managers, users, offboarding }
+function fetchOrgConfig() {
+  return pdApi('/api/orgconfig'); // one key per section in ORG_SECTIONS
 }
 
-/* Persist ONE section. Optimistically updates window.HR[section] in place, then writes
-   to Cosmos. Throws 'conflict' on a 409 (someone else saved first) so the caller can
-   refetch and retry. Returns the server's echo of the saved section. */
+/* Persist ONE section. Sends the section as this screen last saw it, so the server can
+   refuse with 409 when someone else saved first; on any failure window.HR goes back to
+   what it was, and a conflict throws 'conflict'. Returns the server's echo of the saved section. */
 async function saveOrgSection(section, value) {
   if (!ORG_SECTIONS.includes(section)) throw new Error('unknown section: ' + section);
+  const previous = window.HR ? window.HR[section] : undefined;
   if (window.HR) window.HR[section] = value;       // optimistic local update
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/orgconfig', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify({ section, value }),
-  });
-  if (res.status === 409) throw new Error('conflict');
-  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || ('save failed (' + res.status + ')')); }
-  return res.json();
+  try {
+    return await pdApi('/api/orgconfig', { method: 'POST', body: { section, value, previous } });
+  } catch (e) {
+    if (window.HR) window.HR[section] = previous;   // only a saved value counts as what the server has
+    if (e.status === 409) throw new Error('conflict');
+    throw e;
+  }
 }
 
 /* React hook for one section → [value, save, status, setValue].
@@ -45,6 +39,7 @@ function useOrgSection(section) {
   const [value, setValue] = useState(() => ((window.HR && window.HR[section]) || []).map(x => ({ ...x })));
   const [status, setStatus] = useState('idle');
   const save = useCallback(async (next) => {
+    const before = (window.HR && window.HR[section]) || [];
     setValue(next);
     setStatus('saving');
     try {
@@ -52,7 +47,8 @@ function useOrgSection(section) {
       setStatus('saved');
       setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 1600);
     } catch (e) {
-      setStatus(e.message === 'conflict' ? 'conflict' : 'error');
+      if (e.message === 'conflict') { setValue(before.map(x => ({ ...x }))); setStatus('conflict'); }
+      else setStatus('error');
     }
   }, [section]);
   return [value, save, status, setValue];

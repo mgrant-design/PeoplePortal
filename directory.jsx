@@ -7,7 +7,7 @@ function Pill({ active, onClick, children }) {
   );
 }
 
-function ContactCard({ emp, onClose, canRecord, onRecord, sensitive }) {
+function ContactCard({ emp, onClose, canRecord, onRecord }) {
   const DRow = ({ k, v, href }) => {
     if (!v) return null;
     const inner = <><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{k}</span><span style={{ fontSize: 13.5, fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' }}>{v}</span></>;
@@ -35,7 +35,7 @@ function ContactCard({ emp, onClose, canRecord, onRecord, sensitive }) {
           <DRow k="Work email" v={emp.workEmail} href={emp.workEmail ? `mailto:${emp.workEmail}` : null} />
           {emp.phoneExt && emp.phoneExt !== 'N/A' && <DRow k="Phone ext." v={`Ext. ${emp.phoneExt}`} />}
           {canRecord && emp.mobile && <DRow k="Mobile" v={emp.mobile} href={`tel:${emp.mobile}`} />}
-          {sensitive && <DRow k="Personal email" v={emp.personalEmail} href={emp.personalEmail ? `mailto:${emp.personalEmail}` : null} />}
+          {canRecord && <DRow k="Personal email" v={emp.personalEmail} href={emp.personalEmail ? `mailto:${emp.personalEmail}` : null} />}
         </div>
 
         <div style={{ marginTop: 16 }}>
@@ -44,7 +44,7 @@ function ContactCard({ emp, onClose, canRecord, onRecord, sensitive }) {
           <DRow k="Department" v={emp.department} />
           <DRow k="Manager" v={emp.manager} />
           <DRow k="Start date" v={emp.startDate} />
-          {sensitive && <DRow k="Date of birth" v={emp.birthdate} />}
+          {canRecord && <DRow k="Date of birth" v={PD_ACCESS_RULES.birthdayLabel(emp.birthdate)} />}
         </div>
 
         <p style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 14, display: 'flex', gap: 6, alignItems: 'center' }}><Icon name="lock" style={{ width: 13, height: 13, flex: 'none' }} /> {canRecord ? 'Personal details visible to HR & managers.' : 'Work contact only — personal details are private.'}</p>
@@ -91,7 +91,7 @@ function Directory({ employees, access, onRecord, canRecord, canSeeInactive, tit
 
   return (
     <div className="fade-in">
-      {card && <ContactCard emp={card} onClose={() => setCard(null)} canRecord={canRecord && canRecord(card)} sensitive={access && access.caps && access.caps.viewAll} onRecord={onRecord} />}
+      {card && <ContactCard emp={card} onClose={() => setCard(null)} canRecord={canRecord && canRecord(card)} onRecord={onRecord} />}
       {adding && <AddEmployeeModal offices={offices.filter(o => o !== 'All')} onCreated={p => setJustAdded(l => [...l, p])} onClose={() => setAdding(false)} />}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>

@@ -3,7 +3,7 @@
 
    1. Applicant hard-delete (3-year rule): any `applicants` doc with rejected === true
       and rejectedAt older than 3 years is permanently removed — the Cosmos doc AND its
-      résumé blobs in the `parsedResumes` container. A final audit entry records that the
+      résumé blobs in the `parsedresumes` container. A final audit entry records that the
       deletion happened (id only, no name/PII), then the applicant record is gone for good.
 
    2. Audit log prune (7-year rule): auditLog entries older than 7 years are deleted.
@@ -15,24 +15,23 @@
 
 const { cosmos, listAll, strip, collPath, cosmosConfigured } = require('../_shared/cosmos');
 const { logAudit } = require('../_shared/audit');
-const { BlobServiceClient } = require('@azure/storage-blob');
+const blobs = require('../_shared/blobs');
 
 const APPLICANTS = collPath('applicants');
 const AUDIT = collPath('auditLog');
-const RESUME_CONTAINER = 'parsedResumes';
+const RESUME_CONTAINER = 'parsedresumes';
 
 const THREE_YEARS_MS = 3 * 365.25 * 24 * 60 * 60 * 1000;
 const SEVEN_YEARS_MS = 7 * 365.25 * 24 * 60 * 60 * 1000;
 
-function blobServiceOrNull() {
-  const conn = process.env.AZURE_STORAGE_CONNECTION_STRING || '';
-  if (!conn) return null;
-  return BlobServiceClient.fromConnectionString(conn);
+/* the résumé container, or null when no storage is set up (the cleanup then skips blobs) */
+function resumeContainerOrNull() {
+  if (!process.env.AZURE_STORAGE_CONNECTION_STRING) return null;
+  return blobs.containerClient(RESUME_CONTAINER);
 }
 
-async function deleteResumeBlobs(blobSvc, resumes) {
-  if (!blobSvc || !Array.isArray(resumes) || !resumes.length) return;
-  const container = blobSvc.getContainerClient(RESUME_CONTAINER);
+async function deleteResumeBlobs(container, resumes) {
+  if (!container || !Array.isArray(resumes) || !resumes.length) return;
   for (const r of resumes) {
     if (!r || !r.blobPath) continue;
     try { await container.getBlockBlobClient(r.blobPath).deleteIfExists(); }
@@ -40,7 +39,7 @@ async function deleteResumeBlobs(blobSvc, resumes) {
   }
 }
 
-async function sweepExpiredApplicants(context, blobSvc) {
+async function sweepExpiredApplicants(context, resumeBlobs) {
   const result = { checked: 0, deleted: 0, errors: [] };
   let docs;
   try { docs = (await listAll(APPLICANTS)).map(strip); }
@@ -52,7 +51,7 @@ async function sweepExpiredApplicants(context, blobSvc) {
 
   for (const doc of expired) {
     try {
-      await deleteResumeBlobs(blobSvc, doc.resumes);
+      await deleteResumeBlobs(resumeBlobs, doc.resumes);
       const del = await cosmos({ verb: 'DELETE', resId: `${APPLICANTS}/docs/${doc.id}`, path: `/${APPLICANTS}/docs/${doc.id}`, partitionKey: doc.office });
       if (del.status !== 200 && del.status !== 204) throw new Error('delete failed: ' + del.status);
       // Written AFTER the delete succeeds, so the log's own record of the deletion is
@@ -88,6 +87,25 @@ async function sweepExpiredAuditEntries() {
   return result;
 }
 
+/* profile photos of people who have left: terminated, or no longer on the roster */
+async function sweepDepartedPhotos() {
+  const result = { checked: 0, deleted: 0, errors: [] };
+  if (!process.env.AZURE_STORAGE_CONNECTION_STRING) return result;
+  let staying;
+  try { staying = new Set((await listAll(collPath('roster'))).filter(e => e.status !== 'Terminated').map(e => e.id)); }
+  catch (e) { result.errors.push('list roster: ' + e.message); return result; }
+  const container = blobs.containerClient('photos');
+  try {
+    for await (const b of container.listBlobsFlat()) {
+      result.checked++;
+      if (staying.has(b.name)) continue;
+      try { await container.getBlockBlobClient(b.name).deleteIfExists(); result.deleted++; }
+      catch (e) { result.errors.push(`photo ${b.name}: ${e.message}`); }
+    }
+  } catch (e) { if (e.statusCode !== 404) result.errors.push('list photos: ' + e.message); }
+  return result;
+}
+
 // HTTP-triggered (not a timerTrigger) because Azure Static Web Apps' managed Functions
 // only support HTTP triggers — see api/../.github/workflows, api_location deploys here as
 // a managed function. Actual daily scheduling is done by a GitHub Actions cron workflow
@@ -101,14 +119,15 @@ module.exports = async function (context, req) {
 
   if (!cosmosConfigured()) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing Cosmos config' }) }; return; }
 
-  const blobSvc = blobServiceOrNull();
-  if (!blobSvc) context.log.warn('retentionCleanup: no AZURE_STORAGE_CONNECTION_STRING — résumé blobs will not be deleted this run');
+  const resumeBlobs = resumeContainerOrNull();
+  if (!resumeBlobs) context.log.warn('retentionCleanup: no AZURE_STORAGE_CONNECTION_STRING — résumé blobs will not be deleted this run');
 
-  const applicantSweep = await sweepExpiredApplicants(context, blobSvc);
+  const applicantSweep = await sweepExpiredApplicants(context, resumeBlobs);
   const auditSweep = await sweepExpiredAuditEntries();
+  const photoSweep = await sweepDepartedPhotos();
 
-  const summary = `applicants ${applicantSweep.deleted}/${applicantSweep.checked} deleted, audit ${auditSweep.deleted}/${auditSweep.checked} pruned`;
-  const errors = [...applicantSweep.errors, ...auditSweep.errors];
+  const summary = `applicants ${applicantSweep.deleted}/${applicantSweep.checked} deleted, audit ${auditSweep.deleted}/${auditSweep.checked} pruned, photos ${photoSweep.deleted}/${photoSweep.checked} removed`;
+  const errors = [...applicantSweep.errors, ...auditSweep.errors, ...photoSweep.errors];
   context.log(`retentionCleanup: ${summary}` + (errors.length ? ` — errors: ${JSON.stringify(errors)}` : ''));
   context.res = { status: errors.length ? 207 : 200, headers, body: JSON.stringify({ ok: errors.length === 0, summary, errors }) };
 };

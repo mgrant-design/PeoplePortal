@@ -10,14 +10,7 @@
 
 /* one employee record write. action 'update' patches by id; 'create' makes a new one. */
 async function saveEmpRecord(body) {
-  const res = await fetch('/api/roster', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': (window.PD_GOOGLE_TOKEN || '') },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('save failed (' + res.status + ')'));
-  return data.employee;
+  return (await pdApi('/api/roster', { method: 'POST', body })).employee;
 }
 
 /* The server returns the raw Cosmos document. Everything on screen reads the DERIVED
@@ -63,6 +56,8 @@ const ADMIN_FIELDS = [
   { k: 'employmentType', label: 'Employment type', options: ['', 'Full-time', 'Part-time', 'Per diem'] },
   { k: 'status', label: 'Status', options: ['Active', 'Suspended', 'Terminated'] },
 ];
+/* managers can't change the fields that decide access and who someone is */
+const MANAGER_FIELDS = ADMIN_FIELDS.filter(f => !['jobTitle', 'department', 'workEmail'].includes(f.k));
 
 function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
   const [form, setForm] = useState(() => { const o = {}; fields.forEach(f => o[f.k] = emp[f.k] || ''); return o; });
@@ -101,26 +96,28 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
     if (saving) return;
     const patch = changedPatch();
     if (!Object.keys(patch).length) { onClose(); return; }
-    if (SIGNED_STATUSES.includes(patch.status) && patch.status !== emp.status) { setErr(''); setSigning({ to: patch.status }); return; }
+    const statusChange = patch.status && patch.status !== emp.status;
+    if (statusChange && (SIGNED_STATUSES.includes(patch.status) || SIGNED_STATUSES.includes(emp.status))) { setErr(''); setSigning({ to: patch.status }); return; }
     commit(patch);
   };
 
   /* ---- signature step: replaces the form until it is signed or backed out of ---- */
   if (signing) {
     const isTerm = signing.to === 'Terminated';
+    const isReactivate = !SIGNED_STATUSES.includes(signing.to);
     return (
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.45)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
         <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)', maxHeight: '88vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: isTerm ? 'color-mix(in oklab, oklch(0.6 0.19 25) 14%, var(--surface))' : 'var(--warn-soft)', color: isTerm ? 'oklch(0.5 0.17 25)' : 'oklch(0.45 0.12 60)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name="bell" style={{ width: 20, height: 20 }} /></div>
             <div style={{ flex: 1 }}>
-              <h2 style={{ fontSize: 18 }}>{isTerm ? 'Terminate' : 'Suspend'} {emp.name}?</h2>
+              <h2 style={{ fontSize: 18 }}>{isReactivate ? 'Reactivate' : isTerm ? 'Terminate' : 'Suspend'} {emp.name}?</h2>
               <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>{emp.jobTitle}{emp.loc ? ' · ' + emp.loc : ''}</p>
             </div>
           </div>
 
           <div style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)', marginBottom: 14 }}>
-            This sets their status to <b>{signing.to}</b>{isTerm ? ', which removes them from schedules and the active roster' : ''}. Sign your name to confirm — it is recorded against this change.
+            This sets their status to <b>{signing.to}</b>{isTerm ? ', which removes them from schedules and the active roster' : isReactivate ? ', so they can sign in and appear on schedules again' : ''}. Sign your name to confirm — it is recorded against this change.
           </div>
 
           <label style={{ display: 'block', marginBottom: 12 }}>
@@ -144,7 +141,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
             <button className="btn btn-primary" disabled={!signOk || saving}
               style={ signOk && !saving ? { background: isTerm ? 'oklch(0.55 0.17 25)' : 'oklch(0.6 0.14 65)', borderColor: 'transparent' } : undefined}
               onClick={() => commit(changedPatch(), { signature: signature.trim(), reason: reason.trim() })}>
-              <Icon name="check" /> {saving ? 'Saving…' : `Sign and ${isTerm ? 'terminate' : 'suspend'}`}
+              <Icon name="check" /> {saving ? 'Saving…' : isReactivate ? 'Sign and reactivate' : `Sign and ${isTerm ? 'terminate' : 'suspend'}`}
             </button>
           </div>
         </div>
@@ -197,9 +194,8 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
    the record of it. (Checked against the live roster: current addresses do NOT track
    present-day location — people keep their address when they move — so the office is a
    sensible default and a terrible inference.) */
-const NJ_DOMAIN = 'foureversmile.com';
-const EMAIL_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-const domainForOffice = office => (/jersey|totowa/i.test(office || '') ? NJ_DOMAIN : 'puredental.com');
+const EMAIL_DOMAINS = window.PD_ACCESS_RULES.COMPANY_DOMAINS;
+const domainForOffice = window.PD_ACCESS_RULES.domainForOffice;
 
 /* `preset` prefills from a name the import couldn't resolve: { person, email, office }.
    The name is split on the LAST space, which is right for "Diana Guzmán" and a guess for
@@ -307,4 +303,4 @@ function AddEmployeeModal({ offices, preset, onCreated, onClose }) {
   );
 }
 
-Object.assign(window, { saveEmpRecord, deriveEmp, applyEmpToRoster, EditRecordModal, AddEmployeeModal, ADMIN_FIELDS, domainForOffice });
+Object.assign(window, { saveEmpRecord, deriveEmp, applyEmpToRoster, EditRecordModal, AddEmployeeModal, ADMIN_FIELDS, MANAGER_FIELDS, domainForOffice });

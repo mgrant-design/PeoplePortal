@@ -25,9 +25,12 @@ function MiniDrop({ file, onFile }) {
   );
 }
 
+/* today's date on this computer, as YYYY-MM-DD */
+function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
 function LogEventForm({ onSave, onCancel, author }) {
   const [type, setType] = useState('commendation');
-  const [date, setDate] = useState('2026-06-14');
+  const [date, setDate] = useState(todayIso);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [doc, setDoc] = useState(null);
@@ -112,18 +115,23 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
   const [emp, setEmp] = useState(rawEmp);
   useEffect(() => { setEmp(rawEmp); }, [rawEmp]);
   const [editing, setEditing] = useState(false);
-  const canEdit = access && (access.caps.viewAll || (access.caps.viewTeam && (canRelations != null ? canRelations : access.caps.relations)));
+  const canEdit = access && (access.caps.viewAll || (access.caps.viewTeam && (canRelations != null ? canRelations : access.caps.relations))) && (access.caps.viewAll || emp.id !== me.id);
   const showRelations = canRelations != null ? canRelations : (access && access.caps.relations);
-  const canSensitive = access && access.caps.viewAll; // HR/admin/leadership see DOB etc.
-  const tabs = ['Overview', ...(showRelations ? ['Employee relations'] : []), ...(showRelations ? ['Performance'] : []), 'Documents', 'Offboarding'];
+  const tabs = ['Overview', ...(showRelations ? ['Employee relations'] : []), ...(showRelations ? ['Performance'] : []), 'Documents', ...(access && access.caps.offboardView ? ['Offboarding'] : [])];
   const [tab, setTab] = useState('Overview');
-  const [events, setEvents] = useState(() => {
-    const stored = (typeof getRelations === 'function') ? getRelations(emp.id) : [];
-    if (stored.length) return stored;
-    return [
-      { id: 'e2', type: 'transfer', date: '2026-01-10', author: 'HR · People Ops', title: `Home location set to ${emp.loc}`, notes: 'Primary location assigned based on staffing needs.', doc: { name: 'Location_Assignment.pdf' }, ack: 'acknowledged' },
-    ];
-  });
+  const [offStarting, setOffStarting] = useState(false);
+  const [offSent, setOffSent] = useState('');
+  // a notice already sent through approvals for this person (not denied), so it isn't sent twice
+  const [offNotice, setOffNotice] = useState(null);
+  useEffect(() => {
+    if (!access.caps.offboardView || typeof pdApi !== 'function') return;
+    const get = () => pdApi('/api/approvals', { query: { kind: 'offboarding' } })
+      .then(d => setOffNotice((d.offboarding || []).find(n => n.empId === rawEmp.id && n.approval !== 'denied') || null)).catch(() => {});
+    get();
+    window.addEventListener('pd-approvals-changed', get);
+    return () => window.removeEventListener('pd-approvals-changed', get);
+  }, [rawEmp.id]);
+  const [events, setEvents] = useState(() => (typeof getRelations === 'function') ? getRelations(emp.id) : []);
   useEffect(() => {
     const stored = (typeof getRelations === 'function') ? getRelations(emp.id) : [];
     if (stored.length) setEvents(stored);
@@ -135,16 +143,12 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
   const off = (window.HR.offboarding || []).find(o => o.empId === emp.id);
   const [stone, sicon] = STATUS_TONE[emp.status] || STATUS_TONE.Active;
 
-  const docs = [
-    ...events.filter(e => e.doc).map(e => ({ name: e.doc.name, kind: EVENT_TYPES[e.type].label, date: e.date })),
-    emp.workEmail && { name: 'I-9_Signed.pdf', kind: 'Onboarding · Eligibility', date: emp.startDate || '2025-01-01' },
-    emp.provider && { name: 'License_Verification.pdf', kind: 'Credentialing', date: emp.startDate || '2025-01-01' },
-    off && { name: 'Offboarding_Record.pdf', kind: 'Offboarding', date: off.effective },
-  ].filter(Boolean);
+  // the files attached to this person's logged events
+  const docs = events.filter(e => e.doc).map(e => ({ name: e.doc.name, kind: EVENT_TYPES[e.type].label, date: e.date }));
 
   return (
     <div className="fade-in">
-      {editing && <EditRecordModal emp={emp} fields={ADMIN_FIELDS} title="Edit employee record" me={me} onSaved={setEmp} onClose={() => setEditing(false)} />}
+      {editing && <EditRecordModal emp={emp} fields={access.caps.viewAll ? ADMIN_FIELDS : MANAGER_FIELDS} title="Edit employee record" me={me} onSaved={setEmp} onClose={() => setEditing(false)} />}
       {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to people</button>}
       {/* header */}
       <div className="card" style={{ padding: 'clamp(18px,3vw,26px)', marginBottom: 'var(--gap)' }}>
@@ -190,9 +194,8 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
             <h3 style={{ fontSize: 15, marginBottom: 8 }}>Contact</h3>
             <Row k="Work email" v={emp.workEmail} />
             <Row k="Mobile" v={emp.mobile} />
-            {canSensitive && <Row k="Personal email" v={emp.personalEmail} />}
-            {canSensitive && <Row k="Date of birth" v={emp.birthdate} />}
-            {!canSensitive && <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 10, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="lock" style={{ width: 13, height: 13 }} /> Personal details visible to HR only.</div>}
+            <Row k="Personal email" v={emp.personalEmail} />
+            <Row k="Date of birth" v={PD_ACCESS_RULES.birthdayLabel(emp.birthdate)} />
           </div>
           <div className="card" style={{ padding: 'var(--pad)' }}>
             <h3 style={{ fontSize: 15, marginBottom: 8 }}>{emp.provider ? 'Credentials' : 'Systems'}</h3>
@@ -221,7 +224,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
             <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setLogging(l => !l)}><Icon name="plus" /> Log event</button>
           </div>
           {logging && <LogEventForm author={me ? `${me.name} · ${access.label}` : 'You'} onCancel={() => setLogging(false)} onSave={ev => { if (typeof addRelationEvent === 'function') addRelationEvent(emp.id, ev); setEvents(e => [ev, ...e]); setLogging(false); }} />}
-          {shown.length === 0 ? <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>No {filter.toLowerCase()} events on file.</div> : <div>{shown.map(ev => <EventCard key={ev.id} ev={ev} />)}</div>}
+          {shown.length === 0 ? <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>{filter === 'All' ? 'No events on file.' : `No ${filter.toLowerCase()} events on file.`}</div> : <div>{shown.map(ev => <EventCard key={ev.id} ev={ev} />)}</div>}
         </div>
       )}
 
@@ -233,7 +236,6 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
         return (
           <div className="card" style={{ padding: 'var(--pad)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-              <span className="badge badge-prog"><Icon name="star" /> Review cycle 2026</span>
               <span className="mono" style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Status: {st}</span>
             </div>
             <div style={{ display: 'flex', gap: 28, marginBottom: 16 }}>
@@ -253,7 +255,6 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
               <div style={{ width: 38, height: 38, borderRadius: 'var(--r-md)', flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}><Icon name="doc" style={{ width: 19, height: 19 }} /></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 14 }}>{d.name}</div><div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>{d.kind}</div></div>
               <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>{d.date}</span>
-              {access.caps.print && <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }}><Icon name="doc" style={{ width: 15, height: 15 }} /> Print</button>}
             </div>
           ))}
         </div>
@@ -272,7 +273,9 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
             <Row k="Exit interview" v={off.exitInterview ? 'Completed ' + off.exitInterview : 'Not conducted'} />
             {off.notes && <p style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 12, lineHeight: 1.5, background: 'var(--surface-2)', padding: '12px 14px', borderRadius: 'var(--r-md)' }}>{off.notes}</p>}
           </div>
-        ) : <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>No offboarding record — {emp.first} is currently <b style={{ color: 'var(--ink)' }}>{emp.status}</b>.{access.caps.offboard && <div style={{ marginTop: 14 }}><button className="btn btn-ghost"><Icon name="arrowRight" /> Start offboarding request</button></div>}</div>
+        ) : <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>No offboarding record — {emp.first} is currently <b style={{ color: 'var(--ink)' }}>{emp.status}</b>.{offNotice && <div style={{ marginTop: 12, color: 'var(--ink-2)' }}>Offboarding notice ({offNotice.termStatus}, last day {offNotice.effective}) · <b>{offNotice.approval === 'approved' ? 'Approved' : 'Waiting on approval'}</b></div>}{!offNotice && access.caps.offboard && typeof offboardablePeople === 'function' && offboardablePeople(me, access).some(e => e.id === emp.id) && <div style={{ marginTop: 14 }}><button className="btn btn-ghost" onClick={() => setOffStarting(true)}><Icon name="arrowRight" /> Start offboarding notice</button></div>}
+          {offStarting && <OffboardingDialog me={me} access={access} person={emp} onClose={() => setOffStarting(false)} onSent={(m) => { setOffStarting(false); setOffSent(m); }} />}
+          {offSent && <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: 'oklch(0.42 0.12 155)' }}>{offSent}</div>}</div>
       )}
     </div>
   );

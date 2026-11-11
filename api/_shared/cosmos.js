@@ -42,12 +42,13 @@ function authHeader(verb, resType, resId, date, key) {
    path         — the URL path (usually '/' + resId, or collection + '/docs')
    partitionKey — the partition value (sent as the x-ms-documentdb-partitionkey header)
    upsert       — true to allow POST to update an existing doc with the same id
-   ifMatch      — an _etag for optimistic concurrency (refuses the write if the doc changed) */
-function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, continuation, endpoint = ENDPOINT, key = KEY }) {
+   ifMatch      — an _etag for optimistic concurrency (refuses the write if the doc changed)
+   query        — { query, parameters }: runs a query across the container instead (POST) */
+function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, continuation, query, endpoint = ENDPOINT, key = KEY }) {
   return new Promise((resolve, reject) => {
     const date = new Date().toUTCString();
     const url = new URL(path, endpoint);
-    const payload = body ? JSON.stringify(body) : null;
+    const payload = query ? JSON.stringify(query) : body ? JSON.stringify(body) : null;
     const headers = {
       'Authorization': authHeader(verb, 'docs', resId, date, key),
       'x-ms-date': date,
@@ -59,6 +60,11 @@ function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, contin
     if (upsert) headers['x-ms-documentdb-is-upsert'] = 'true';
     if (ifMatch) headers['If-Match'] = ifMatch;
     if (continuation) headers['x-ms-continuation'] = continuation;
+    if (query) {
+      headers['Content-Type'] = 'application/query+json';
+      headers['x-ms-documentdb-isquery'] = 'True';
+      headers['x-ms-documentdb-query-enablecrosspartition'] = 'True';
+    }
     if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
 
     const rq = https.request({ hostname: url.hostname, path: url.pathname + (url.search || ''), method: verb, headers }, (res) => {
@@ -75,11 +81,55 @@ function cosmos({ verb, resId, path, body, partitionKey, upsert, ifMatch, contin
 /* List every document in a container, following continuation tokens. A plain feed GET
    only returns one page — without this, a container past the page limit would silently
    drop documents (e.g. an employee added after the roster grows past ~100 docs). */
-async function listAll(resId) {
+async function listAll(resId, { partitionKey } = {}) {
   let docs = [], continuation;
   do {
-    const res = await cosmos({ verb: 'GET', resId, path: `/${resId}/docs`, continuation });
+    const res = await module.exports.cosmos({ verb: 'GET', resId, path: `/${resId}/docs`, continuation, partitionKey });
     if (res.status !== 200) throw new Error('list failed: ' + res.status);
+    docs = docs.concat(res.body.Documents || []);
+    continuation = res.continuation;
+  } while (continuation);
+  return docs;
+}
+
+/* A filter is a list of conditions that must all hold: [field, op, value] with op one of
+   '=', '<=', '>=', 'contains' (the field is a list holding value), 'in' (value is a list
+   holding the field), or { or: [conditions] }. Fields are dotted names ("payload.start").
+   compileQuery makes the database query; matches checks one document the same way. */
+const FIELD = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+function compileQuery(filter) {
+  const parameters = [];
+  const param = (v) => { const name = '@p' + parameters.length; parameters.push({ name, value: v }); return name; };
+  const field = (f) => { if (!FIELD.test(f)) throw new Error('bad field name: ' + f); return 'c' + f.split('.').map(k => `["${k}"]`).join(''); };
+  const one = (cond) => {
+    if (cond && cond.or) return '(' + cond.or.map(one).join(' OR ') + ')';
+    const [f, op, v] = cond;
+    if (op === 'contains') return `ARRAY_CONTAINS(${field(f)}, ${param(v)})`;
+    if (op === 'in') return `ARRAY_CONTAINS(${param(v)}, ${field(f)})`;
+    if (!['=', '<=', '>='].includes(op)) throw new Error('bad operator: ' + op);
+    return `${field(f)} ${op} ${param(v)}`;
+  };
+  return { query: 'SELECT * FROM c' + (filter.length ? ' WHERE ' + filter.map(one).join(' AND ') : ''), parameters };
+}
+function matches(filter, doc) {
+  const get = (f) => f.split('.').reduce((o, k) => (o == null ? undefined : o[k]), doc);
+  const one = (cond) => {
+    if (cond && cond.or) return cond.or.some(one);
+    const [f, op, v] = cond; const x = get(f);
+    if (op === 'contains') return Array.isArray(x) && x.includes(v);
+    if (op === 'in') return v.includes(x);
+    if (x === undefined) return false;
+    return op === '=' ? x === v : op === '<=' ? x <= v : x >= v;
+  };
+  return filter.every(one);
+}
+/* the documents in a container that match a filter, following continuation tokens */
+async function queryAll(resId, filter) {
+  const query = compileQuery(filter);
+  let docs = [], continuation;
+  do {
+    const res = await module.exports.cosmos({ verb: 'POST', resId, path: `/${resId}/docs`, query, filter, continuation });
+    if (res.status !== 200) throw new Error('query failed: ' + res.status);
     docs = docs.concat(res.body.Documents || []);
     continuation = res.continuation;
   } while (continuation);
@@ -92,7 +142,7 @@ async function listAll(resId) {
    permissions are edited independently of HR/roster data. Missing container → []. */
 async function loadAccessControl() {
   try {
-    return (await listAll(collPath('accessControl'))).map(strip);
+    return (await module.exports.listAll(collPath('accessControl'))).map(strip);
   } catch (e) { return []; }
 }
 
@@ -106,18 +156,18 @@ function applyAccessControl(usersByEmail, accessDocs) {
    titles/managers/users/offboarding). Most write endpoints need these to resolve the
    caller and check permissions, so this saves repeating the two reads everywhere. */
 async function loadRosterAndSupport() {
-  const employees = (await listAll(collPath('roster'))).map(strip);
+  const employees = (await module.exports.listAll(collPath('roster'))).map(strip);
 
   let support = null;
   try {
-    const appDocs = await listAll(collPath('appState'));
+    const appDocs = await module.exports.listAll(collPath('appState'));
     const doc = appDocs.find(d => d.id === 'roster-support');
     if (doc) support = strip(doc);
   } catch (e) { /* support is optional */ }
 
   // Fold the dedicated accessControl store into support.users so every caller of this
   // helper sees final permissions from one place (accessControl is authoritative).
-  const accessDocs = await loadAccessControl();
+  const accessDocs = await module.exports.loadAccessControl();
   if (accessDocs.length) {
     const users = (support && Array.isArray(support.users)) ? support.users.slice() : [];
     const idx = {}; users.forEach((u, i) => { if (u && u.email) idx[u.email.toLowerCase()] = i; });
@@ -128,4 +178,11 @@ async function loadRosterAndSupport() {
   return { employees, support };
 }
 
-module.exports = { cosmos, listAll, strip, collPath, cosmosConfigured, loadRosterAndSupport, loadAccessControl, applyAccessControl, DB };
+/* The roster-support doc exactly as stored, with its _etag and without the access grants
+   merged in. Writers start from this, so a save never copies grants into roster-support. */
+async function loadSupportForWrite() {
+  const docs = await module.exports.listAll(collPath('appState'));
+  return docs.find(d => d.id === 'roster-support') || null;
+}
+
+module.exports = { cosmos, listAll, queryAll, compileQuery, matches, strip, collPath, cosmosConfigured, loadRosterAndSupport, loadSupportForWrite, loadAccessControl, applyAccessControl, DB };

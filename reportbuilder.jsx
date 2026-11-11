@@ -313,7 +313,7 @@ function Reports({ access, scope, paychexOn, me, flash }) {
       {tab === 'Scheduled' && <ScheduledReports me={me} access={access} flash={flash} onNew={() => openSchedule(null)} />}
       {tab === 'Requests' && <ReportRequests me={me} access={access} flash={flash} />}
       {schedFor !== undefined && <ScheduleModal def={schedFor} me={me} onClose={() => setSchedFor(undefined)} onSave={saveSchedule} />}
-      {!access.caps.payroll && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Compensation reports are restricted to HR, Accounting & Admins.</div>}
+      {!access.caps.payroll && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 16, display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Compensation reports are restricted to HR and Accounting.</div>}
     </div>
   );
 }

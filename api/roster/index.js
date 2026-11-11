@@ -1,8 +1,9 @@
-const https = require('https');
 const crypto = require('crypto');
-const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { loadAccessControl, cosmos, collPath } = require('../_shared/cosmos');
+const { handler, resolveCaller } = require('../_shared/caller');
+const { cosmos, collPath } = require('../_shared/cosmos');
+const { domainAllowed, deriveAccessCore, reportingTree: reportingTreeOf, offboardingInTree, seesAllOn, monthDay } = require('../_shared/access-rules');
 const { broadcast } = require('../_shared/push');
+const blobs = require('../_shared/blobs');
 
 /* ---- roster writes (POST) ----
    The roster in Cosmos is the source of truth: nothing external regenerates it, so a
@@ -25,10 +26,14 @@ const WRITABLE = ['first', 'middle', 'last', 'jobTitle', 'department', 'location
   'managerEmail', 'workEmail', 'personalEmail', 'mobile', 'startDate', 'status', 'employmentType'];
 const EMPLOYMENT_TYPES = ['', 'Full-time', 'Part-time', 'Per diem'];
 const STATUSES = ['Active', 'Suspended', 'Terminated'];
-const WRITE_DOMAINS = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
 
 const cleanStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n || 120);
-const emailOk = e => /^[^@\s]+@[^@\s]+$/.test(e) && WRITE_DOMAINS.includes(e.split('@')[1].toLowerCase());
+const emailOk = e => /^[^@\s]+@[^@\s]+$/.test(e) && domainAllowed(e);
+
+/* fields only company-wide editors may change: they decide who someone reports to and what
+   they can see. Managers may not change them until the owner names a manager's fields. */
+const MANAGER_LOCKED = ['jobTitle', 'department', 'managerEmail', 'workEmail'];
+const FIELD_NAMES = { jobTitle: 'job title', department: 'department', managerEmail: 'manager email', workEmail: 'work email' };
 
 /* Compare two written names for equality without demanding an exact keystroke match.
    NFD splits an accented letter into base + combining mark, so stripping the marks folds
@@ -52,191 +57,57 @@ function mintId(taken) {
   return null;
 }
 
-function getAuthHeader(verb, resourceType, resourceId, date, key) {
-  const text = `${verb.toLowerCase()}\n${resourceType.toLowerCase()}\n${resourceId}\n${date.toLowerCase()}\n\n`;
-  const sig = crypto.createHmac('sha256', Buffer.from(key, 'base64')).update(text).digest('base64');
-  return encodeURIComponent(`type=master&ver=1.0&sig=${sig}`);
-}
-
-function cosmosGet(endpoint, key, resourceId, continuation) {
-  return new Promise((resolve, reject) => {
-    const date = new Date().toUTCString();
-    const auth = getAuthHeader('get', 'docs', resourceId, date, key);
-    const url = new URL('/' + resourceId + '/docs', endpoint);
-    const headers = {
-      'Authorization': auth, 'x-ms-date': date, 'x-ms-version': '2018-12-31',
-      'Accept': 'application/json', 'Content-Type': 'application/json',
-    };
-    if (continuation) headers['x-ms-continuation'] = continuation;
-    const options = { hostname: url.hostname, path: url.pathname, method: 'GET', headers };
-    const req = https.request(options, (res) => {
-      let data = ''; res.on('data', c => data += c);
-      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data), continuation: res.headers['x-ms-continuation'] }); } catch (e) { reject(new Error('parse: ' + data)); } });
-    });
-    req.on('error', reject); req.end();
-  });
-}
-
-/* A plain feed GET only returns ONE PAGE of documents. Without following the
-   continuation token, any container past the page limit silently drops the rest —
-   e.g. an employee added after the roster grew past ~100 docs would never be found. */
-async function cosmosGetAll(endpoint, key, resourceId) {
-  let docs = [], continuation;
-  do {
-    const res = await cosmosGet(endpoint, key, resourceId, continuation);
-    if (res.status !== 200) return res;
-    docs = docs.concat(res.body.Documents || []);
-    continuation = res.continuation;
-  } while (continuation);
-  return { status: 200, body: { Documents: docs } };
-}
-
-// ---- scoping logic, ported from rbac.jsx (deriveAccess + scopedEmployees) ----
-function normLoc(l) {
-  const s = (l || '').toLowerCase();
-  if (!s) return 'Unassigned';
-  if (s.includes('remote')) return 'Remote';
-  if (s.includes('hauppauge')) return 'Hauppauge';
-  if (s.includes('garden')) return 'Garden City';
-  if (s.includes('manorville')) return 'Manorville';
-  if (s.includes('wading')) return 'Wading River';
-  if (s.includes('islandia')) return 'Islandia';
-  if (s.includes('jersey')) return 'New Jersey';
-  if (s.includes('buffalo')) return 'Buffalo';
-  return l;
-}
-
-function deriveAccess(me, usersByEmail, managerEmails, employees) {
-  const perms = usersByEmail[(me.workEmail || '').toLowerCase()] || {};
-  const dept = (me.department || '').toLowerCase();
-  const title = (me.jobTitle || '').toLowerCase();
-  const meEmail = (me.workEmail || '').toLowerCase();
-
-  const isExec = /\b(ceo|chief|coo|cfo|president|owner|principal)\b/.test(title) || ['leadership', 'management team', 'management', 'pure management'].includes(dept);
-  const isHR = /human resources|payroll/.test(dept) || /\b(human resources|payroll|people ops)\b/.test(title);
-  const isAccounting = /accounting/.test(dept) || /\b(controller|accountant|bookkeeper)\b/.test(title);
-  const hasReports = employees.some(e => e.managerEmail && e.managerEmail.toLowerCase() === meEmail);
-  const isSupervisor = (!!perms.supervisor || /\b(supervisor|team lead|lead)\b/.test(title)) && !/\b(manager|director)\b/.test(title) && !hasReports;
-  const isManager = (!!perms.manager || me.isManager || managerEmails.has(meEmail) || hasReports || /\b(manager|director)\b/.test(title)) && !isSupervisor;
-  const isAdmin = !!perms.admin;
-
-  const viewAll = isAdmin || isHR || isExec;
-  const viewTeam = isManager || isSupervisor;
-  /* "See Everyone" — an admin-granted visibility override (see SEE_ALL_PAGES in rbac.jsx).
-     Any grant, global or per-page, widens the roster response to the whole company: the
-     server answers one request at login and cannot know which page will be rendered, so
-     the page limits are applied in the browser. It widens visibility only — canWrite,
-     terminate and suspend below are untouched by it. */
-  const seeAll = !!perms.seeAll;
-  const seeAllPages = Array.isArray(perms.seeAllPages) ? perms.seeAllPages : [];
-  /* canWrite / terminate / suspend mirror rbac.jsx:99-101 exactly, so the server enforces
-     the same permissions the HR Admin screen hands out. They are returned alongside the
-     view flags rather than recomputed by callers. */
-  return {
-    viewAll, viewTeam, seeAll, seeAllPages, isAdmin, isHR, isExec, isManager, isSupervisor, isAccounting,
-    canWrite: isAdmin || isHR || isExec || isManager,
-    terminate: !!perms.canTerminate || isAdmin || isHR,
-    suspend: !!perms.canSuspend || isAdmin || isHR,
-  };
-}
-
 function scopedEmployees(me, access, employees) {
   if (access.viewAll || access.seeAll) return employees;
-  const meEmail = (me.workEmail || '').toLowerCase();
-  if (access.viewTeam) {
-    const set = new Set([me.id]);
-    const myEmails = new Set([meEmail]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      employees.forEach(e => {
-        if (!set.has(e.id) && e.managerEmail && myEmails.has(e.managerEmail.toLowerCase())) {
-          set.add(e.id); myEmails.add((e.workEmail || '').toLowerCase()); changed = true;
-        }
-      });
-    }
-    return employees.filter(e => set.has(e.id));
-  }
+  if (access.viewTeam) return reportingTreeOf(me, employees);
   return employees.filter(e => e.id === me.id);
 }
 
-module.exports = async function (context, req) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Google-Token',
+const strip = ({ _rid, _self, _etag, _attachments, _ts, ...rest }) => rest;
+
+/* the reporting tree only: See Everyone widens what a person sees, never what they may edit */
+function reportingTree(me, access, employees) {
+  return scopedEmployees(me, { ...access, viewAll: false, seeAll: false }, employees);
+}
+
+/* Which permissions a status change needs: the status being entered if it is signed, and
+   the status being left if it is signed. Returns [] when no signature is needed. */
+function statusGates(from, to) {
+  if (!to || to === from) return [];
+  return [...new Set([to, from].filter(s => SIGNED_STATUSES.includes(s)))];
+}
+
+function checkSignature(input, me, gates, verb) {
+  const signature = cleanStr(input.signature, 120);
+  const myName = `${me.first || ''} ${me.last || ''}`.trim();
+  if (!signature) return { error: { status: 400, body: { error: 'A signature is required to ' + verb, needsSignature: true, signAs: myName } } };
+  if (foldName(signature) !== foldName(myName)) return { error: { status: 400, body: { error: `The signature must match your own name (${myName}).`, needsSignature: true, signAs: myName } } };
+  return { signature, myName };
+}
+
+module.exports = handler(['GET', 'POST'], async ({ context, req, body: input }) => {
+  const c = await resolveCaller(req);
+  const { identity, me } = c;
+  const allEmployees = c.employees;
+  const sup = c.support || {};
+  const ref = { offices: sup.offices || [], departments: sup.departments || [], titles: sup.titles || [], managers: sup.managers || [], users: sup.users || [], offboarding: sup.offboarding || [], weekStart: Number.isFinite(sup.weekStart) ? sup.weekStart : 1, refLinks: sup.refLinks || [], flags: sup.flags || {}, approvers: { timeoffFinal: '', offboarding: [], offer: '', ...(sup.approvers || {}) } };
+  const { flags, caps, seeAll } = c.access;
+  const access = {
+    viewAll: caps.viewAll, viewTeam: caps.viewTeam, seeAll: seeAll.on,
+    canWrite: flags.isAdmin || flags.isHR || flags.isExec || flags.isManager,
+    terminate: caps.terminate, suspend: caps.suspend,
   };
-  if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
-
-  // --- identity: require a valid Google token ---
-  let identity;
-  try {
-    identity = await verifyGoogleToken(tokenFromReq(req));
-  } catch (e) {
-    context.res = { status: 401, headers, body: JSON.stringify({ error: 'Not authenticated', detail: e.message }) };
-    return;
-  }
-  // domain lock, server-side
-  const allowedDomains = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-  const domain = identity.email.split('@')[1] || '';
-  if (!allowedDomains.includes(domain)) {
-    context.res = { status: 403, headers, body: JSON.stringify({ error: 'Domain not allowed' }) };
-    return;
-  }
-
-  const endpoint = (process.env.COSMOS_ENDPOINT || '').replace(/\/$/, '');
-  const key = process.env.COSMOS_KEY || '';
-  const db = process.env.COSMOS_DB || 'portal';
-  if (!endpoint || !key) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing Cosmos config' }) }; return; }
-
-  const strip = ({ _rid, _self, _etag, _attachments, _ts, ...rest }) => rest;
-
-  try {
-    const rosterRes = await cosmosGetAll(endpoint, key, `dbs/${db}/colls/roster`);
-    if (rosterRes.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'roster read failed', status: rosterRes.status }) }; return; }
-    const allEmployees = (rosterRes.body.Documents || []).map(strip);
-
-    // reference data (optional)
-    let ref = { offices: [], departments: [], titles: [], managers: [], users: [], offboarding: [], weekStart: 1, refLinks: [] };
-    try {
-      const appRes = await cosmosGetAll(endpoint, key, `dbs/${db}/colls/appState`);
-      if (appRes.status === 200) {
-        const sup = (appRes.body.Documents || []).find(d => d.id === 'roster-support');
-        if (sup) ref = { offices: sup.offices||[], departments: sup.departments||[], titles: sup.titles||[], managers: sup.managers||[], users: sup.users||[], offboarding: sup.offboarding||[], weekStart: Number.isFinite(sup.weekStart) ? sup.weekStart : 1, refLinks: sup.refLinks||[] };
-      }
-    } catch (e) {}
-
-    // Fold the dedicated accessControl store into the users list (authoritative for
-    // permission grants) so server scoping and the client both see final permissions.
-    try {
-      const acc = await loadAccessControl();
-      if (acc.length) {
-        const idx = {}; ref.users.forEach((u, i) => { if (u && u.email) idx[u.email.toLowerCase()] = i; });
-        acc.forEach(a => { if (!a || !a.email) return; const k = a.email.toLowerCase(); if (idx[k] != null) ref.users[idx[k]] = { ...ref.users[idx[k]], ...a }; else ref.users.push(a); });
-      }
-    } catch (e) {}
-
-    // find the caller in the roster
-    const me = allEmployees.find(e => (e.workEmail || '').toLowerCase() === identity.email);
-    if (!me) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'No roster account for ' + identity.email }) }; return; }
-
-    // build lookups for scoping
-    const usersByEmail = {};
-    (ref.users || []).forEach(u => { if (u.email) usersByEmail[u.email.toLowerCase()] = u; });
-    const managerEmails = new Set((ref.managers || []).map(m => (m.email || '').toLowerCase()).filter(Boolean));
-
-    const access = deriveAccess(me, usersByEmail, managerEmails, allEmployees);
-
+  const send = (status, body) => ({ status, body });
+  /* outside HR, leadership and admins, other people's birthdays go out without the year */
+  const shown = (e) => (caps.viewAll || e.id === me.id || !e.birthdate) ? e : { ...e, birthdate: monthDay(e.birthdate) };
+  /* See Everyone for other pages sends everyone for those pages, but personal details only
+     for the person's own reporting tree */
+  const PERSONAL = ['mobile', 'personalEmail', 'birthdate', 'address', 'emergencyName', 'emergencyPhone'];
+  const withoutPersonal = (e) => { const out = { ...e }; PERSONAL.forEach(k => delete out[k]); return out; };
     /* ================= WRITE ================= */
     if (req.method === 'POST') {
-      const send = (status, body) => { context.res = { status, headers, body: JSON.stringify(body) }; };
-      /* "managers or above" — supervisors are deliberately excluded; deriveAccess()
-         already treats isManager and isSupervisor as mutually exclusive. */
+      /* managers and above; supervisors are excluded */
       if (!access.canWrite) return send(403, { error: 'Managers and above only' });
-
-      let input = req.body;
-      if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
       if (!input) return send(400, { error: 'body required' });
       const action = String(input.action || '');
 
@@ -255,7 +126,7 @@ module.exports = async function (context, req) {
           /* the join key for the entire app — auth, scheduling, notices and regular-hours
              profiles all resolve people by it, so it must be present, valid and unique */
           const em = patch.workEmail.toLowerCase();
-          if (!emailOk(em)) return { error: 'workEmail must be a company address (' + WRITE_DOMAINS.join(', ') + ')' };
+          if (!emailOk(em)) return { error: 'workEmail must be a company address' };
           const clash = allEmployees.find(e => (e.workEmail || '').toLowerCase() === em && e.id !== selfId);
           if (clash) return { error: 'Another roster record already uses ' + em };
           patch.workEmail = em;
@@ -269,13 +140,23 @@ module.exports = async function (context, req) {
       if (action === 'create') {
         const { patch, error } = takePatch(input.employee || {}, true, null);
         if (error) return send(400, { error });
+        if (!access.viewAll) {
+          const would = deriveAccessCore({ me: patch, perms: {}, hasReports: false, isListedManager: false });
+          if (would.caps.viewAll) return send(403, { error: 'Only HR, leadership or an admin can add someone with that title or department' });
+        }
+        const createGates = statusGates('Active', patch.status || 'Active');
+        for (const g of createGates) {
+          const need = g === 'Terminated' ? 'terminate' : 'suspend';
+          if (!access[need]) return send(403, { error: `You don't have permission to add someone as ${g}.`, needsPermission: need });
+        }
+        if (createGates.length) { const sig = checkSignature(input, me, createGates, 'add someone as ' + patch.status); if (sig.error) return sig.error; }
         const id = mintId(new Set(allEmployees.map(e => e.id)));
         if (!id) return send(500, { error: 'could not allocate an id' });
         const doc = { id, status: 'Active', ...patch, createdBy: identity.email, createdAt: new Date().toISOString(), ...stamp };
         const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: false });
-        if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
+        if (r.status !== 200 && r.status !== 201) throw new Error('roster create failed: ' + r.status);
         broadcast(context, 'roster-changed', { id, action: 'create' });
-        return send(200, { ok: true, employee: strip(r.body) });
+        return send(200, { ok: true, employee: shown(strip(r.body)) });
       }
 
       if (action === 'update') {
@@ -283,23 +164,33 @@ module.exports = async function (context, req) {
         if (!id) return send(400, { error: 'id is required' });
         const existing = allEmployees.find(e => e.id === id);
         if (!existing) return send(404, { error: 'no roster record with that id' });
+        if (!access.viewAll) {
+          if (existing.id === me.id) return send(403, { error: "You can't edit your own record. Ask HR." });
+          const team = new Set(reportingTree(me, access, allEmployees).map(e => e.id));
+          if (!team.has(existing.id)) return send(403, { error: "That person isn't on your team" });
+        }
         const { patch, error } = takePatch(input.patch || {}, false, id);
         if (error) return send(400, { error });
         if (!Object.keys(patch).length) return send(400, { error: 'nothing to update' });
+        if (!access.viewAll) {
+          const locked = MANAGER_LOCKED.filter(k => k in patch && patch[k] !== (existing[k] || ''));
+          if (locked.length) return send(403, { error: 'Only HR, leadership or an admin can change the ' + locked.map(k => FIELD_NAMES[k]).join(', ') });
+        }
 
         /* deactivating someone: separate permission, and a signature that must match
            the signer's own name. Checked here rather than trusted from the client. */
         let auditDoc = null;
         const to = patch.status;
-        if (to && SIGNED_STATUSES.includes(to) && to !== existing.status) {
-          const need = to === 'Terminated' ? 'terminate' : 'suspend';
-          if (!access[need]) return send(403, { error: `You don't have permission to set someone to ${to}.`, needsPermission: need });
-          const signature = cleanStr(input.signature, 120);
-          const myName = `${me.first || ''} ${me.last || ''}`.trim();
-          if (!signature) return send(400, { error: 'A signature is required to set someone to ' + to, needsSignature: true, signAs: myName });
-          if (foldName(signature) !== foldName(myName)) {
-            return send(400, { error: `The signature must match your own name (${myName}).`, needsSignature: true, signAs: myName });
+        const from = existing.status || 'Active';
+        const gates = statusGates(from, to);
+        if (gates.length) {
+          for (const g of gates) {
+            const need = g === 'Terminated' ? 'terminate' : 'suspend';
+            if (!access[need]) return send(403, { error: `You don't have permission to change someone ${g === to ? 'to' : 'from'} ${g}.`, needsPermission: need });
           }
+          const sig = checkSignature(input, me, gates, 'change someone to ' + to);
+          if (sig.error) return sig.error;
+          const { signature, myName } = sig;
           const at = new Date().toISOString();
           const date = at.slice(0, 10);
           auditDoc = {
@@ -315,7 +206,7 @@ module.exports = async function (context, req) {
 
         const doc = { ...existing, ...patch, ...stamp };
         const r = await cosmos({ verb: 'POST', resId: collPath('roster'), path: `/${collPath('roster')}/docs`, body: doc, partitionKey: ROSTER_PK, upsert: true });
-        if (r.status !== 200 && r.status !== 201) return send(500, { error: 'roster write failed', status: r.status });
+        if (r.status !== 200 && r.status !== 201) throw new Error('roster update failed: ' + r.status);
         /* audit AFTER the record is safely written — a failed audit must not lose the
            change, but an unrecorded deactivation is worth surfacing, so it is reported */
         let audited = null;
@@ -325,20 +216,35 @@ module.exports = async function (context, req) {
             audited = (a.status === 200 || a.status === 201);
           } catch (e) { audited = false; }
         }
+        // someone who has left keeps no profile photo; the nightly cleanup retries a failed delete
+        if (to === 'Terminated' && from !== 'Terminated') {
+          try { await blobs.containerClient('photos').getBlockBlobClient(existing.id).deleteIfExists(); }
+          catch (e) { context.log.warn('photo delete failed', e); }
+        }
         broadcast(context, 'roster-changed', { id, action: 'update' });
-        return send(200, { ok: true, employee: strip(r.body), ...(auditDoc ? { audited } : {}) });
+        return send(200, { ok: true, employee: shown(strip(r.body)), ...(auditDoc ? { audited } : {}) });
       }
 
       return send(400, { error: 'unknown action — expected create or update' });
     }
 
-    const visible = scopedEmployees(me, access, allEmployees);
+    let visible = scopedEmployees(me, access, allEmployees);
+    if (!caps.viewAll && access.seeAll && !seesAllOn(c.access, 'emprecord')) {
+      const tree = new Set([me.id, ...reportingTree(me, access, allEmployees).map(e => e.id)]);
+      visible = visible.map(e => tree.has(e.id) ? e : withoutPersonal(e));
+    }
 
     /* The Directory is company-wide for every access level. Anyone who is not already
        receiving the full roster gets this alongside it: every active employee, work
        contact only. Mobile numbers, personal email and date of birth are deliberately
        absent — those stay with the people the caller can actually see. */
-    const body = { employees: visible, ...ref };
+    /* other people's permission grants and the offboarding records stay with those who need them */
+    const myEmail = identity.email;
+    const body = {
+      employees: visible.map(shown), ...ref,
+      users: access.viewAll ? ref.users : ref.users.filter(u => (u.email || '').toLowerCase() === myEmail),
+      offboarding: !caps.offboardView ? [] : seesAllOn(c.access, 'offboarding') ? ref.offboarding : offboardingInTree(ref.offboarding, me, allEmployees),
+    };
     if (visible.length !== allEmployees.length) {
       body.directory = allEmployees.filter(e => e.status === 'Active').map(e => ({
         id: e.id, first: e.first, last: e.last, jobTitle: e.jobTitle, department: e.department,
@@ -347,8 +253,5 @@ module.exports = async function (context, req) {
       }));
     }
 
-    context.res = { status: 200, headers, body: JSON.stringify(body) };
-  } catch (err) {
-    context.res = { status: 500, headers, body: JSON.stringify({ error: err.message }) };
-  }
-};
+    return send(200, body);
+});

@@ -16,21 +16,11 @@ const DEFAULT_OT_THRESHOLD = 40;   /* "Standard 40 hours" — the default for ev
 const DEFAULT_MEAL_BREAK = 30;     /* minutes; the usual unpaid meal break */
 
 /* ---- client (sandbox has no /api, so reads reject and callers fall back to []) ---- */
-function regToken() { return (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || ''; }
 async function fetchRegHours() {
-  const res = await fetch('/api/reghours', { headers: { 'X-Google-Token': regToken() } });
-  if (!res.ok) throw new Error('regular hours read failed (' + res.status + ')');
-  return (await res.json()).profiles || [];
+  return (await pdApi('/api/reghours')).profiles || [];
 }
 async function saveRegHours(profile) {
-  const res = await fetch('/api/reghours', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': regToken() },
-    body: JSON.stringify({ action: 'save', profile }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('save failed (' + res.status + ')'));
-  return data.profile;
+  return (await pdApi('/api/reghours', { method: 'POST', body: { action: 'save', profile } })).profile;
 }
 
 /* ---- lookup ---- */
@@ -79,7 +69,7 @@ function regHoursWeekTotal(profile) {
 function blankRegHours(emp) {
   return {
     id: (emp.emailLower || emp.workEmail || '').toLowerCase(),
-    empId: emp.id || '', office: emp.loc || emp.location || '', role: emp.department || emp.jobTitle || '',
+    empId: emp.id || '', office: emp.loc || emp.location || emp.office || '', role: emp.department || emp.dept || emp.jobTitle || '',
     periodType: 'weekly', overtimeThreshold: DEFAULT_OT_THRESHOLD,
     days: REG_DOW.reduce((o, k) => { o[k] = null; return o; }, {}),
   };
@@ -118,7 +108,7 @@ function RegularHoursModal({ roster, profiles, offices, onSaved, onClose, flash 
     if (!draft) return;
     setSaving(true);
     try { const p = await saveRegHours(draft); flash('Regular hours saved.'); onSaved(p); }
-    catch (e) { flash(e.message); }
+    catch (e) { flash(e.message, false); }
     setSaving(false);
   };
 

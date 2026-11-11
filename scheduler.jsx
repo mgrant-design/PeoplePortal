@@ -6,132 +6,115 @@
    week queue for manager approval; the server decides, never the client.
    No wages (D2), no coverage targets (D12), no drag-and-drop, no auto-fill. */
 
-const SCHED_VIEWS = [['dept', 'By department'], ['person', 'By team member']];
+/* ---- Builder logic with no screen parts ---- */
+/* a message at the bottom of the page. A new one replaces the one showing and gets its own
+   full time; ok = false shows it as a problem. */
+function makeFlash(show, timers) {
+  const t = timers || { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) };
+  let timer = null;
+  return (m, ok = true, ms = 3200) => { t.clear(timer); show({ m, ok }); timer = t.set(() => show(null), ms); };
+}
 
-/* How the week grid should be sized, MEASURED rather than guessed from a media query.
-   A viewport breakpoint is wrong here: [data-textsize] is a `zoom` on .main (styles.css),
-   which changes the layout width the grid actually gets by ±10% while the viewport — and
-   so every media query — reads unchanged. Density moves --gap, and [data-font="bold"]
-   uppercases the whole app, widening every label. So we measure the real thing: probe the
-   live font for the width of a shift label and a name, add the chrome around them, and
-   compare against the width .main actually offers.
+/* "Eli Test, Tue, Nov 17 8a–4p" for each clashing shift; three named, then a count */
+function clashText(list) {
+  const people = schedAll();
+  const one = (sh) => {
+    const p = people.find(e => e.id === sh.empId);
+    const day = new Date(sh.date + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `${p ? p.name : 'Open shift'}, ${day} ${shiftRange(sh)}`;
+  };
+  return list.slice(0, 3).map(one).join('; ') + (list.length > 3 ? ` and ${list.length - 3} more` : '');
+}
 
-   Returns px: { narrow, side, name, day, need }. Defaults are today's values, so the
-   first paint before measurement is identical to the current desktop grid. */
-const SCHED_FIT_DEFAULT = { narrow: false, side: 250, name: 200, day: 96, need: 872 };
-function useSchedFit() {
-  const [fit, setFit] = useState(SCHED_FIT_DEFAULT);
-  useEffect(() => {
-    const host = document.querySelector('.main') || document.body;
-    const mk = (css, text) => {
-      const s = document.createElement('span');
-      s.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;' + css;
-      s.textContent = text;
-      host.appendChild(s);
-      return s;
+/* a supervisor's changes to a published week, sent one by one as requests to their manager.
+   A change to an existing shift carries the shift as the supervisor's screen had it (`was`),
+   so the server refuses it if the shift has changed since. → how many went, and the ones
+   that didn't, in the same shape as the changes. */
+async function sendChangesForApproval(office, wk, changes, submit) {
+  const list = [
+    ...(changes.add || []).map(sh => ({ op: 'add', shift: sh })),
+    ...(changes.update || []).map(u => ({ op: 'update', shift: u.shift, was: u.was })),
+    ...(changes.remove || []).map(r => ({ op: 'remove', shiftId: r.id, was: r.was })),
+  ];
+  let sent = 0; const failed = { add: [], update: [], remove: [] }; let why = '';
+  for (const change of list) {
+    try { await submit('schedEdit', { office, weekKey: wk, change }); sent++; }
+    catch (e) {
+      why = why || e.message;
+      if (change.op === 'add') failed.add.push(change.shift);
+      else if (change.op === 'update') failed.update.push({ shift: change.shift, was: change.was });
+      else failed.remove.push({ id: change.shiftId, was: change.was });
+    }
+  }
+  return { sent, failed, why, failedCount: failed.add.length + failed.update.length + failed.remove.length };
+}
+
+/* saves one office's draft at Publish. → { publish: true, clear: true } when it saved and the
+   week can be published; { clear: true, note } when a manager published the week meanwhile
+   and every change went to the supervisor's manager; { remaining, note } when some couldn't
+   be sent (remaining = the week with only those changes, so nothing is sent twice);
+   { note } when the save failed and the draft stays as it is. */
+async function saveDraftChanges({ office, weekKey, doc, isSup, save, submit }) {
+  const changes = PD_WEEK.diffWeek(doc._base || [], doc.shifts || []);
+  try {
+    if (changes.add.length || changes.update.length || changes.remove.length) await save({ action: 'save', office, weekKey, changes });
+    return { publish: true, clear: true };
+  } catch (e) {
+    if (!(isSup && e.body && e.body.pendingRequired)) return { note: { m: `${office} save failed: ${e.message} — not published.`, ok: false } };
+    const r = await sendChangesForApproval(office, weekKey, changes, submit);
+    const went = `${r.sent} change${r.sent === 1 ? '' : 's'} went to your manager`;
+    if (!r.failedCount) return { clear: true, note: { m: `${office}: a manager published this week meanwhile, so your ${went} for approval.`, ok: true } };
+    return {
+      remaining: PD_WEEK.applyChanges(doc._base || [], r.failed).shifts,
+      note: { m: `${office}: ${went}; ${r.failedCount} couldn’t be sent (${r.why}) and stay${r.failedCount === 1 ? 's' : ''} as a draft.`, ok: false },
     };
-    /* widest ordinary shift label, in whatever font is currently active */
-    const chip = mk("font:700 11.5px var(--font-mono,'JetBrains Mono',ui-monospace,monospace)", '11a–7p');
-    let last = null, tid = 0;
-    const decide = () => {
-      tid = 0;
-      const cs = getComputedStyle(host);
-      const avail = host.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
-      const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap')) || 18;
-      const forced = document.documentElement.classList.contains('pd-mobile-view');
-      /* Two desktop layouts plus the phone one. The name column keeps its original
-         200px in every case — narrowing it was an unannounced regression. Only the day
-         floor and the sidebar give, and only when the measured width demands it. */
-      const dayMin = Math.ceil(chip.offsetWidth) + 27;
-      const WIDE = { narrow: false, side: 250, name: 200, day: 96, need: 200 + 7 * 96 };
-      const TIGHT = { narrow: false, side: 210, name: 200, day: dayMin, need: 200 + 7 * dayMin };
-      const PHONE = { narrow: true, side: 210, name: 200, day: dayMin, need: 200 + 7 * dayMin };
-      const roomFor = c => c.need + c.side + gap;
-      /* Hysteresis (HYST_UP): each switch changes the layout, which changes the available
-         width — without a dead band the states oscillate forever and hang the tab. Moving
-         DOWN to a smaller layout uses the bare threshold; moving back UP needs 40px more. */
-      const prev = last ? JSON.parse(last) : SCHED_FIT_DEFAULT;
-      const rank = f => f.narrow ? 0 : f.side === 250 ? 2 : 1;
-      const HYST_UP = 40;
-      const up = c => avail >= roomFor(c) + HYST_UP;
-      let next;
-      if (forced) next = PHONE;
-      else if (rank(prev) === 2) next = avail >= roomFor(WIDE) ? WIDE : (avail >= roomFor(TIGHT) ? TIGHT : PHONE);
-      else if (rank(prev) === 1) next = up(WIDE) ? WIDE : (avail >= roomFor(TIGHT) ? TIGHT : PHONE);
-      else next = up(WIDE) ? WIDE : (up(TIGHT) ? TIGHT : PHONE);
-      const key = JSON.stringify(next);
-      if (key !== last) { last = key; setFit(next); }
-    };
-    /* coalesce to one measurement per tick — RO can fire several times per layout pass.
-       A timer, not requestAnimationFrame: rAF never fires in a hidden or non-painting tab,
-       which would latch this guard permanently and freeze the layout at its first answer. */
-    const measure = () => { if (!tid) tid = setTimeout(decide, 0); };
-    decide();
-    const ro = new ResizeObserver(measure);
-    ro.observe(host);
-    /* appearance.jsx flips these attributes on <html>; each can change the answer */
-    const mo = new MutationObserver(measure);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-textsize', 'data-density', 'data-font', 'data-theme'] });
-    return () => { if (tid) clearTimeout(tid); ro.disconnect(); mo.disconnect(); chip.remove(); };
-  }, []);
-  return fit;
+  }
 }
 
-function schedOffices() {
-  const out = [];
-  (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []).forEach(e => {
-    if (e.status !== 'Active') return;
-    const l = e.loc || e.location;
-    if (l && l !== 'Unassigned' && !out.includes(l)) out.push(l);
-  });
-  return out.sort();
+/* writes the held repeat copies into their own weeks. One aimed at a week that is already
+   published goes to a supervisor's manager as a request. → the copies to keep for the next
+   Publish (the ones that failed), and a note for each. */
+async function saveHeldRepeats(held, { isSup, save, submit }) {
+  const kept = [], notes = [];
+  for (const r of held) {
+    const changes = { add: [r.shift], update: [], remove: [] };
+    try { await save({ action: 'save', office: r.office, weekKey: r.weekKey, changes }); }
+    catch (e) {
+      let why = e.message;
+      if (isSup && e.body && e.body.pendingRequired) {
+        const sent = await sendChangesForApproval(r.office, r.weekKey, changes, submit);
+        if (!sent.failedCount) continue;
+        why = sent.why;
+      }
+      kept.push(r);
+      notes.push({ m: `Repeat for week of ${r.weekKey} wasn’t saved (${why}). It’s kept and will be tried again when you publish.`, ok: false });
+    }
+  }
+  return { kept, notes };
 }
-function officeRoster(office) {
-  return (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
-    .filter(e => e.status === 'Active' && (e.loc || e.location) === office)
-    .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }));
-}
-const deptHue = (() => { const cache = {}; let i = 0; const hues = [220, 155, 280, 75, 195, 25, 320, 110]; return d => (d in cache ? cache[d] : (cache[d] = hues[i++ % hues.length])); })();
 
-/* one shift block in the grid.
-   `pub` = published (the committed green state); `ot` = this person's week is over
-   their overtime threshold; `note` shows under the time with a speech bubble. */
-function SchedShift({ s, hue, multi, dim, hi, ot, onClick, onDragStart, onDragEnd, dragging }) {
-  /* two different things share `s.open`: no empId = UNASSIGNED (sits in the Open shifts
-     lane, nobody on it yet); empId + open = UP FOR GRABS (still this person's shift until
-     a claim is approved). Same styling either way — only the label text differs. */
-  const open = !!s.open, unassigned = !s.empId, off = !!s.offered, pub = !!s.pub;
-  const tint = open ? 'oklch(0.7 0.14 75)' : off ? 'oklch(0.65 0.16 320)' : pub ? 'oklch(0.68 0.14 150)' : `oklch(0.65 0.13 ${hue})`;
-  const edge = open ? 'var(--warn)' : off ? 'oklch(0.6 0.16 320)' : pub ? 'oklch(0.55 0.14 150)' : `oklch(0.58 0.14 ${hue})`;
-  const label = open ? 'oklch(0.55 0.13 65)' : off ? 'oklch(0.55 0.16 320)' : pub ? 'oklch(0.44 0.13 150)' : `oklch(0.5 0.14 ${hue})`;
-  return (
-    <button onClick={onClick} className="sched-shift" draggable={!!onDragStart} onDragStart={onDragStart} onDragEnd={onDragEnd}
-      style={{ display: 'block', width: '100%', textAlign: 'left', cursor: onDragStart ? 'grab' : 'pointer', border: 'none', position: 'relative',
-      background: `color-mix(in oklab, ${tint} ${pub && !open && !off ? 20 : open ? 18 : 16}%, var(--surface))`,
-      borderLeft: `3px solid ${edge}`,
-      boxShadow: ot ? 'inset 0 0 0 1.5px oklch(0.58 0.19 25)' : 'none',
-      borderRadius: 'var(--r-sm)', padding: '5px 8px', opacity: dragging ? 0.4 : dim ? 0.35 : 1,
-      outline: hi ? '2px solid var(--accent)' : 'none', outlineOffset: 1 }}>
-      <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: `color-mix(in oklab, ${label} 60%, var(--ink))` }}>{shiftRange(s)}{ot ? <span title="Over their weekly hours" style={{ marginLeft: 4, color: 'oklch(0.55 0.19 25)' }}>⚠</span> : null}</span>
-      <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-3)', marginTop: 1 }}>
-        {open ? (unassigned ? 'Unassigned' : 'Up for grabs') : off ? 'Offered for swap' : `${shiftHrs(s)}h`}{multi ? ` · ${s._office}` : ''}{!s.pub && !open ? ' · new' : ''}
-      </span>
-      {s.note && <span style={{ display: 'flex', alignItems: 'flex-start', gap: 3, fontSize: 10, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.35 }}><Icon name="chat" style={{ width: 10, height: 10, flex: 'none', marginTop: 1 }} /> {s.note}</span>}
-    </button>
-  );
+/* one message for a whole Publish, the problems first, shown long enough to read */
+function publishSummary(notes) {
+  if (!notes.length) return null;
+  const bad = notes.filter(n => !n.ok), good = notes.filter(n => n.ok);
+  return { m: [...bad, ...good].map(n => n.m).join(' '), ok: !bad.length, ms: Math.min(20000, 3200 + 2500 * (notes.length - 1) + (bad.length ? 5000 : 0)) };
 }
+/* ---- end of Builder logic ---- */
 
 function Scheduler({ me, access, onBack }) {
-  const OFFICES = useMemo(() => schedOffices(), []);
+  const OFFICES = useMemo(() => editableOffices(me, access), [me.id, access]);
   const isSup = !!(access && access.flags && access.flags.isSupervisor && !access.flags.isAdmin);
   /* org config is Admin / HR / Leadership on the server; mirror it so the menu entry only
      shows to someone whose save would actually be accepted */
   const canOrg = !!(access && access.flags && (access.flags.isAdmin || access.flags.isHR || access.flags.isExec));
-  const [offices, setOffices] = useState(() => OFFICES); // "All" is the default view
-  const [weekKey, setWeekKey] = useState(() => thisWeekKey());
+  const [offices, setOffices] = useState(() => { const v = PD_DRAFTS.getView(); const keep = v && v.offices.filter(o => OFFICES.includes(o)); return keep && keep.length ? keep : OFFICES; }); // "All" is the default view
+  // a different set of editable offices (an admin previewing another level, a changed setting) resets the view
+  const officesSeen = useRef(OFFICES.join('|'));
+  useEffect(() => { if (officesSeen.current !== OFFICES.join('|')) { officesSeen.current = OFFICES.join('|'); setOffices(OFFICES); } }, [OFFICES.join('|')]);
+  const [weekKey, setWeekKey] = useState(() => { const v = PD_DRAFTS.getView(); return (v && v.weekKey) || thisWeekKey(); });
+  useEffect(() => { PD_DRAFTS.setView({ weekKey, offices }); }, [weekKey, offices.join('|')]);
   const [view, setView] = useState('dept');
   const [docs, setDocs] = useState({});           // office → week doc
-  const [requests, setRequests] = useState([]);   // edits / swaps / blackouts, scoped
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);       // { office, empId|null, date, shift|null }
   const [search, setSearch] = useState('');
@@ -153,18 +136,20 @@ function Scheduler({ me, access, onBack }) {
   const fit = useSchedFit();
   const narrow = fit.narrow;
   const [mDay, setMDay] = useState(null);       // ISO date | null = auto (today, else Mon)
-  const flash = m => { setToast(m); setTimeout(() => setToast(null), 3200); };
+  const flashRef = useRef(null);
+  if (!flashRef.current) flashRef.current = makeFlash(setToast);
+  const flash = flashRef.current;
 
   const days = useMemo(() => weekDaysFor(weekKey), [weekKey]);
   const roster = useMemo(() => {
-    let r = offices.flatMap(officeRoster);
+    let r = offices.flatMap(o => officeRoster(o, schedAll()));
     if (search.trim()) { const q = search.trim().toLowerCase(); r = r.filter(p => p.name.toLowerCase().includes(q)); }
     if (dept) r = r.filter(p => p.dept === dept);
     return r;
   }, [offices, search, dept]);
   const multi = offices.length > 1;
   /* unfiltered team for the regular-hours picker (the search box scopes the grid, not this) */
-  const allRoster = useMemo(() => offices.flatMap(officeRoster), [offices]);
+  const allRoster = useMemo(() => offices.flatMap(o => officeRoster(o, schedAll())), [offices]);
   /* every department present across the selected offices — "only the Dental Assistants
      in the offices I pick", which the name-only search box could never do */
   const DEPTS = useMemo(() => [...new Set(allRoster.map(p => p.dept).filter(Boolean))].sort(), [allRoster]);
@@ -173,24 +158,58 @@ function Scheduler({ me, access, onBack }) {
   /* every displayed shift, tagged with its office */
   const shifts = useMemo(() => offices.flatMap(o => ((docs[o] && docs[o].shifts) || []).map(s => ({ ...s, _office: o }))), [docs, offices]);
   const allWeekShifts = shifts; // conflict checks run against the loaded week
-  const blackouts = useMemo(() => requests.filter(r => r.type === 'blackout' && r.status === 'approved'), [requests]);
-  const pending = useMemo(() => requests.filter(r =>
-    (r.type === 'edit' && r.status === 'pending') || (r.type === 'swap' && r.status === 'pending') ||
-    (r.type === 'blackout' && (r.status === 'hr_review' || r.status === 'mgr_review'))), [requests]);
-
-  const load = (force) => {
-    if (dirty && !force && !window.confirm('You have unpublished changes — loading discards them. Continue?')) return;
-    repeatsRef.current = []; setDirty(false); setLoading(true);
-    Promise.all([
-      fetchSchedules({ offices, weekKey }).catch(() => []),
-      fetchSchedRequests().catch(() => []),
-    ]).then(([scheds, reqs]) => {
+  /* approved time off for the week on screen: striped on the grid, warned on in the shift dialog */
+  const [timeOff, setTimeOff] = useState([]);
+  useEffect(() => {
+    const days = weekDaysFor(weekKey);
+    const get = () => fetchApprovedTimeOff({ from: days[0].date, to: days[6].date }).then(setTimeOff).catch(() => setTimeOff([]));
+    get();
+    window.addEventListener('pd-approvals-changed', get);
+    return () => window.removeEventListener('pd-approvals-changed', get);
+  }, [weekKey]);
+  /* mode: nothing = ask first if there are unpublished edits, then discard them; true = discard;
+     'keep' = put the unpublished edits kept in PD_DRAFTS back over what the server sent */
+  const loadSeq = useRef(0);
+  const load = (mode) => {
+    if (mode !== 'keep') {
+      if (dirty && mode !== true && !window.confirm('You have unpublished changes — loading discards them. Continue?')) return;
+      PD_DRAFTS.clearWeek(weekKey, offices); repeatsRef.current = []; PD_DRAFTS.setRepeats([]);
+    }
+    setLoading(true);
+    const failed = { v: false };
+    const mine = ++loadSeq.current;
+    fetchSchedules({ offices, weekKey }).catch(() => { failed.v = true; return []; }).then((scheds) => {
+      if (mine !== loadSeq.current) return;   // a newer load (another week or office) has started
+      if (failed.v) {
+        // the saved week didn't load: show the drafts as they are, change nothing in the store
+        const only = {};
+        offices.forEach(o => { const d = PD_DRAFTS.get(weekKey, o); if (d) only[o] = { ...d, _dirty: true }; });
+        setDocs(only); setLoading(false); setDirty(Object.keys(only).length > 0 || repeatsRef.current.length > 0);
+        flash('Couldn’t load the saved week. Your unpublished edits are kept; reload before publishing.', false, 8000);
+        return;
+      }
       const next = {};
-      scheds.forEach(d => { if (Array.isArray(d.shifts)) next[d.office] = d; });
-      setDocs(next); setRequests(reqs); setLoading(false);
+      // _base is the week as the server sent it: what the draft's changes are measured from
+      scheds.forEach(d => { if (Array.isArray(d.shifts)) next[d.office] = { ...d, _base: JSON.parse(JSON.stringify(d.shifts)) }; });
+      let kept = false; const clashed = [];
+      offices.forEach(o => {
+        const draft = PD_DRAFTS.get(weekKey, o);
+        if (!draft) return;
+        // put the draft's changes onto the week as it is now; one that clashes with a change made meanwhile is left out
+        const server = next[o] || { id: `${weekKey}__${o}`, office: o, weekKey, published: false, shifts: [], _base: [] };
+        const { shifts, conflicts } = PD_WEEK.applyChanges(server.shifts, PD_WEEK.diffWeek(draft._base || [], draft.shifts));
+        next[o] = { ...server, shifts, _dirty: true };
+        PD_DRAFTS.put(weekKey, o, next[o]);
+        const mine = [...(draft.shifts || []), ...(draft._base || [])];
+        conflicts.forEach(c => { const sh = mine.find(x => x.id === c.id); if (sh) clashed.push(sh); });
+        kept = true;
+      });
+      setDocs(next); setLoading(false);
+      setDirty(kept || repeatsRef.current.length > 0);
+      if (clashed.length) flash('Someone changed shifts you also changed, so your edits to them were left out: ' + clashText(clashed) + '. Review the week before publishing.', false, 10000);
     });
   };
-  useEffect(load, [offices.join('|'), weekKey]);
+  useEffect(() => load('keep'), [offices.join('|'), weekKey]);
 
   /* ---- persistence: DRAFT MODEL. Edits live in local state only; nothing touches
           Cosmos until Publish, which saves the week, locks it, and notifies.
@@ -214,14 +233,16 @@ function Scheduler({ me, access, onBack }) {
       const d = e && e.detail;
       if (d && d.office && !offices.includes(d.office)) return;
       if (d && d.weekKey && d.weekKey !== weekKey) return;
-      load();
+      load('keep');
     };
     window.addEventListener('pd-schedule-changed', onChanged);
     return () => window.removeEventListener('pd-schedule-changed', onChanged);
   }, [offices.join('|'), weekKey, dirty]);
   const applyLocal = (office, fn) => setDocs(d => {
     const doc = d[office] || { id: `${weekKey}__${office}`, office, weekKey, published: false, shifts: [] };
-    return { ...d, [office]: { ...doc, shifts: fn(doc.shifts || []), _dirty: true } };
+    const next = { ...doc, _base: doc._base || (doc.shifts || []), shifts: fn(doc.shifts || []), _dirty: true };
+    PD_DRAFTS.put(weekKey, office, next);
+    return { ...d, [office]: next };
   });
   /* warn before the tab closes with unpublished local edits */
   useEffect(() => {
@@ -232,9 +253,9 @@ function Scheduler({ me, access, onBack }) {
     const doc = docsRef.current[office];
     if (doc && doc.published && isSup) {
       try {
-        const res = await schedAction({ action: 'edit', office, weekKey: change.weekKey || weekKey, change });
-        if (res.pending) { flash('Sent to your manager for approval — the schedule updates when they approve.'); fetchSchedRequests().then(setRequests).catch(() => {}); }
-      } catch (e) { flash('Change failed: ' + e.message); load(true); }
+        await submitApproval('schedEdit', { office, weekKey: change.weekKey || weekKey, change });
+        flash('Sent to your manager for approval — the schedule updates when they approve.');
+      } catch (e) { flash('Change failed: ' + e.message, false); load('keep'); }
       return;
     }
     applyLocal(office, localFn); setDirty(true);
@@ -253,10 +274,10 @@ function Scheduler({ me, access, onBack }) {
       for (const [id, s] of nextById) {
         const cur = curById.get(id);
         if (!cur) await oneChange(office, { op: 'add', shift: s }, list => [...list, s]);
-        else if (JSON.stringify(cur) !== JSON.stringify(s)) await oneChange(office, { op: 'update', shift: s }, list => [...list.filter(x => x.id !== s.id), s]);
+        else if (JSON.stringify(cur) !== JSON.stringify(s)) await oneChange(office, { op: 'update', shift: s, was: cur }, list => [...list.filter(x => x.id !== s.id), s]);
       }
       for (const id of curById.keys()) {
-        if (!nextById.has(id)) await oneChange(office, { op: 'remove', shiftId: id }, list => list.filter(x => x.id !== id));
+        if (!nextById.has(id)) await oneChange(office, { op: 'remove', shiftId: id, was: curById.get(id) }, list => list.filter(x => x.id !== id));
       }
       return;
     }
@@ -264,7 +285,7 @@ function Scheduler({ me, access, onBack }) {
   };
   /* repeat copies aimed at OTHER weeks: held here until Publish, then written into
      their own week documents (each week is its own doc in Cosmos) */
-  const repeatsRef = useRef([]); // [{ office, weekKey, shift }]
+  const repeatsRef = useRef(PD_DRAFTS.getRepeats()); // [{ office, weekKey, shift }]
 
   /* ---- shift form save / delete (incl. repeats §2.2) ---- */
   const saveShift = async (form) => {
@@ -272,7 +293,7 @@ function Scheduler({ me, access, onBack }) {
     if (Number(form.breakMins) > 0) base.breakMins = Math.round(Number(form.breakMins));
     if (String(form.note || '').trim()) base.note = String(form.note).trim().slice(0, 280);
     setModal(null);
-    await oneChange(form.office, { op: form.shift ? 'update' : 'add', shift: base }, list => [...list.filter(s => s.id !== base.id), base]);
+    await oneChange(form.office, form.shift ? { op: 'update', shift: base, was: form.shift } : { op: 'add', shift: base }, list => [...list.filter(s => s.id !== base.id), base]);
     /* repeats: daily or weekly × N, each lands in its own week doc via the same
        queued-or-applied edit action */
     const extra = [];
@@ -282,13 +303,13 @@ function Scheduler({ me, access, onBack }) {
       const wk = weekKeyOf(date);
       const copy = { ...base, id: newShiftId(), date };
       if (wk === weekKey) await oneChange(form.office, { op: 'add', shift: copy }, list => [...list, copy]);
-      else { repeatsRef.current.push({ office: form.office, weekKey: wk, shift: copy }); setDirty(true); }
+      else { repeatsRef.current.push({ office: form.office, weekKey: wk, shift: copy }); PD_DRAFTS.setRepeats(repeatsRef.current); setDirty(true); }
     }
     if (extra.length) flash(`Shift repeated onto ${extra.length} more ${form.repeat === 'daily' ? 'day' : 'week'}${extra.length === 1 ? '' : 's'} — ${isSup ? 'saved or sent to your manager when you publish' : 'saved when you publish'}.`);
   };
   const deleteShift = async (form) => {
     setModal(null);
-    await oneChange(form.office, { op: 'remove', shiftId: form.shift.id }, list => list.filter(s => s.id !== form.shift.id));
+    await oneChange(form.office, { op: 'remove', shiftId: form.shift.id, was: form.shift }, list => list.filter(s => s.id !== form.shift.id));
   };
 
   /* ---- publish (§2.4) — publishes every selected office's week in view ---- */
@@ -308,13 +329,17 @@ function Scheduler({ me, access, onBack }) {
          still be saved — skipping it left the deletion unwritten and load() pulled the
          old shifts straight back, so "delete all" silently did nothing. Only skip an
          office with nothing saved AND nothing to save. */
+      const notes = [];   // every message of this Publish, shown once at the end with the problems first
       for (const office of offices) {
         const doc = docsRef.current[office];
         if (!doc) continue;
         if (!(doc.shifts || []).length && !doc._dirty) continue;
         if (doc._dirty) {
-          try { await schedAction({ action: 'save', office, weekKey, shifts: doc.shifts }); }
-          catch (e) { flash(office + ' save failed: ' + e.message + ' — not published.'); continue; }
+          const r = await saveDraftChanges({ office, weekKey, doc, isSup, save: schedAction, submit: submitApproval });
+          if (r.clear) PD_DRAFTS.clear(weekKey, office);
+          if (r.remaining) PD_DRAFTS.put(weekKey, office, { ...doc, shifts: r.remaining });
+          if (r.note) notes.push(r.note);
+          if (!r.publish) continue;
         }
         try {
           const res = await schedAction({ action: 'publish', office, weekKey, notify: notifyMode });
@@ -322,17 +347,18 @@ function Scheduler({ me, access, onBack }) {
           if (n && !n.simulated) { if (n.gchat) parts.push('Google Chat'); if (n.sms) parts.push(`${n.sms} text${n.sms === 1 ? '' : 's'}`); }
           const who = res.notified === 0 ? 'nobody to notify'
             : `${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified${res.mode === 'updates' ? ' (changes only)' : ''}`;
-          flash(`${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`);
-        } catch (e) { flash(office + ' publish failed: ' + e.message); }
+          notes.push({ m: `${office} week published — ${who}${parts.length ? ' via ' + parts.join(' + ') : ''}.`, ok: true });
+        } catch (e) { notes.push({ m: office + ' publish failed: ' + e.message, ok: false }); }
       }
       /* write the held repeat copies into their future weeks (saved, not published —
-         you publish those weeks when you build them) */
-      for (const r of held) {
-        try { await schedAction({ action: 'edit', office: r.office, weekKey: r.weekKey, change: { op: 'add', shift: r.shift } }); }
-        catch (e) { flash(`Repeat for week of ${r.weekKey} failed: ` + e.message); }
-      }
-      setDirty(false);
-      load(true);
+         you publish those weeks when you build them); the ones that fail are kept */
+      const reps = await saveHeldRepeats(held, { isSup, save: schedAction, submit: submitApproval });
+      repeatsRef.current.push(...reps.kept);
+      notes.push(...reps.notes);
+      const sum = publishSummary(notes);
+      if (sum) flash(sum.m, sum.ok, sum.ms);
+      PD_DRAFTS.setRepeats(repeatsRef.current);
+      load('keep');   // anything that failed to save stays as a draft
     } finally { publishingRef.current = false; }
   };
 
@@ -370,7 +396,7 @@ function Scheduler({ me, access, onBack }) {
       });
     });
 
-    const touched = Object.keys(byOffice);
+    const touched = Object.keys(byOffice).filter(o => OFFICES.includes(o));   // never an office the server would refuse
     let added = 0;
     for (const office of touched) {
       const { add, drop } = byOffice[office];
@@ -400,7 +426,7 @@ function Scheduler({ me, access, onBack }) {
         const cur = (docs[office] && docs[office].shifts) || [];
         await saveAll(office, [...cur, ...moved]);
         flash(`Copied ${moved.length} shifts from last week into ${office}.`);
-      } catch (e) { flash('Copy failed: ' + e.message); }
+      } catch (e) { flash('Copy failed: ' + e.message, false); }
     }
   };
   const openTpl = (kind) => { setMenu(null); setTplModal(kind); if (kind === 'load') fetchSchedTemplates(offices[0]).then(setTemplates).catch(() => setTemplates([])); };
@@ -409,7 +435,7 @@ function Scheduler({ me, access, onBack }) {
     const office = offices[0];
     const tShifts = ((docs[office] && docs[office].shifts) || []).map(s => ({ empId: s.empId, open: s.open, dow: Math.max(0, Math.round((parseISO(s.date) - parseISO(weekKey)) / 86400000)), start: s.start, end: s.end, breakMins: s.breakMins }));
     try { await schedAction({ action: 'template_save', office, name, shifts: tShifts }); flash(`Template “${name}” saved for ${office}.`); }
-    catch (e) { flash('Template save failed: ' + e.message); }
+    catch (e) { flash('Template save failed: ' + e.message, false); }
   };
   const loadTemplate = async (tpl) => {
     setTplModal(null);
@@ -540,7 +566,7 @@ function Scheduler({ me, access, onBack }) {
     : 'Delete every shift currently displayed? This cannot be undone.';
   const openLane = useMemo(() => shifts.filter(s => !s.empId), [shifts]);
   const openOn = (date) => openLane.filter(s => s.date === date);
-  const boFor = (pid, date) => blackouts.some(b => b.empId === pid && (b.dates || []).includes(date));
+  const boFor = (pid, date) => timeOff.some(t => t.empId === pid && t.dates.includes(date));
   const published = offices.every(o => docs[o] && docs[o].published);
   const anySaved = offices.some(o => docs[o] && (docs[o].shifts || []).length);
   const colTemplate = `${fit.name}px repeat(7, minmax(${fit.day}px, 1fr))`;
@@ -612,15 +638,7 @@ function Scheduler({ me, access, onBack }) {
 
         {/* Week: name, back, forward, refresh. No menus anywhere on this screen — every
            control from the desktop screen is drawn where it belongs. */}
-        <div className="schm-weekrow">
-          <button className="schm-nav" onClick={() => setWeekKey(k => addWeeks(k, -1))} aria-label="Previous week"><Icon name="chevron" style={{ width: 18, height: 18, transform: 'rotate(180deg)' }} /></button>
-          <button className="schm-weeknow" onClick={() => setWeekKey(thisWeekKey())}>
-            <b>{weekLabel(weekKey)}</b>
-            <small>{weekKey === thisWeekKey() ? 'This week' : 'Tap for this week'}</small>
-          </button>
-          <button className="schm-nav" onClick={() => setWeekKey(k => addWeeks(k, 1))} aria-label="Next week"><Icon name="chevron" style={{ width: 18, height: 18 }} /></button>
-          <button className="schm-nav" onClick={load} aria-label="Refresh"><Icon name="refresh" style={{ width: 18, height: 18 }} /></button>
-        </div>
+        <SchedWeekRow weekKey={weekKey} setWeekKey={setWeekKey} onRefresh={load} />
 
         {/* the four ways to fill a week in from something else */}
         <div className="schm-acts">
@@ -631,42 +649,16 @@ function Scheduler({ me, access, onBack }) {
           <button onClick={() => openTpl('load')}>Load template</button>
         </div>
 
-        <div className="schm-acts">
-          <button onClick={() => setOffices(OFFICES)} className={offices.length === OFFICES.length ? 'on' : ''}>All</button>
-          {OFFICES.map(o => (
-            <button key={o} onClick={() => toggleOffice(o)} className={offices.length !== OFFICES.length && offices.includes(o) ? 'on' : ''}>{o}</button>
-          ))}
-        </div>
+        <SchedOfficeChips OFFICES={OFFICES} offices={offices} setOffices={setOffices} toggleOffice={toggleOffice} />
 
-        <div className="schm-seg">
-          {SCHED_VIEWS.map(([id, label]) => (
-            <button key={id} onClick={() => setView(id)} className={view === id ? 'on' : ''}>{label}</button>
-          ))}
-        </div>
+        <SchedViewChips view={view} setView={setView} />
 
         {/* a button per department becomes a wall once there are more than a few, and this
             screen already stacks several control rows — one picker instead */}
-        {DEPTS.length > 1 && (
-          <select value={dept} onChange={e => setDept(e.target.value)} className="schm-pick">
-            <option value="">All roles</option>
-            {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-        )}
+        <SchedRolePick DEPTS={DEPTS} dept={dept} setDept={setDept} />
 
         {/* the week, as seven tap targets — the second axis without rendering it */}
-        <div className="schm-strip">
-          {days.map(d => {
-            const on = d.date === dayISO, n = nOn(d.date), o = nOpenOn(d.date);
-            return (
-              <button key={d.date} onClick={() => setMDay(d.date)} className={on ? 'schm-day on' : 'schm-day'}>
-                <span className="schm-day-dow">{d.dname.slice(0, 1)}</span>
-                <span className="schm-day-num">{d.dnum}</span>
-                <span className="schm-day-n">{n || '·'}{o ? <i /> : null}</span>
-                {d.date === today && <span className="schm-day-today" />}
-              </button>
-            );
-          })}
-        </div>
+        <SchedDayStrip days={days} dayISO={dayISO} today={today} nOn={nOn} nOpenOn={nOpenOn} setMDay={setMDay} />
 
         <div className="schm-status">
           {[['empty', emptyCount, 'empty'], ['unpub', unpubCount, 'unpublished'], ['unassigned', unassignedCount, 'unassigned'], ['grabs', grabsCount, 'up for grabs']].map(([id, n, label]) => (
@@ -678,7 +670,6 @@ function Scheduler({ me, access, onBack }) {
         </div>
 
         {published && anySaved && <div className="schm-note"><Icon name="check" style={{ width: 14, height: 14 }} /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</div>}
-        {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
 
         {openOn(dayISO).length > 0 && (
           <div className="schm-group">
@@ -729,7 +720,7 @@ function Scheduler({ me, access, onBack }) {
                           <span className="schm-row-time mono">{shiftRange(s)}</span>
                           <span className="schm-row-sub">
                             {s.open ? 'Up for grabs' : s.offered ? 'Offered for swap' : `${shiftHrs(s)}h`}
-                            {multi ? ` · ${s._office}` : ''}{!s.pub && !s.open ? ' · new' : ''}{bo ? ' · blackout' : ''}
+                            {multi ? ` · ${s._office}` : ''}{!s.pub && !s.open ? ' · new' : ''}{bo ? ' · time off' : ''}
                           </span>
                           {s.note && <span className="schm-row-note"><Icon name="chat" style={{ width: 11, height: 11, flex: 'none' }} /> {s.note}</span>}
                         </span>
@@ -741,7 +732,7 @@ function Scheduler({ me, access, onBack }) {
                     <div className="schm-off">
                       {g.off.map(({ p }) => (
                         <button key={p.id} onClick={() => openSlot(g.office, p.id)} className={boFor(p.id, dayISO) ? 'bo' : ''}
-                          title={boFor(p.id, dayISO) ? 'Approved blackout — this person can’t work this day' : 'Not scheduled — tap to add'}>
+                          title={boFor(p.id, dayISO) ? 'Approved time off — this person can’t work this day' : 'Not scheduled — tap to add'}>
                           {p.name}{boFor(p.id, dayISO) ? ' ⃰' : ''}
                         </button>
                       ))}
@@ -791,7 +782,7 @@ function Scheduler({ me, access, onBack }) {
 
         {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
         {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
-        {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+        {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} timeOff={timeOff} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
         {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
         {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
           onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
@@ -801,7 +792,7 @@ function Scheduler({ me, access, onBack }) {
 
         {toast && (
           <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 95, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
-            <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
+            <Icon name={toast.ok ? 'check' : 'x'} style={{ width: 16, height: 16, color: toast.ok ? 'oklch(0.8 0.13 155)' : 'var(--warn)' }} /> {toast.m}
           </div>
         )}
       </StepShell>
@@ -843,39 +834,10 @@ function Scheduler({ me, access, onBack }) {
 
       {/* selectors: offices (multi), week, view */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Icon name="pin" style={{ width: 16, height: 16, color: 'var(--ink-3)' }} />
-          <button onClick={() => setOffices(OFFICES)}
-            style={{ border: '1px solid', borderColor: offices.length === OFFICES.length ? 'var(--accent)' : 'var(--line)', background: offices.length === OFFICES.length ? 'var(--accent-soft)' : 'var(--surface)',
-              color: offices.length === OFFICES.length ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            All
-          </button>
-          {OFFICES.map(o => {
-            const on = offices.length !== OFFICES.length && offices.includes(o);
-            return (
-              <button key={o} onClick={() => toggleOffice(o)}
-                style={{ border: '1px solid', borderColor: on ? 'var(--accent)' : 'var(--line)', background: on ? 'var(--accent-soft)' : 'var(--surface)',
-                  color: on ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                {o}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
-          <button className="btn btn-quiet" onClick={() => setWeekKey(k => addWeeks(k, -1))} title="Previous week" style={{ padding: '6px 9px' }}><Icon name="chevron" style={{ width: 14, height: 14, transform: 'rotate(180deg)' }} /></button>
-          <button className="btn btn-quiet" onClick={() => setWeekKey(thisWeekKey())} style={{ fontWeight: 700, fontSize: 13.5, padding: '6px 12px' }}>{weekLabel(weekKey)}{weekKey === thisWeekKey() ? '' : ' ↺'}</button>
-          <button className="btn btn-quiet" onClick={() => setWeekKey(k => addWeeks(k, 1))} title="Next week" style={{ padding: '6px 9px' }}><Icon name="chevron" style={{ width: 14, height: 14 }} /></button>
-        </div>
-        <div style={{ display: 'flex', gap: 0, border: '1px solid var(--line)', borderRadius: 'var(--r-pill)', overflow: 'hidden' }}>
-          {SCHED_VIEWS.map(([id, label]) => (
-            <button key={id} onClick={() => setView(id)} style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', fontSize: 12.5, fontWeight: 600, background: view === id ? 'var(--ink)' : 'var(--surface)', color: view === id ? 'var(--surface)' : 'var(--ink-2)' }}>{label}</button>
-          ))}
-        </div>
-        <select value={dept} onChange={e => setDept(e.target.value)} title="Show only one role"
-          style={{ border: '1px solid', borderColor: dept ? 'var(--accent)' : 'var(--line)', background: dept ? 'var(--accent-soft)' : 'var(--surface)', color: dept ? 'var(--accent-strong)' : 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-          <option value="">All roles</option>
-          {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <SchedOfficeBar OFFICES={OFFICES} offices={offices} setOffices={setOffices} toggleOffice={toggleOffice} />
+        <SchedWeekNav weekKey={weekKey} setWeekKey={setWeekKey} />
+        <SchedViewSwitch view={view} setView={setView} />
+        <SchedRoleSelect dept={dept} setDept={setDept} DEPTS={DEPTS} />
         {view === 'dept' && groupKeys.length > 1 && (
           <button onClick={allClosed ? expandAll : collapseAll} title={allClosed ? 'Open every role' : 'Fold every role — then open the one you are working on'}
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', borderRadius: 'var(--r-pill)', padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -885,7 +847,6 @@ function Scheduler({ me, access, onBack }) {
         {published && anySaved && <span className="badge badge-ok"><Icon name="check" /> All shifts published{isSup ? ' — your edits need manager approval' : ''}</span>}
       </div>
 
-      {pending.length > 0 && <ApprovalsPanel me={me} access={access} requests={pending} onActed={load} flash={flash} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: `${fit.side}px minmax(0, 1fr)`, gap: 'var(--gap)', alignItems: 'start' }}>
         {/* team sidebar (§3.2 — hours, search, sort; no cost per D2) */}
@@ -963,7 +924,7 @@ function Scheduler({ me, access, onBack }) {
                         background: isDropping('', d.date, offices[0]) ? 'var(--accent-soft)' : 'transparent',
                         outline: isDropping('', d.date, offices[0]) ? '2px solid var(--accent)' : 'none', outlineOffset: -2 }}>
                       {openOn(d.date).map(s => (
-                        <SchedShift key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
+                        <SchedShift editable key={s.id + s._office} s={s} hue={75} multi={multi} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={false}
                           dragging={drag && drag.id === s.id}
                           onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
                           onClick={(e) => { e.stopPropagation(); setModal({ office: s._office, empId: null, date: d.date, shift: s }); }} />
@@ -1015,8 +976,8 @@ function Scheduler({ me, access, onBack }) {
                               background: isDropping(p.id, d.date, group.office || p.office) ? 'var(--accent-soft)'
                                 : bo ? 'repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 6px, transparent 6px, transparent 12px)' : 'transparent',
                               outline: isDropping(p.id, d.date, group.office || p.office) ? '2px solid var(--accent)' : statusHi === 'empty' && isEmpty ? '2px dashed var(--accent)' : 'none', outlineOffset: -2 }}
-                            title={bo ? 'Approved blackout — this person can’t work this day' : ''}>
-                            {list.map(s => <SchedShift key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)}
+                            title={bo ? 'Approved time off — this person can’t work this day' : ''}>
+                            {list.map(s => <SchedShift editable key={s.id + s._office} s={s} hue={deptHue(p.dept)} multi={multi && !group.office} dim={dim(s)} hi={statusHi === 'unpub' && !s.pub} ot={otIds.has(p.id)}
                               dragging={drag && drag.id === s.id}
                               onDragStart={() => setDrag(s)} onDragEnd={() => { setDrag(null); setDropAt(null); }}
                               onClick={() => setModal({ office: s._office, empId: p.id, date: d.date, shift: s })} />)}
@@ -1048,7 +1009,7 @@ function Scheduler({ me, access, onBack }) {
 
       {wkAsk && <WeekStartModal onSaved={() => { setWkAsk(false); setWeekKey(thisWeekKey()); load(true); }} onClose={() => setWkAsk(false)} flash={flash} />}
       {pubAsk && <PublishAsk unpubCount={unpubCount} onPick={publish} onClose={() => setPubAsk(false)} />}
-      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} blackouts={blackouts} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
+      {modal && <ShiftModal key={(modal.shift && modal.shift.id) || 'new'} modal={modal} offices={offices} weekShifts={allWeekShifts} timeOff={timeOff} regIndex={regIndex} onSave={saveShift} onDelete={deleteShift} onClose={() => setModal(null)} />}
       {impOpen && <ScheduleImportModal offices={OFFICES} flash={flash} onDone={() => { setImpOpen(false); load(true); }} onClose={() => setImpOpen(false)} />}
       {regOpen && <RegularHoursModal roster={allRoster} profiles={regHours} offices={OFFICES} flash={flash}
         onSaved={p => { setRegHours(list => [...list.filter(x => x.id !== p.id), p]); }}
@@ -1058,7 +1019,7 @@ function Scheduler({ me, access, onBack }) {
 
       {toast && (
         <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'var(--ink)', color: 'var(--surface)', padding: '11px 20px', borderRadius: 'var(--r-pill)', fontSize: 13.5, fontWeight: 600, boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="check" style={{ width: 16, height: 16, color: 'oklch(0.8 0.13 155)' }} /> {toast}
+          <Icon name={toast.ok ? 'check' : 'x'} style={{ width: 16, height: 16, color: toast.ok ? 'oklch(0.8 0.13 155)' : 'var(--warn)' }} /> {toast.m}
         </div>
       )}
     </StepShell>
@@ -1084,7 +1045,7 @@ function WeekStartModal({ onSaved, onClose, flash }) {
       setWeekStart(pick);
       flash('Week now starts on ' + (WEEK_STARTS.find(([k]) => k === pick) || [, ''])[1] + '.');
       onSaved();
-    } catch (e) { flash('Could not save: ' + e.message); setSaving(false); }
+    } catch (e) { flash(e.message === 'conflict' ? 'Someone else just changed this. Reload and try again.' : 'Could not save: ' + e.message, false); setSaving(false); }
   };
   return (
     <SchedPortal>
@@ -1170,7 +1131,7 @@ function SchedPortal({ children }) { return ReactDOM.createPortal(children, docu
 
 /* ---- the shift form (§2.1, §2.2, §2.3): presets + typed times, repeats,
         conflict warning that never blocks ---- */
-function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, onDelete, onClose }) {
+function ShiftModal({ modal, offices, weekShifts, timeOff, regIndex, onSave, onDelete, onClose }) {
   const s = modal.shift;
   const [office, setOffice] = useState(modal.office);
   const [open, setOpen] = useState(s ? !!s.open : !!modal.open);
@@ -1182,17 +1143,17 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
   const [note, setNote] = useState(s ? (s.note || '') : '');
   const [repeat, setRepeat] = useState('none');
   const [repeatN, setRepeatN] = useState(3);
-  const team = officeRoster(office);
+  const team = officeRoster(office, schedAll());
   const others = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [])
     .filter(e => e.status === 'Active' && (e.loc || e.location) !== office && !['', 'Unassigned'].includes(e.loc || e.location || ''))
     .map(e => ({ id: e.id, name: e.name, dept: e.department || 'Unassigned', office: e.loc || e.location, emailLower: (e.emailLower || e.workEmail || '').toLowerCase() }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const emp = team.find(p => p.id === empId) || others.find(p => p.id === empId);
 
-  const conflict = useMemo(() => open || !empId ? { shifts: [], blackout: null } :
-    shiftConflicts({ shifts: weekShifts, blackouts, empId, date, start, end, excludeId: s && s.id }),
+  const conflict = useMemo(() => open || !empId ? { shifts: [], timeOff: null } :
+    shiftConflicts({ shifts: weekShifts, timeOff, empId, date, start, end, excludeId: s && s.id }),
     [empId, date, start, end, open]);
-  const hasConflict = conflict.shifts.length > 0 || !!conflict.blackout;
+  const hasConflict = conflict.shifts.length > 0 || !!conflict.timeOff;
   /* an open shift is valid with nobody on it — being unassigned is the point */
   const valid = date && start && end && timeMins(end) > timeMins(start) && (empId || open);
 
@@ -1309,7 +1270,7 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
             <div style={{ border: '1.5px solid var(--warn)', background: 'var(--warn-soft)', borderRadius: 'var(--r-md)', padding: '10px 13px', fontSize: 12.5, lineHeight: 1.5, color: 'oklch(0.42 0.11 60)' }}>
               <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Conflict</b>
               {conflict.shifts.map(c => <div key={c.id}>{emp ? emp.name : 'They'} already work{emp ? 's' : ''} {shiftRange(c)} this day{c._office && c._office !== office ? ` at ${c._office}` : ''}.</div>)}
-              {conflict.blackout && <div>{emp ? emp.name : 'This person'} has an approved blackout on {date}.</div>}
+              {conflict.timeOff && <div>{emp ? emp.name : 'This person'} has approved time off on {date}.</div>}
               <div style={{ marginTop: 4, fontWeight: 600 }}>You can still save — the warning never blocks.</div>
             </div>
           )}
@@ -1324,47 +1285,6 @@ function ShiftModal({ modal, offices, weekShifts, blackouts, regIndex, onSave, o
         </div>
       </div>
     </SchedPortal>
-  );
-}
-
-/* ---- approvals inline panel: pending supervisor edits, swap claims, blackout
-        stages — the same items the notifications bar deep-links to ---- */
-function ApprovalsPanel({ me, access, requests, onActed, flash }) {
-  const isMgr = !!(access && access.flags && (access.flags.isManager || access.flags.isAdmin));
-  const myEmail = ((me && me.workEmail) || '').toLowerCase();
-  const act = async (body, okMsg) => {
-    try { await schedAction(body); flash(okMsg); onActed(); }
-    catch (e) { flash(e.message); }
-  };
-  const label = r =>
-    r.type === 'edit' ? `${r.createdByName || r.createdBy} ${r.op === 'remove' ? 'removed a shift' : r.op === 'add' ? 'added a shift' : 'changed a shift'} · ${r.office} · wk ${r.weekKey}` :
-    r.type === 'swap' ? `${r.toName} wants ${r.fromName}'s ${r.date} ${fmt12(r.start)}–${fmt12(r.end)} shift · ${r.office}` :
-    `${r.name} — blackout ${r.dates.length === 1 ? r.dates[0] : r.dates[0] + ' +' + (r.dates.length - 1)}${r.reason ? ' · ' + r.reason : ''} · ${r.status === 'hr_review' ? 'awaiting HR (PTO check)' : 'awaiting manager'}`;
-  const actions = r => {
-    if (r.type === 'edit' && isMgr) return [['edit_decide', true, 'Approve'], ['edit_decide', false, 'Reject']];
-    if (r.type === 'swap' && isMgr) return [['swap_decide', true, 'Approve'], ['swap_decide', false, 'Reject']];
-    if (r.type === 'blackout' && r.status === 'mgr_review' && isMgr) return [['blackout_mgr', true, 'Approve'], ['blackout_mgr', false, 'Deny']];
-    if (r.type === 'blackout' && r.status === 'hr_review') return [['blackout_hr', true, 'PTO confirmed'], ['blackout_hr', false, 'Insufficient PTO']]; // server verifies the HR approver identity
-    return [];
-  };
-  const mine = requests.filter(r => actions(r).length || r.createdBy === myEmail);
-  if (!mine.length) return null;
-  return (
-    <div className="card" style={{ padding: '12px 16px', marginBottom: 14, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
-      <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" style={{ width: 14, height: 14 }} /> Pending approvals</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {mine.map(r => (
-          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
-            <span style={{ flex: 1, minWidth: 220 }}>{label(r)}</span>
-            {actions(r).map(([action, approve, text]) => (
-              <button key={text} className={approve ? 'btn btn-primary' : 'btn btn-ghost'} style={{ padding: '4px 12px', fontSize: 12 }}
-                onClick={() => act({ action, id: r.id, office: r.office, approve }, approve ? 'Approved.' : 'Rejected.')}>{text}</button>
-            ))}
-            {!actions(r).length && <span className="badge badge-warn" style={{ fontSize: 10.5 }}>waiting</span>}
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

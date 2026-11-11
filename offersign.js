@@ -20,6 +20,34 @@
     return data;
   }
 
+  /* a finger or mouse drawing box; image() gives a PNG, or undefined when nothing was drawn */
+  function drawingPad(canvas) {
+    const ctx = canvas.getContext('2d');
+    let last = null, inked = false;
+    // drawn at 1x, which keeps the picture small; sized again (and cleared) when the screen turns
+    const size = () => {
+      const box = canvas.getBoundingClientRect();
+      canvas.width = box.width; canvas.height = box.height;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 2.4; ctx.strokeStyle = '#1c2530';
+      inked = false;
+    };
+    size();
+    window.addEventListener('resize', size);
+    const at = (e) => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    canvas.onpointerdown = (e) => { e.preventDefault(); canvas.setPointerCapture(e.pointerId); last = at(e); };
+    canvas.onpointermove = (e) => {
+      if (!last) return;
+      const p = at(e);
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      last = p; inked = true;
+    };
+    canvas.onpointerup = canvas.onpointercancel = () => { last = null; };
+    return {
+      clear() { ctx.clearRect(0, 0, canvas.width, canvas.height); inked = false; },
+      image() { return inked ? canvas.toDataURL('image/png') : undefined; },
+    };
+  }
+
   function renderError(msg) {
     card.innerHTML = '<h1>This link isn’t valid</h1><p class="sub">' + esc(msg) + '</p><p class="desc">If you think this is a mistake, reach out to whoever sent you the offer and ask them to resend it.</p>';
   }
@@ -55,14 +83,19 @@
         '<div class="panel">' +
         '<div style="font-weight:600;margin-bottom:4px;">Type your full legal name to sign</div>' +
         '<input id="sigInput" placeholder="Full legal name" />' +
+        '<div style="font-weight:600;margin:14px 0 4px;">Draw your signature <span style="font-weight:400;color:var(--ink-3)">(optional)</span></div>' +
+        '<canvas id="sigPad" style="width:100%;height:140px;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;"></canvas>' +
+        '<button type="button" id="sigClear" style="margin-top:6px;background:none;border:none;padding:0;color:var(--ink-3);text-decoration:underline;cursor:pointer;font:inherit;font-size:13px;">Clear drawing</button>' +
         '<div class="actions"><button class="btn-accept" id="submitSign" disabled>Confirm &amp; accept offer</button></div>' +
         '</div>';
       const sigInput = document.getElementById('sigInput');
       const submitBtn = document.getElementById('submitSign');
       sigInput.oninput = () => { submitBtn.disabled = !sigInput.value.trim(); };
+      const pad = drawingPad(document.getElementById('sigPad'));
+      document.getElementById('sigClear').onclick = pad.clear;
       submitBtn.onclick = async () => {
         submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
-        try { await api('POST', { decision: 'signed', signature: sigInput.value.trim() }); renderDone('signed'); }
+        try { await api('POST', { decision: 'signed', signature: sigInput.value.trim(), signatureImage: pad.image() }); renderDone('signed'); }
         catch (e) { submitBtn.disabled = false; submitBtn.textContent = 'Confirm & accept offer'; alert('Couldn’t submit: ' + e.message); }
       };
     };

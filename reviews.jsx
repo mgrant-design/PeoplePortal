@@ -104,7 +104,7 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
         <PhotoAvatar emp={emp} size={52} />
         <div style={{ flex: 1, minWidth: 180 }}>
           <h1 style={{ fontSize: 'clamp(19px,2.4vw,24px)' }}>{isSelf ? 'My performance review' : emp.name}</h1>
-          <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 3 }}>{emp.jobTitle} · {emp.loc} · Review cycle 2026</p>
+          <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 3 }}>{emp.jobTitle} · {emp.loc}</p>
         </div>
         <div style={{ display: 'flex', gap: 18 }}>
           <div style={{ textAlign: 'center' }}><div style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 700, textTransform: 'uppercase' }}>Self</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{avg(self)}</div></div>
@@ -194,7 +194,7 @@ function Reviews({ me, access, questions, onQuestions, list }) {
     <div className="fade-in">
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Performance reviews</h1>
-        <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{isHR ? 'Company-wide review cycle 2026 · manage questions and track completion' : 'Your team’s reviews · cycle 2026'}</p>
+        <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{isHR ? 'Company-wide reviews · manage questions and track completion' : 'Your team’s reviews'}</p>
       </div>
 
       {isHR && (

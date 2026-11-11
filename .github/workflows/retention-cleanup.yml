@@ -9,5 +9,8 @@ jobs:
     steps:
       - name: Call retentionCleanup
         run: |
-          curl -sf -X POST "https://nice-mud-064dd7610.7.azurestaticapps.net/api/retentionCleanup" \
-            -H "X-Retention-Secret: ${{ secrets.RETENTION_JOB_SECRET }}"
+          code=$(curl -s -o answer.json -w "%{http_code}" -X POST "https://nice-mud-064dd7610.7.azurestaticapps.net/api/retentionCleanup" \
+            -H "X-Retention-Secret: ${{ secrets.RETENTION_JOB_SECRET }}")
+          echo "The cleanup answered HTTP $code"
+          head -c 2000 answer.json; echo
+          [ "$code" -lt 400 ]

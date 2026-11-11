@@ -109,15 +109,89 @@ function ManagersEditor({ canEdit }) {
   );
 }
 
+function ApPicker({ people, exclude = [], onPick, placeholder, disabled }) {
+  return (
+    <select value="" disabled={disabled} onChange={ev => ev.target.value && onPick(ev.target.value)} style={{ ..._oeFld, maxWidth: 340, padding: '8px 10px', fontSize: 13 }}>
+      <option value="">{placeholder}</option>
+      {people.filter(e => !exclude.includes(e.workEmail.toLowerCase())).map(e => <option key={e.workEmail} value={e.workEmail.toLowerCase()}>{e.name}{e.jobTitle ? ` — ${e.jobTitle}` : ''}{e.loc ? ` · ${e.loc}` : ''}</option>)}
+    </select>
+  );
+}
+function ApChip({ email, emp, canEdit, onRemove, disabled }) {
+  const gone = !emp || !window.PD_ACCESS_RULES.isActive(emp);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 6px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line)', background: 'var(--surface-2)', fontSize: 13 }}>
+      {emp && <PhotoAvatar emp={emp} size={24} />}
+      <span style={{ fontWeight: 600 }}>{emp ? `${emp.name}${emp.jobTitle ? ' · ' + emp.jobTitle : ''}` : email}</span>
+      {gone && <span className="badge badge-warn" style={{ fontSize: 10.5 }}>No longer active</span>}
+      {canEdit && <button onClick={onRemove} disabled={disabled} title="Remove" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 0, display: 'grid', placeItems: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>}
+    </span>
+  );
+}
+function ApRow({ title, note, children, first }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 'var(--gap)', padding: '16px var(--pad)', borderTop: first ? 'none' : '1px solid var(--line-soft)', alignItems: 'start' }}>
+      <div><div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div><div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 }}>{note}</div></div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>{children}</div>
+    </div>
+  );
+}
+
+/* who approves what: one final approver for time off and for offers, and a list for
+   offboarding notices where any one person decides. Admins edit; others read. */
+const NO_APPROVERS = { timeoffFinal: '', offboarding: [], offer: '' };
+function ApproversEditor({ canEdit }) {
+  const [value, setValue] = useState(() => ({ ...NO_APPROVERS, ...((window.HR && window.HR.approvers) || {}) }));
+  const [status, setStatus] = useState('idle');
+  const [err, setErr] = useState('');
+  const people = useMemo(() => EMPLOYEES.filter(e => window.PD_ACCESS_RULES.isActive(e) && e.workEmail).sort((a, b) => (a.name || '').localeCompare(b.name || '')), []);
+  const byEmail = useMemo(() => { const m = {}; EMPLOYEES.forEach(e => { if (e.workEmail) m[e.workEmail.toLowerCase()] = e; }); return m; }, []);
+  const saving = status === 'saving';
+  const save = async (next) => {
+    if (saving) return;
+    const before = value;
+    setValue(next); setStatus('saving'); setErr('');
+    try {
+      await saveOrgSection('approvers', next);
+      setStatus('saved');
+      setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 1600);
+    } catch (e) { setValue(before); setStatus(e.message === 'conflict' ? 'conflict' : 'error'); setErr(e.message); }
+  };
+  const chip = (em, onRemove) => <ApChip key={em} email={em} emp={byEmail[em]} canEdit={canEdit} onRemove={onRemove} disabled={saving} />;
+  const single = (key, placeholder) => value[key]
+    ? chip(value[key], () => save({ ...value, [key]: '' }))
+    : (canEdit ? <ApPicker people={people} disabled={saving} placeholder={placeholder} onPick={em => save({ ...value, [key]: em })} /> : <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>Nobody set</span>);
+  return (
+    <div>
+      {canEdit && !people.length && <div className="card" style={{ padding: '11px 15px', marginBottom: 'var(--gap)', fontSize: 12.5, color: 'var(--ink-2)' }}>The roster hasn’t loaded, so there’s nobody to pick yet. Reload the page.</div>}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <ApRow first title="Time off — final approval" note="After the person's manager approves, the request comes here.">{single('timeoffFinal', 'Choose a person…')}</ApRow>
+        <ApRow title="Offboarding notices" note="Any one person on this list approves or denies.">
+          {value.offboarding.map(em => chip(em, () => save({ ...value, offboarding: value.offboarding.filter(x => x !== em) })))}
+          {canEdit && <ApPicker people={people} disabled={saving} placeholder={value.offboarding.length ? 'Add another person…' : 'Choose a person…'} exclude={value.offboarding} onPick={em => save({ ...value, offboarding: [...value.offboarding, em] })} />}
+          {!canEdit && !value.offboarding.length && <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>Nobody set</span>}
+        </ApRow>
+        <ApRow title="Job offers" note="Offers go here for approval before they're sent.">{single('offer', 'Choose a person…')}</ApRow>
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{canEdit ? 'Changes save as you make them.' : 'Only an administrator can change approvers.'}</span>
+        {status === 'error'
+          ? <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--danger)' }}>Not saved ({err})</span>
+          : <OeSaveStatus status={status} />}
+      </div>
+    </div>
+  );
+}
+
 function OrgEditor({ access }) {
   const canEdit = access.caps.manageUsers || access.caps.viewAll;
   const [tab, setTab] = useState('Departments');
-  const TABS = ['Departments', 'Titles', 'Managers'];
+  const TABS = ['Departments', 'Titles', 'Managers', 'Approvers'];
 
   return (
     <div className="fade-in">
       <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Organization</h1>
-      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, margin: '6px 0 16px' }}>Departments, job titles, and manager access — shared across the portal and used to scope what each person sees.</p>
+      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, margin: '6px 0 16px' }}>Departments, job titles, manager access and approvers — shared across the portal and used to scope what each person sees.</p>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)' }}>
         {TABS.map(tb => (
@@ -128,6 +202,7 @@ function OrgEditor({ access }) {
       {tab === 'Departments' && <NameListEditor section="departments" singular="department" canEdit={canEdit} />}
       {tab === 'Titles' && <NameListEditor section="titles" singular="title" canEdit={canEdit} />}
       {tab === 'Managers' && <ManagersEditor canEdit={canEdit} />}
+      {tab === 'Approvers' && <ApproversEditor canEdit={!!access.flags.isAdmin} />}
     </div>
   );
 }

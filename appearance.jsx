@@ -75,15 +75,10 @@ function loadLastAppearance() {
 
 /* Cosmos sync (api/settings → userSettings). localStorage stays as an instant cache. */
 async function fetchSettings() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/settings', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('settings read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.settings || null;
+  return (await pdApi('/api/settings')).settings || null;
 }
 function pushSettings(prefs) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  return fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token }, body: JSON.stringify(prefs) });
+  return pdApi('/api/settings', { method: 'POST', body: prefs });
 }
 // Apply the cached prefs instantly, then hydrate from Cosmos and re-apply if present.
 function hydrateAppearance(empId) {

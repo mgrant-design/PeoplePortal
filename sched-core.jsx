@@ -83,78 +83,63 @@ function breakLabel(mins) {
   if (!m) return '';
   return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ' ' + (m % 60) + 'm' : ''}` : `${m}m`;
 }
-function fmt12(t) {
-  let [h, m] = String(t || '').split(':').map(Number);
-  if (isNaN(h)) return t || '';
-  const ap = h >= 12 ? 'p' : 'a'; h = h % 12 || 12;
-  return m ? `${h}:${String(m).padStart(2, '0')}${ap}` : `${h}${ap}`;
-}
+/* "16:30" → "4:30p"; the one copy lives in approvals-text.js, which the server shares */
+function fmt12(t) { return window.pdTime12(t); }
 const shiftRange = s => `${fmt12(s.start)}–${fmt12(s.end)}`;
 function timesOverlap(aStart, aEnd, bStart, bEnd) {
   return timeMins(aStart) < timeMins(bEnd) && timeMins(bStart) < timeMins(aEnd);
 }
 
 /* ---- conflicts (§2.3: warn, never block) ----
-   Returns { shifts:[...], blackout } — existing same-person shifts overlapping the
-   candidate time on that date, and an approved blackout covering the date (if any). */
-function shiftConflicts({ shifts, blackouts, empId, date, start, end, excludeId }) {
+   Returns { shifts:[...], timeOff } — existing same-person shifts overlapping the
+   candidate time on that date, and approved time off covering the date (if any).
+   timeOff entries are { empId, dates } from fetchApprovedTimeOff. */
+function shiftConflicts({ shifts, timeOff, empId, date, start, end, excludeId }) {
   const hit = (shifts || []).filter(s =>
     s.empId === empId && s.date === date && s.id !== excludeId && !s.open &&
     timesOverlap(start, end, s.start, s.end));
-  const bo = (blackouts || []).find(b =>
-    b.status === 'approved' && b.empId === empId && (b.dates || []).includes(date));
-  return { shifts: hit, blackout: bo || null };
+  const off = (timeOff || []).find(t => t.empId === empId && (t.dates || []).includes(date));
+  return { shifts: hit, timeOff: off || null };
+}
+
+/* approved time off overlapping from..to (ISO days), as [{ empId, dates }], for the
+   people whose schedule the caller sees (scoped by api/approvals) */
+async function fetchApprovedTimeOff({ from, to }) {
+  const list = (await pdApi('/api/approvals', { query: { kind: 'timeoff', status: 'approved', from, to } })).timeOff || [];
+  return list.map(t => {
+    const emp = typeof findByEmail === 'function' ? findByEmail(t.email) : null;
+    const dates = [];
+    const last = t.end < to ? t.end : to;
+    for (let d = t.start > from ? t.start : from; d <= last; d = addDaysISO(d, 1)) dates.push(d);
+    return { empId: emp ? emp.id : t.email, dates };
+  });
 }
 
 let SHIFT_SEQ = 0;
 const newShiftId = () => 'sh-' + Date.now().toString(36) + '-' + (++SHIFT_SEQ) + Math.random().toString(36).slice(2, 5);
 
-/* ---- /api/schedule client (token sent like /api/roster; sandbox has no /api,
-        so reads reject and callers fall back to empty state) ---- */
-function schedToken() { return (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || ''; }
+/* ---- /api/schedule client (sandbox has no /api, so reads reject and callers
+        fall back to empty state) ---- */
 async function fetchSchedules({ office, offices, weekKey } = {}) {
-  const qs = new URLSearchParams();
-  if (office) qs.set('office', office);
-  if (offices && offices.length) qs.set('offices', offices.join('|'));
-  if (weekKey) qs.set('weekKey', weekKey);
-  const res = await fetch('/api/schedule' + (qs.toString() ? '?' + qs : ''), { headers: { 'X-Google-Token': schedToken() } });
-  if (!res.ok) throw new Error('schedule read failed (' + res.status + ')');
-  return (await res.json()).schedules || [];
-}
-/* pending edits, swap claims and blackout requests, scoped server-side */
-async function fetchSchedRequests() {
-  const res = await fetch('/api/schedule?requests=1', { headers: { 'X-Google-Token': schedToken() } });
-  if (!res.ok) throw new Error('requests read failed (' + res.status + ')');
-  return (await res.json()).requests || [];
-}
-/* per-person-per-office access grants (§4) — admin sees all, others their own */
-async function fetchSchedAccess() {
-  const res = await fetch('/api/schedule?access=1', { headers: { 'X-Google-Token': schedToken() } });
-  if (!res.ok) throw new Error('access read failed (' + res.status + ')');
-  return (await res.json()).access || [];
+  const query = {
+    office: office || undefined,
+    offices: offices && offices.length ? offices.join('|') : undefined,
+    weekKey: weekKey || undefined,
+  };
+  return (await pdApi('/api/schedule', { query })).schedules || [];
 }
 async function fetchSchedTemplates(office) {
-  const res = await fetch('/api/schedule?templates=' + encodeURIComponent(office), { headers: { 'X-Google-Token': schedToken() } });
-  if (!res.ok) throw new Error('templates read failed (' + res.status + ')');
-  return (await res.json()).templates || [];
+  return (await pdApi('/api/schedule', { query: { templates: office } })).templates || [];
 }
 /* every write goes through one action endpoint:
-   save | publish | edit | edit_decide | offer | retract | claim | swap_decide |
-   blackout_submit | blackout_hr | blackout_mgr | access_set | template_save | template_delete */
-async function schedAction(body) {
-  const res = await fetch('/api/schedule', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': schedToken() },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('action failed (' + res.status + ')'));
-  return data;
+   save | publish | retract | template_save | template_delete */
+function schedAction(body) {
+  return pdApi('/api/schedule', { method: 'POST', body });
 }
 
 Object.assign(window, {
   SHIFT_PRESETS, WEEK_STARTS, setWeekStart, weekStart,
   weekKeyOf, addDaysISO, addWeeks, thisWeekKey, weekDaysFor, weekLabel, isoDate, parseISO,
   timeMins, shiftHrs, fmt12, shiftRange, timesOverlap, shiftConflicts, newShiftId, breakLabel,
-  fetchSchedules, fetchSchedRequests, fetchSchedAccess, fetchSchedTemplates, schedAction,
+  fetchSchedules, fetchSchedTemplates, schedAction, fetchApprovedTimeOff,
 });

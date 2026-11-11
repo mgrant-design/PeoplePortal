@@ -58,17 +58,12 @@ function titleFromFile(fn) {
 }
 /* Send a raw résumé PDF to Blob Storage via /api/resumeupload; returns a pointer
    { name, blobPath, url, uploadedAt } to store in the applicant record. */
-async function uploadResume(file, applicantId, token) {
+async function uploadResume(file, applicantId) {
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   let bin = ''; const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  const res = await fetch('/api/resumeupload', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token || '' },
-    body: JSON.stringify({ applicantId, filename: file.name, contentBase64: btoa(bin) }),
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  return pdApi('/api/resumeupload', { method: 'POST', body: { applicantId, filename: file.name, contentBase64: btoa(bin) } });
 }
 function atsFmt(d) {
   const p = (typeof pdParseDate === 'function') ? pdParseDate(d) : null;
@@ -89,7 +84,12 @@ const JD_TEMPLATES = {
   frontdesk: 'Front Desk Coordinator — greet and check in patients, manage the provider schedule, verify insurance and eligibility, handle phones and recalls in NexHealth, collect payments, and keep the front office running smoothly.',
   insurance: 'Insurance & Billing Specialist — submit and follow up on claims, post payments, manage AR and appeals, verify eligibility and benefits, and resolve patient billing questions in Denticon.',
 };
-const OFFER_EXECUTOR = 'Amanda Vibert';   // HR & Payroll — reviews and sends offers
+/* the person who approves offers, set by an admin on the Organization page's Approvers tab */
+function offerApprover() {
+  const email = ((window.HR && window.HR.approvers && window.HR.approvers.offer) || '').toLowerCase();
+  const emp = email && typeof findByEmail === 'function' ? findByEmail(email) : null;
+  return { email, name: emp ? emp.name : 'the offer approver' };
+}
 
 /* Why a candidate turned an offer down. A fixed list rather than free text, because the
    point of capturing it is to be able to count it later — "we lost four people on pay
@@ -106,7 +106,6 @@ const OFFER_DECLINE_REASONS = [
   'Personal or family reasons',
   'Other',
 ];
-const OFFER_APPROVER_EMAIL = 'mgrant@puredental.com';   // TEMP: testing the pipeline before routing to HR — only this address may approve+send, enforced server-side too
 
 /* Google Drive is not connected — attachments are local uploads only. */
 
@@ -298,18 +297,18 @@ function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
 }
 
 /* ------- Working interview panel ------- */
-function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI, flash }) {
+function WorkingInterview({ a, canPay, paychexOn, onWI, onSendHours, onScheduleWI, onRemoveWI, flash }) {
   const wi = a.workingInterview;
   const sent = wi && wi.status === 'sent';
   const completed = wi && wi.status === 'completed';
   const payText = paychexOn ? 'Accounting will post it to Paychex for the next pay run.' : 'Accounting will process the day’s pay manually.';
 
   const markComplete = () => {
-    if (!wi.hours) { if (flash) flash('Enter hours worked first'); return; }
-    if (wi.autoSend) { onWI(a.id, { status: 'sent', completedAt: Date.now(), sentAt: Date.now() }); if (flash) flash(`${wi.hours}h sent to Accounting for ${a.name.split(' ')[0]}`); }
+    if (!wi.hours || !wi.date) { if (flash) flash('Enter the day and the hours worked first'); return; }
+    if (wi.autoSend !== false) onSendHours(a.id, { completedAt: Date.now() });
     else onWI(a.id, { status: 'completed', completedAt: Date.now() });
   };
-  const sendNow = () => { onWI(a.id, { status: 'sent', sentAt: Date.now() }); if (flash) flash(`${wi.hours}h sent to Accounting for ${a.name.split(' ')[0]}`); };
+  const sendNow = () => onSendHours(a.id, {});
 
   return (
     <div style={{ borderRadius: 'var(--r-md)', border: '1px solid var(--line)', background: 'var(--surface-2)', padding: '14px var(--pad)' }}>
@@ -363,8 +362,10 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onScheduleWI, onRemoveWI
 }
 
 /* ------- Offer letter ------- */
-function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, onReject, flash }) {
+function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, onReject, flash }) {
   const o = a.offer;
+  // the offer can't go out without pay; someone who may not see pay is told only whether it is on file
+  const noPay = canPay ? !o.pay : !o.payOnFile;
   const [sig, setSig] = useState('');
   /* recording a decline: reason is required, notes are required only for "Other" */
   const [declining, setDeclining] = useState(false);
@@ -382,7 +383,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
           <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} /><span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
         </button>
         {open && <>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 10px', lineHeight: 1.5 }}>Draft an offer with the role, job description, and pay for {OFFER_EXECUTOR} (HR &amp; Payroll) to review and send.</p>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 10px', lineHeight: 1.5 }}>Draft an offer with the role, job description, and details for {offerApprover().name} to review and send.</p>
           <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer letter</button>
         </>}
       </div>
@@ -414,15 +415,16 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
         <Icon name="doc" style={{ width: 15, height: 15, color: 'var(--accent-strong)' }} />
         <span style={{ fontSize: 12.5, fontWeight: 700 }}>Offer letter</span>
         {o.status === 'draft' && <span className="badge badge-todo" style={{ fontSize: 9.5 }}>Draft</span>}
-        {o.status === 'pending_approval' && <span className="badge badge-warn" style={{ fontSize: 9.5 }}>Awaiting {OFFER_EXECUTOR}'s approval</span>}
+        {o.status === 'pending_approval' && <span className="badge badge-warn" style={{ fontSize: 9.5 }}>Awaiting {offerApprover().name}'s approval</span>}
         {o.status === 'sent' && <span className="badge badge-prog" style={{ fontSize: 9.5 }}>Sent · awaiting signature</span>}
         {o.status === 'signed' && <span className="badge badge-ok" style={{ fontSize: 9.5 }}><Icon name="check" /> Accepted &amp; signed</span>}
       </button>
 
       {open && (editable ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 1fr', gap: 12 }}>
             <AF label="Role / title"><input value={o.role || ''} onChange={e => setO({ role: e.target.value })} style={atsFld} /></AF>
+            <AF label="Employment type"><select value={o.employmentType || ''} onChange={e => setO({ employmentType: e.target.value })} style={{ ...atsFld, appearance: 'auto' }}><option value="">Choose…</option><option>Full-time</option><option>Part-time</option><option>Per diem</option></select></AF>
             <AF label="Start date"><input type="date" value={o.startDate || ''} onChange={e => setO({ startDate: e.target.value })} style={atsFld} /></AF>
           </div>
           {/* pay — protected */}
@@ -430,14 +432,14 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: canPay ? 10 : 0 }}>
               <Icon name="lock" style={{ width: 13, height: 13, color: 'var(--accent)' }} />
               <span style={{ fontSize: 11.5, fontWeight: 700 }}>Pay</span>
-              <span className="badge badge-todo" style={{ fontSize: 9.5 }}>HR &amp; Leadership only</span>
+              <span className="badge badge-todo" style={{ fontSize: 9.5 }}>HR &amp; Accounting only</span>
             </div>
             {canPay ? (
               <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12 }}>
                 <AF label="Type"><select value={o.payType || 'Hourly'} onChange={e => setO({ payType: e.target.value })} style={{ ...atsFld, appearance: 'auto' }}><option>Hourly</option><option>Salary</option></select></AF>
                 <AF label={o.payType === 'Salary' ? 'Annual salary' : 'Hourly rate'}><input value={o.pay || ''} onChange={e => setO({ pay: e.target.value })} placeholder={o.payType === 'Salary' ? '$95,000' : '$32.00 / hr'} style={atsFld} /></AF>
               </div>
-            ) : <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>Compensation is entered and visible only to HR &amp; Leadership.</div>}
+            ) : <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>Compensation is entered and visible only to HR &amp; Accounting.</div>}
           </div>
           <div style={{ marginTop: 12 }}><AF label="Job description (attached to the offer)"><textarea value={o.jobDescription || ''} onChange={e => setO({ jobDescription: e.target.value })} rows={3} style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
           <div style={{ marginTop: 12 }}><AF label="Additional details" hint="Anything else to include in the letter"><textarea value={o.extra || ''} onChange={e => setO({ extra: e.target.value })} rows={2} placeholder="e.g. sign-on bonus, schedule, reports-to, contingencies…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
@@ -458,10 +460,13 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 6 }}>Search this device, My Drive or Shared Drives.</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-            {canExecute
-              ? <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {OFFER_EXECUTOR} for approval</button>
-              : <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> Draft ready — {OFFER_EXECUTOR} (HR) will review &amp; send.</span>}
-            {canExecute && canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
+            {isApprover
+              ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
+              : !offerApprover().email
+              ? <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> No offer approver is set yet. An admin sets it on the Organization page.</span>
+              : <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {offerApprover().name} for approval</button>}
+            {canPay && !o.pay && (isApprover || !!offerApprover().email) && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
+            {!canPay && isApprover && noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>HR or Accounting adds the pay before this can be sent</span>}
           </div>
           {picker && <AttachPicker onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
         </>
@@ -470,11 +475,13 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
           {summaryBlock}
           {isApprover ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
+              <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
               <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back to draft</button>
+              {canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet. Send it back to draft, add the pay, then approve.</span>}
+              {!canPay && noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay is on file yet. HR or Accounting adds it before this can be sent.</span>}
             </div>
           ) : (
-            <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="clock" style={{ width: 14, height: 14 }} /> Submitted by {o.submittedBy || 'recruiter'} — awaiting {OFFER_EXECUTOR}'s approval before it reaches the candidate.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="clock" style={{ width: 14, height: 14 }} /> Submitted by {o.submittedBy || 'recruiter'} — awaiting {offerApprover().name}'s approval before it reaches the candidate.</div>
           )}
         </>
       ) : (
@@ -496,7 +503,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: 'oklch(0.42 0.11 60)' }}>Offer declined — {o.declineReason || 'no reason given'}</div>
                   {o.declineNote && <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.5 }}>{o.declineNote}</div>}
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Recorded by {o.declinedBy || OFFER_EXECUTOR}{o.declinedAt ? ' on ' + atsFmt(new Date(o.declinedAt).toISOString().slice(0, 10)) : ''}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Recorded by {o.declinedBy || offerApprover().name}{o.declinedAt ? ' on ' + atsFmt(new Date(o.declinedAt).toISOString().slice(0, 10)) : ''}</div>
                 </div>
               </div>
               {isApprover && (
@@ -508,7 +515,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Emailed by {o.sentBy || OFFER_EXECUTOR} — awaiting the candidate's response. They can accept/sign or decline directly from the link in their email; use the options below only if they responded by phone or in person instead.</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 10, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="mail" style={{ width: 14, height: 14 }} /> Emailed by {o.sentBy || offerApprover().name} — awaiting the candidate's response. They can accept/sign or decline directly from the link in their email; use the options below only if they responded by phone or in person instead.</div>
               {a._emailResult && (
                 <div style={{ fontSize: 12, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, color: a._emailResult.sent ? 'var(--ok)' : 'oklch(0.55 0.15 25)' }}>
                   <Icon name={a._emailResult.sent ? 'check' : 'bell'} style={{ width: 12, height: 12 }} />
@@ -519,7 +526,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
                   <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
-                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--accent-strong)' }} onClick={() => onApprove(a.id)}><Icon name="mail" style={{ width: 12, height: 12 }} /> Resend offer email</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--accent-strong)' }} onClick={() => onApprove(a.id)}><Icon name="mail" style={{ width: 12, height: 12 }} /> Resend offer</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Mark declined (phone/in person)</button>
                 </div>
@@ -538,7 +545,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
                     <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setDeclining(false)}>Cancel</button>
                     <button className="btn btn-primary" style={{ fontSize: 12.5 }}
                       disabled={!dReason || (dReason === 'Other' && !dNote.trim())}
-                      onClick={() => { onOffer(a.id, { status: 'declined', declineReason: dReason, declineNote: dNote.trim(), declinedAt: Date.now(), declinedBy: OFFER_EXECUTOR }, 'declined'); setDeclining(false); }}>
+                      onClick={() => { onOffer(a.id, { status: 'declined', declineReason: dReason, declineNote: dNote.trim(), declinedAt: Date.now(), declinedBy: offerApprover().name }, 'declined'); setDeclining(false); }}>
                       <Icon name="check" /> Record decline
                     </button>
                   </div>
@@ -553,7 +560,7 @@ function OfferLetter({ a, canPay, canExecute, isApprover, onOffer, onDraftOffer,
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
+function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onSendHours, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
   // Most recent entry from me — with multiple rounds allowed, "my feedback" means the
   // latest one, not the first one found.
   const myFb = [...(a.feedback || [])].reverse().find(f => f.byId === me.id);
@@ -575,9 +582,8 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
   const rejected = !!a.rejected || a.stage === 'rejected';
   const skipIdx = (idx === ATS_IDX.interview && !a.wiRequired) ? ATS_IDX.offer : Math.min(ATS_STAGES.length - 1, idx + 1);
   const stageDef = ATS_STAGES[idx] || ATS_STAGES[0];
-  const canPay = access.caps.payroll || access.flags.isExec;
-  const canExecute = access.flags.isHR || access.flags.isAdmin || access.flags.isExec || access.caps.payroll;
-  const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
+  const canPay = access.caps.payroll;
+  const isApprover = !!offerApprover().email && (me.workEmail || '').toLowerCase() === offerApprover().email;
   const avg = avgRating(a);
   const fb = a.feedback || [];
   const showWI = !rejected && (a.workingInterview || a.provider || (idx >= ATS_IDX.interview && a.wiRequired));
@@ -672,10 +678,10 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
         </div>
 
         {/* working interview */}
-        {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
+        {showWI && <WorkingInterview a={a} canPay={canPay} paychexOn={paychexOn} onWI={onWI} onSendHours={onSendHours} onScheduleWI={onScheduleWI} onRemoveWI={onRemoveWI} flash={flash} />}
 
         {/* offer letter */}
-        {showOffer && <OfferLetter a={a} canPay={canPay} canExecute={canExecute} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} onReject={onReject} flash={flash} />}
+        {showOffer && <OfferLetter a={a} canPay={canPay} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} onReject={onReject} flash={flash} />}
 
         {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
         {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
@@ -792,15 +798,11 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
-  const token = () => (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch('/api/applicants', { headers: { 'X-Google-Token': token() } });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        const data = await pdApi('/api/applicants');
         if (alive) setList(Array.isArray(data.applicants) ? data.applicants : []);
       } catch (e) {
         if (alive) setList([]);
@@ -813,9 +815,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     if (openApplicantId && list) { setSel(openApplicantId); if (onOpenedApplicant) onOpenedApplicant(); }
   }, [openApplicantId, list]);
 
-  const saveApplicant = (rec) => fetch('/api/applicants', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify(rec),
-  }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); }).catch(e => { if (flash) flash('Couldn’t save to the server (' + ((e && e.message) || 'error') + ')'); });
+  const saveApplicant = (rec) => pdApi('/api/applicants', { method: 'POST', body: rec }).catch(e => { if (flash) flash('Couldn’t save to the server (' + ((e && e.message) || 'error') + ')'); });
 
   const commitOne = (next) => { setList(cur => (cur || []).map(a => a.id === next.id ? next : a)); saveApplicant(next); };
   const update = (id, patch) => { const r = list.find(a => a.id === id); if (r) commitOne({ ...r, ...patch }); };
@@ -839,6 +839,18 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     commitOne({ ...r, feedback: arr });
   };
   const setWI = (id, patch) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: { ...(r.workingInterview || {}), ...patch } }); };
+  // the hours go to HR and Accounting; the card and the toast change only after the server confirms
+  const sendWIHours = async (id, extra) => {
+    const r = list.find(a => a.id === id); if (!r) return;
+    const next = { ...r, workingInterview: { ...(r.workingInterview || {}), ...extra, status: 'sent', sentAt: Date.now() } };
+    try {
+      await pdApi('/api/applicants', { method: 'POST', body: next });
+      setList(cur => (cur || []).map(a => a.id === id ? next : a));
+      if (flash) flash(`${next.workingInterview.hours}h sent to Accounting for ${r.name.split(' ')[0]}`);
+    } catch (e) {
+      if (flash) flash('Couldn’t send the hours (' + ((e && e.message) || 'error') + ')');
+    }
+  };
   const setWIRequired = (id, val) => update(id, { wiRequired: val });
   const scheduleWI = (id) => setWI(id, { status: 'scheduled', date: '', hours: '', rate: '', autoSend: true });
   const removeWI = (id) => { const r = list.find(a => a.id === id); if (!r) return; commitOne({ ...r, workingInterview: null }); };
@@ -851,15 +863,13 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     const who = me.first + ' ' + ((me.last || '')[0] || '') + '.';
     const next = { ...r, offer: { ...r.offer, status: 'pending_approval', submittedAt: Date.now(), submittedBy: who } };
     setList(cur => cur.map(x => x.id === next.id ? next : x));
-    if (typeof sendNotice === 'function') sendNotice({ toEmail: OFFER_APPROVER_EMAIL, title: 'Offer ready for approval — ' + r.name, body: r.name + ' (' + (r.offer.role || r.role) + ', ' + (r.office || 'office TBD') + ') has an offer ready for your review.', deepLink: { view: 'applicants', applicantId: r.id } }).catch(() => {});
     try {
-      const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'submit' }) });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      const data = await pdApi('/api/applicants', { method: 'POST', body: { ...next, _offerAction: 'submit' } });
       const n = data.notify;
-      if (flash) flash(n && n.gchat ? 'Sent to ' + OFFER_EXECUTOR + ' for approval — onboarding team notified in Chat' : 'Sent to ' + OFFER_EXECUTOR + ' for approval');
+      if (flash) flash(n && n.gchat ? 'Sent to ' + offerApprover().name + ' for approval — onboarding team notified in Chat' : 'Sent to ' + offerApprover().name + ' for approval');
     } catch (e) {
-      if (flash) flash('Couldn’t save the submission (' + ((e && e.message) || 'error') + ')');
+      setList(cur => cur.map(x => x.id === r.id ? { ...x, offer: r.offer } : x));
+      if (flash) flash('Couldn’t send it for approval (' + ((e && e.message) || 'error') + ')');
     }
   };
   const sendBackOffer = (id) => { setOffer(id, { status: 'draft' }); if (flash) flash('Sent back to draft'); };
@@ -871,12 +881,10 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   // while an offer is still just awaiting a response.
   const approveOffer = async (id) => {
     const r = list.find(a => a.id === id); if (!r) return;
-    const next = { ...r, offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: OFFER_EXECUTOR, sentAt: Date.now(), sentBy: OFFER_EXECUTOR } };
+    const next = { ...r, offer: { ...r.offer, status: 'sent', approvedAt: Date.now(), approvedBy: offerApprover().name, sentAt: Date.now(), sentBy: offerApprover().name } };
     setList(cur => cur.map(x => x.id === next.id ? next : x));
     try {
-      const res = await fetch('/api/applicants', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Google-Token': token() }, body: JSON.stringify({ ...next, _offerAction: 'approve' }) });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      const data = await pdApi('/api/applicants', { method: 'POST', body: { ...next, _offerAction: 'approve' } });
       const n = data.notify;
       const em = data.emailResult;
       const base = n && n.gchat ? 'Offer approved — onboarding team notified in Chat.' : 'Offer approved.';
@@ -884,22 +892,27 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
         : em && em.reason === 'not configured' ? ' Candidate email not sent — email sending isn’t set up yet.'
         : em && em.reason === 'applicant has no email on file' ? ' Candidate email not sent — no email address on file for them.'
         : em ? ' Candidate email failed to send (' + em.reason + ').' : '';
-      if (flash) flash(base + emailNote);
+      const tx = data.textResult;
+      const textNote = tx && tx.sent ? ' Texted to them as well.'
+        : tx && tx.reason === 'not configured' ? ' No text sent — text messages aren’t set up yet.'
+        : tx && tx.reason === 'no mobile number on file' ? ' No text sent — no mobile number on file for them.'
+        : tx ? ' The text failed to send (' + tx.reason + ').' : '';
+      if (flash) flash(base + emailNote + textNote);
       // Keep the email outcome attached to the record (UI-only — not round-tripped to the
       // server) so it's visible in the offer card itself, not just a toast that can be
       // missed or that disappears before anyone reads a failure reason.
       if (data.applicant) setList(cur => cur.map(x => x.id === id ? { ...data.applicant, _emailResult: em } : x));
       setSel(null);
     } catch (e) {
-      if (flash) flash('Couldn’t save the approval (' + ((e && e.message) || 'error') + ')');
+      setList(cur => cur.map(x => x.id === r.id ? { ...x, offer: r.offer } : x));
+      if (flash) flash('Couldn’t send the offer (' + ((e && e.message) || 'error') + ')');
     }
   };
   const signOffer = (id, signature) => {
     const app = list.find(a => a.id === id); if (!app) return;
-    commitOne({ ...app, offer: { ...(app.offer || {}), status: 'signed', signedAt: Date.now(), signature }, stage: 'hired', hiredAt: Date.now() });
-    if (onHire) onHire(app);
+    commitOne({ ...app, offer: { ...(app.offer || {}), status: 'signed', signedAt: Date.now(), signature }, stage: 'hired', hiredAt: Date.now() });   // the server creates the employee
     setSel(null);
-    if (flash) flash('Offer signed — onboarding team notified, onboarding started');
+    if (flash) flash('Offer signed — onboarding started');
   };
   /* Archiving someone is a flag on top of where they got to, not a replacement for it.
      Overwriting the stage threw away how far they reached, so a day-one pass looked
@@ -909,7 +922,15 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   /* Bringing someone back returns them to the stage they were archived from and KEEPS
      their job title — clearing it meant re-typing what you already knew, and the title is
      what the pipeline gates advancement on. */
-  const reopen = (id) => { const r = list.find(a => a.id === id); if (!r) return; const next = { ...r, rejected: false, rejectedAt: null, stage: r.rejectedFrom || (r.stage === 'rejected' ? 'applied' : r.stage) || 'applied' }; if (next.offer && next.offer.status !== 'draft') next.offer = { ...next.offer, status: 'draft' }; commitOne(next); if (flash) flash(r.name + ' reopened — set a role / title to continue'); };
+  const reopen = (id) => {
+    const r = list.find(a => a.id === id); if (!r) return;
+    const next = { ...r, rejected: false, rejectedAt: null, stage: r.rejectedFrom || (r.stage === 'rejected' ? 'applied' : r.stage) || 'applied' };
+    // a sent, signed or declined offer is the approver's to reopen; anyone else's reopen leaves it as it is (the server keeps it)
+    const locked = next.offer && ['sent', 'signed', 'declined'].includes(next.offer.status);
+    if (next.offer && next.offer.status !== 'draft' && (!locked || isApprover)) next.offer = { ...next.offer, status: 'draft' };
+    commitOne(next);
+    if (flash) flash(locked && !isApprover ? `${r.name} reopened. The ${next.offer.status} offer stays as it is; only ${offerApprover().name} can reopen it.` : r.name + ' reopened — set a role / title to continue');
+  };
   const addApplicant = async (drafts) => {
     const arr = Array.isArray(drafts) ? drafts : [drafts];
     const today = new Date().toISOString().slice(0, 10);
@@ -920,7 +941,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
       const id = f.id || ('ap' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
       let resumes = [];
       if (f._file) {
-        try { const ref = await uploadResume(f._file, id, token()); resumes = [ref]; }
+        try { const ref = await uploadResume(f._file, id); resumes = [ref]; }
         catch (e) { if (flash) flash('Résumé PDF didn’t upload for ' + (name || 'applicant') + ' (' + ((e && e.message) || 'error') + ')'); }
       }
       built.push({
@@ -953,7 +974,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
   const count = (id) => byStage[id].length;
   const visibleStages = ATS_STAGES.filter(s => s.id !== 'working' || count('working') > 0);
   const selApp = sel ? list.find(a => a.id === sel) : null;
-  const isApprover = (me.workEmail || '').toLowerCase() === OFFER_APPROVER_EMAIL;
+  const isApprover = !!offerApprover().email && (me.workEmail || '').toLowerCase() === offerApprover().email;
   const pendingApprovals = scoped.filter(a => a.offer && a.offer.status === 'pending_approval');
 
   const stat = (icon, label, value, tone) => (
@@ -1036,7 +1057,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
       </p>
 
       {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onSendHours={sendWIHours} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
     </div>
   );
 }

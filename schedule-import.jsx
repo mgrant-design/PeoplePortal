@@ -206,8 +206,8 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
     if (!file) return;
     setFileName(file.name); setParsed(null); setResult(null);
     const fr = new FileReader();
-    fr.onload = () => { const p = parseScheduleExport(String(fr.result || '')); setParsed(p); if (p.error) flash(p.error); };
-    fr.onerror = () => flash('Couldn\'t read that file.');
+    fr.onload = () => { const p = parseScheduleExport(String(fr.result || '')); setParsed(p); if (p.error) flash(p.error, false); };
+    fr.onerror = () => flash('Couldn\'t read that file.', false);
     fr.readAsText(file);
   };
 
@@ -218,7 +218,7 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
       const res = await schedImport({ mode, fileName, shifts: parsed.shifts.map(s => ({ office: s.office, weekKey: s.weekKey, shift: s.shift })), unresolved: parsed.unresolved });
       setResult(res);
       flash(`Imported ${res.written || 0} shift${res.written === 1 ? '' : 's'} into ${(res.weeks || []).length} week document${(res.weeks || []).length === 1 ? '' : 's'}.`);
-    } catch (e) { flash('Import failed: ' + e.message); }
+    } catch (e) { flash('Import failed: ' + e.message, false, 8000); }
     setBusy(false);
   };
 
@@ -315,14 +315,14 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
                   </label>
                 ))}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>Imported weeks arrive unpublished, so you can review them before anyone is notified. Regular hours aren't touched — set those under Options → Regular hours.</div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>A week that is new arrives unpublished, so you can review it before anyone is notified. A week that is already published stays published. Regular hours aren't touched — set those under Options → Regular hours.</div>
             </>
           )}
 
           {result && (
             <div style={{ border: '1.5px solid oklch(0.6 0.13 150)', background: 'color-mix(in oklab, oklch(0.7 0.13 150) 12%, var(--surface))', borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 13, lineHeight: 1.6, color: 'oklch(0.36 0.09 150)' }}>
               <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" style={{ width: 15, height: 15 }} /> Import complete</b>
-              <div style={{ marginTop: 4 }}><b className="mono">{result.written}</b> shifts written across <b className="mono">{(result.weeks || []).length}</b> week documents. They're unpublished — review, then publish to notify.</div>
+              <div style={{ marginTop: 4 }}><b className="mono">{result.written}</b> shifts written across <b className="mono">{(result.weeks || []).length}</b> week documents. New weeks are unpublished — review, then publish to notify. Weeks that were published stay published.</div>
               {result.logId && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Receipt saved as <span className="mono">{result.logId}</span>.</div>}
             </div>
           )}
@@ -349,15 +349,8 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
 }
 
 /* ---- client for the import endpoint ---- */
-async function schedImport(body) {
-  const res = await fetch('/api/scheduleimport', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': (window.PD_GOOGLE_TOKEN || '') },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('import failed (' + res.status + ')'));
-  return data;
+function schedImport(body) {
+  return pdApi('/api/scheduleimport', { method: 'POST', body });
 }
 
 Object.assign(window, { parseCSV, to24h, breakToMins, toISODate, parseScheduleExport, ScheduleImportModal, schedImport });

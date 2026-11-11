@@ -179,132 +179,28 @@ const BENEFITS = [
   ]},
 ];
 
-/* ---- Scheduling moved to sched-core.jsx (shift model, week math, /api/schedule client) ---- */
 
-/* ---- feature requests & roadmap (talks to the /api/feedback Function) ---- */
-async function fetchFeedback() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/feedback', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('feedback read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.items || [];
-}
-async function feedbackAction(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('action failed (' + res.status + ')'));
-  return data;
-}
-// Gif picker for feature requests: proxied through /api/giphy so the Giphy key stays
-// server-side. Empty query returns trending.
-async function searchGifs(q) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/giphy' + (q ? '?q=' + encodeURIComponent(q) : ''), { headers: { 'X-Google-Token': token } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('gif search failed (' + res.status + ')'));
-  return data.gifs || [];
-}
+/* ---- server calls, all through pdApi (request.js) ---- */
 
-/* This week's stable key, schedule fetch/publish and coverage helpers were re-homed
+/* feature requests & roadmap */
+async function fetchFeedback() { return (await pdApi('/api/feedback')).items || []; }
+async function feedbackAction(body) { return pdApi('/api/feedback', { method: 'POST', body }); }
+/* GIF search, proxied so the Giphy key stays on the server; an empty query returns trending */
+async function searchGifs(q) { return (await pdApi('/api/giphy', { query: q ? { q } : undefined })).gifs || []; }
+
+/* This week's stable key and the schedule fetch/publish helpers were re-homed
    in sched-core.jsx when the scheduler was rebuilt (real date ranges, shift lists). */
 
-/* ---- time-off persistence API (talks to the /api/timeoff Function) ---- */
-async function fetchTimeoff() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/timeoff', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('timeoff read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.requests || [];
-}
-async function timeoffAction(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/timeoff', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('action failed (' + res.status + ')')); }
-  return res.json();
-}
+/* per-person permission grants: GET lists them, POST saves one person's */
+async function fetchAccessControl() { return (await pdApi('/api/accesscontrol')).overrides || []; }
+async function saveAccessOverride(body) { return pdApi('/api/accesscontrol', { method: 'POST', body }); }
 
-/* ---- access control (talks to the /api/accesscontrol Function) ----
-   Per-person permission overrides live in their own Cosmos container, one doc per
-   person keyed by email. GET lists them; POST upserts one person's flags. */
-async function fetchAccessControl() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/accesscontrol', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('access-control read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.overrides || [];
-}
-async function saveAccessOverride(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/accesscontrol', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('save failed (' + res.status + ')'));
-  return data;
-}
-
-/* ---- direct notices (person → person) + live push (talks to /api/notify + /api/negotiate) ---- */
-async function fetchNotices() {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/notify', { headers: { 'X-Google-Token': token } });
-  if (!res.ok) throw new Error('notices read failed (' + res.status + ')');
-  const data = await res.json();
-  return data.notices || [];
-}
-async function sendNotice(body) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/notify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('send failed (' + res.status + ')')); }
-  return res.json();
-}
-/* Persist that I've read one of my notices (recipient-only, server-checked). */
-async function markNoticeRead(id) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/notify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify({ action: 'read', id }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('read update failed (' + res.status + ')')); }
-  return res.json();
-}
-/* Delete one of my notices (recipient-only, server-checked). */
-async function deleteNotice(id) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/notify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify({ action: 'delete', id }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('delete failed (' + res.status + ')')); }
-  return res.json();
-}
-/* Restore a dismissed notice back to the inbox (recipient-only, server-checked). */
-async function restoreNotice(id) {
-  const token = (typeof window !== 'undefined' && window.PD_GOOGLE_TOKEN) || '';
-  const res = await fetch('/api/notify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Google-Token': token },
-    body: JSON.stringify({ action: 'restore', id }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('restore failed (' + res.status + ')')); }
-  return res.json();
-}
+/* direct notices, person to person */
+async function fetchNotices() { return (await pdApi('/api/notify')).notices || []; }
+async function sendNotice(body) { return pdApi('/api/notify', { method: 'POST', body }); }
+async function markNoticeRead(id) { return pdApi('/api/notify', { method: 'POST', body: { action: 'read', id } }); }
+async function deleteNotice(id) { return pdApi('/api/notify', { method: 'POST', body: { action: 'delete', id } }); }
+async function restoreNotice(id) { return pdApi('/api/notify', { method: 'POST', body: { action: 'restore', id } }); }
 /* Open the live SignalR connection so notices pushed to me arrive instantly. Returns the
    connection (call .stop() to close) or null when unavailable — no client library, not
    signed in, or no /api (sandbox). Safe to call always: on null the 5-min poll still covers
@@ -314,12 +210,9 @@ async function restoreNotice(id) {
    — one shared connection, more `.on()` registrations, rather than every page opening its own. */
 async function connectNotifications(email, onNotice, extra) {
   if (typeof window === 'undefined' || !window.signalR || !email) return null;
-  const token = window.PD_GOOGLE_TOKEN || '';
-  if (!token) return null;
+  if (!window.PD_GOOGLE_TOKEN) return null;
   try {
-    const res = await fetch('/api/negotiate?userId=' + encodeURIComponent(email), { headers: { 'X-Google-Token': token } });
-    if (!res.ok) return null;
-    const info = await res.json();
+    const info = await pdApi('/api/negotiate', { query: { userId: email } });
     const conn = new window.signalR.HubConnectionBuilder()
       .withUrl(info.url, { accessTokenFactory: () => info.accessToken })
       .withAutomaticReconnect()
@@ -338,7 +231,6 @@ async function connectNotifications(email, onNotice, extra) {
 
 Object.assign(window, {
   newHireProfile, ROLE_PROFILES, APP_CATALOG, ROLE_ACCOUNT_RULES, ROLE_ONBOARDING, SKILLS, AGENT_CHANNELS, REVIEW_SCALE, REVIEW_QUESTIONS, TASKS, PAPERWORK_DOCS, POLICIES, TRAINING, BENEFITS,
-  fetchTimeoff, timeoffAction,
   fetchNotices, sendNotice, markNoticeRead, deleteNotice, restoreNotice, connectNotifications, fetchAccessControl, saveAccessOverride,
   fetchFeedback, feedbackAction, searchGifs,
 });

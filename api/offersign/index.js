@@ -1,13 +1,13 @@
 /* api/offersign/index.js — candidate-facing offer accept/decline, reached by an emailed
    link, NOT a Google sign-in. No roster account, no app login — a candidate authenticates
-   purely by holding the long random token mailed to them when Amanda Vibert approves and
+   purely by holding the long random token mailed to them when the offer approver approves and
    sends the offer (see api/applicants: isApproveAction).
 
    GET  /api/offersign?id=<applicantId>&token=<token>  → { offer summary }, token-gated
    POST /api/offersign  { id, token, decision: 'signed'|'declined', signature?,
                            declineReason?, declineNote? }
         → records the candidate's own decision, exactly like the manual "Record signature
-          received" / "Candidate declined" path Amanda already has, then fires the same
+          received" / "Candidate declined" path the approver already has, then fires the same
           onboarding-team notification.
 
    Token is single-use: cleared from the record once a decision is recorded, and this
@@ -16,6 +16,7 @@
    or reverted to draft) is rejected — the link can't be replayed. */
 
 const { cosmos, listAll, strip, collPath, cosmosConfigured } = require('../_shared/cosmos');
+const { hireSigned } = require('../_shared/hire');
 const { logAudit } = require('../_shared/audit');
 
 const OFFER_DECLINE_REASONS = [
@@ -37,7 +38,8 @@ function httpPost(urlStr, { body = '' } = {}) {
   });
 }
 async function notifyOfferEvent(rec, kind) {
-  const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK || 'https://chat.googleapis.com/v1/spaces/AAQAkOiCoJI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=fcyGX8KZCW7epE63Gqn8Y1fqFg0mJ0IL8Xy_GPzPC2E';
+  const webhook = process.env.APPLICANTS_GCHAT_WEBHOOK;   // with none set, nothing is posted
+  if (!webhook) return;
   const text = kind === 'declined'
     ? `❌ *Offer declined (by candidate)* — ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) declined via the emailed offer link${rec.offer && rec.offer.declineReason ? `: ${rec.offer.declineReason}` : ''}.`
     : `✅ *Offer signed (by candidate)* — ${rec.name || 'Applicant'} (${rec.role || 'role TBD'}, ${rec.office || 'office TBD'}) accepted &amp; e-signed via the emailed offer link. Ready for onboarding (orientation, Paychex, schedule).`;
@@ -61,7 +63,7 @@ module.exports = async function (context, req) {
 
   let docs;
   try { docs = (await listAll(coll)).map(strip); }
-  catch (e) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', detail: e.message }) }; return; }
+  catch (e) { context.log.error('offer link read failed', e); context.res = { status: 500, headers, body: JSON.stringify({ error: 'We couldn’t open your offer. Please try again.' }) }; return; }
   const rec = docs.find(d => d.id === id);
   const o = rec && rec.offer;
   const valid = rec && o && o.status === 'sent' && o.signToken && o.signToken === token
@@ -91,7 +93,12 @@ module.exports = async function (context, req) {
   if (decision === 'signed') {
     const signature = String(body.signature || '').trim();
     if (!signature) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'Signature (typed full legal name) is required' }) }; return; }
-    nextOffer = { ...o, status: 'signed', signature, signedAt: Date.now(), signedVia: 'candidate-email-link', signToken: null, signTokenExpires: null };
+    // an optional drawn signature: a small PNG image from the page's drawing box
+    const drawn = body.signatureImage;
+    if (drawn != null && !(typeof drawn === 'string' && drawn.length <= 300000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(drawn))) {
+      context.res = { status: 400, headers, body: JSON.stringify({ error: 'The drawn signature couldn’t be read. Clear it and draw it again.' }) }; return;
+    }
+    nextOffer = { ...o, status: 'signed', signature, ...(drawn ? { signatureImage: drawn } : {}), signedAt: Date.now(), signedVia: 'candidate-email-link', signToken: null, signTokenExpires: null };
   } else {
     const declineReason = body.declineReason;
     if (!OFFER_DECLINE_REASONS.includes(declineReason)) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'A valid decline reason is required' }) }; return; }
@@ -99,10 +106,12 @@ module.exports = async function (context, req) {
     nextOffer = { ...o, status: 'declined', declineReason, declineNote: String(body.declineNote || '').trim().slice(0, 600), declinedAt: Date.now(), declinedBy: 'Candidate (self-service link)', signToken: null, signTokenExpires: null };
   }
 
-  const nextRec = { ...rec, offer: nextOffer, stage: decision === 'signed' ? 'hired' : rec.stage, hiredAt: decision === 'signed' ? Date.now() : rec.hiredAt, updatedBy: 'candidate-self-service', updatedAt: new Date().toISOString() };
+  const nextRec = { ...rec, offer: nextOffer, stage: decision === 'signed' ? 'hired' : rec.stage, ...(decision === 'signed' ? { hirePending: true } : {}), hiredAt: decision === 'signed' ? Date.now() : rec.hiredAt, updatedBy: 'candidate-self-service', updatedAt: new Date().toISOString() };
   const up = await cosmos({ verb: 'POST', resId: coll, path: `/${coll}/docs`, body: nextRec, partitionKey: nextRec.office, upsert: true });
-  if (up.status !== 200 && up.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'save failed', status: up.status }) }; return; }
+  if (up.status !== 200 && up.status !== 201) { context.log.error('offer answer save failed', up.status); context.res = { status: 500, headers, body: JSON.stringify({ error: 'We couldn’t save your answer. Please try again.' }) }; return; }
 
+  // the signature starts onboarding: the employee record is created from the offer
+  if (decision === 'signed') await hireSigned(context, nextRec, 'candidate-self-service');
   await notifyOfferEvent(nextRec, decision);
   await logAudit({ subjectType: 'applicant', subjectId: rec.id, action: decision === 'signed' ? 'offerSignedByCandidate' : 'offerDeclinedByCandidate', actorEmail: 'candidate', detail: decision === 'signed' ? 'Candidate accepted & e-signed via emailed link' : 'Candidate declined via emailed link: ' + nextOffer.declineReason });
 

@@ -76,7 +76,7 @@ function Prehire({ me, access, offices, onSubmit, onBack }) {
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
   const [sent, setSent] = useState(false);
   const ready = f.name.trim() && f.jobTitle.trim() && f.email.trim() && f.phone.trim() && f.startDate;
-  const canSeeWage = access.caps.payroll || access.flags.isExec; // leadership/HR/accounting/admin
+  const canSeeWage = access.caps.payroll; // HR and Accounting
 
   if (sent) {
     return (

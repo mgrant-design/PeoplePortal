@@ -17,10 +17,13 @@ function StatCard({ icon, label, value, sub, tone = 'accent' }) {
 function pdParseDate(s) {
   if (!s) return null; s = String(s).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const [y, mo, d] = s.slice(0, 10).split('-').map(Number); return { y, mo, d }; }
+  if (/^\d{2}-\d{2}$/.test(s)) { const [mo, d] = s.split('-').map(Number); return { y: null, mo, d }; }   // a birthday sent without its year
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
   if (m) { let y = +m[3]; if (y < 100) y += 1900; return { y, mo: +m[1], d: +m[2] }; }
   return null;
 }
+/* whole days from a date (as pdParseDate reads it) to now, or null when there is no date */
+function pdDaysSince(v) { const s = pdParseDate(v); return s && s.y ? Math.floor((Date.now() - new Date(s.y, s.mo - 1, s.d).getTime()) / 864e5) : null; }
 function pdToday() { const n = new Date(); return { y: n.getFullYear(), mo: n.getMonth() + 1, d: n.getDate() }; }
 function isBirthdayToday(e, t) { const b = pdParseDate(e.birthdate); return !!b && b.mo === t.mo && b.d === t.d; }
 function isStartingToday(e, t) { const s = pdParseDate(e.startDate); return !!s && s.mo === t.mo && s.d === t.d && s.y === t.y; }
@@ -38,7 +41,7 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
     // ---- Employee dashboard ----
     const celebs = (typeof getCelebrations === 'function') ? getCelebrations(me) : [];
     const hasB = celebs.some(c => c.type === 'birthday'); const anniv = celebs.find(c => c.type === 'anniversary');
-    const scrubReady = (typeof scrubAccess === 'function' && typeof CLINICAL !== 'undefined' && CLINICAL.includes(scrubAccess(me))) && (() => { const s = pdParseDate(me.startDate); return !s || (Date.now() - s.getTime()) >= 90 * 864e5; })();
+    const scrubReady = (typeof scrubAccess === 'function' && typeof CLINICAL !== 'undefined' && CLINICAL.includes(scrubAccess(me))) && (() => { const days = pdDaysSince(me.startDate); return days === null || days >= 90; })();
     const tiles = [
       { id: 'onboarding', icon: 'sparkle', t: 'My onboarding', d: 'Finish your setup tasks' },
       { id: 'resources', icon: 'bell', t: 'Ask Riley', d: 'Instant answers, any time' },
@@ -117,7 +120,7 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
         <StatCard icon="users" label="Active team members" value={active.length} sub={`${team.length - active.length} inactive`} />
         <StatCard icon="star" label="Providers" value={providers.length} sub="NPI / DEA on file" />
         <StatCard icon="bolt" label="Onboarding in progress" value={onboarding.length} sub="accounts pending" tone="accent" />
-        <StatCard icon="bell" label="Offboarding requests" value={offReqs.length} sub="this view" />
+        {access.caps.offboardView && <StatCard icon="bell" label="Offboarding requests" value={offReqs.length} sub="this view" />}
       </div>
 
       {(startingToday.length > 0 || birthdaysToday.length > 0 || anniversariesToday.length > 0) && (

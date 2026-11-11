@@ -1,166 +1,69 @@
-/* api/notify/index.js — direct notices (a person → a person), with an INSTANT push.
+/* api/notify/index.js — direct notices from one person to another, pushed live.
+   GET  → the caller's own notices, newest first.
+   POST { action: 'read' | 'delete' | 'restore', id } → change one of the caller's notices.
+   POST { toEmail, title, body, urgent, category, deepLink } → send. Anyone with company-wide
+   view can send to anyone; everyone else sends within their own office. */
 
-   GET  /api/notify  → the caller's own notices (newest first).
-   POST /api/notify  → { toEmail, title, body, urgent } — send a notice to one person.
-
-   Why this exists: the 5-minute poll is fine for time-off, but sometimes you need to reach
-   someone RIGHT NOW. This writes the notice to Cosmos (so it survives / shows on their next
-   load if they're offline) AND pushes it down their live SignalR connection, so if their tab
-   is open it appears and dings immediately — no waiting for their poll.
-
-   Who can send to whom: you can send to anyone you can already see. HR/admin/leadership
-   (viewAll) can send to anyone; everyone else can send within their own office. Authorized
-   here on the server from the live roster — never trusted from the client. */
-
-const { verifyGoogleToken, tokenFromReq } = require('../_shared/auth');
-const { cosmos, strip, collPath, cosmosConfigured, loadRosterAndSupport } = require('../_shared/cosmos');
-
-const ALLOWED = ['puredental.com', 'foureversmile.com', 'puredentallab.com'];
-const NOTICES = collPath('notices');
+const { handler, resolveCaller, HttpError } = require('../_shared/caller');
+const { cosmos, listAll, strip } = require('../_shared/cosmos');
+const { writeNotice, NOTICES } = require('../_shared/notices');
 
 const officeOf = (e) => e.loc || e.location || 'Unassigned';
 const nameOf = (e) => e.name || `${e.first || ''} ${e.last || ''}`.trim();
 
-/* compact port of the roster→permissions logic used by api/timeoff: we only need viewAll
-   (whether this caller may reach across offices). Everyone else is limited to their office. */
-function canViewAll(me, support, employees) {
-  const users = (support && support.users) || [];
-  const usersByEmail = {}; users.forEach(u => { if (u.email) usersByEmail[u.email.toLowerCase()] = u; });
-  const p = usersByEmail[(me.workEmail || '').toLowerCase()] || {};
-  const dept = (me.department || '').toLowerCase();
-  const title = (me.jobTitle || '').toLowerCase();
-  const isExec = /\b(ceo|chief|coo|cfo|president|owner|principal)\b/.test(title) || ['leadership', 'management team', 'management', 'pure management'].includes(dept);
-  const isHR = /human resources|payroll/.test(dept) || /\b(human resources|payroll|people ops)\b/.test(title);
-  return !!p.admin || isHR || isExec;
+async function myNotice(email, id) {
+  if (!id) throw new HttpError(400, 'id is required');
+  const r = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${id}`, path: `/${NOTICES}/docs/${id}`, partitionKey: email });
+  if (r.status !== 200) throw new HttpError(404, 'notice not found');
+  const doc = strip(r.body);
+  if (doc.toEmail !== email) throw new HttpError(403, 'not your notice');
+  return doc;
 }
 
-module.exports = async function (context, req) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Google-Token',
-  };
-  if (req.method === 'OPTIONS') { context.res = { status: 204, headers }; return; }
+async function saveNotice(doc, partitionKey) {
+  const r = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: doc, partitionKey, upsert: true });
+  if (r.status !== 200 && r.status !== 201) throw new Error('notice write failed: ' + r.status);
+}
 
-  let identity;
-  try { identity = await verifyGoogleToken(tokenFromReq(req)); }
-  catch (e) { context.res = { status: 401, headers, body: JSON.stringify({ error: 'Not authenticated' }) }; return; }
-  if (!ALLOWED.includes(identity.email.split('@')[1] || '')) {
-    context.res = { status: 403, headers, body: JSON.stringify({ error: 'Domain not allowed' }) }; return;
-  }
-  if (!cosmosConfigured()) {
-    context.res = { status: 500, headers, body: JSON.stringify({ error: 'Missing Cosmos config' }) }; return;
+module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {
+  const c = await resolveCaller(req);
+  const email = c.identity.email;
+
+  if (req.method === 'GET') {
+    const notices = (await listAll(NOTICES, { partitionKey: email })).map(strip)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return { status: 200, body: { notices } };
   }
 
-  try {
-    /* ---------- READ: my notices ---------- */
-    if (req.method === 'GET') {
-      const res = await cosmos({ verb: 'GET', resId: NOTICES, path: `/${NOTICES}/docs`, partitionKey: identity.email });
-      if (res.status !== 200) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'read failed', status: res.status }) }; return; }
-      const notices = (res.body.Documents || []).map(strip).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      context.res = { status: 200, headers, body: JSON.stringify({ notices }) };
-      return;
-    }
-
-    /* ---------- WRITE: send a notice ---------- */
-    let input = req.body;
-    if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { input = null; } }
-
-    // mark one of MY notices read (recipient only — the doc lives in my own partition, so a
-    // point-read scoped to my email can only find notices actually addressed to me).
-    if (input && input.action === 'read') {
-      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
-      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
-      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
-      const doc = strip(dr.body);
-      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
-      const next = { ...doc, read: true };
-      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
-      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'update failed', status: wr.status }) }; return; }
-      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, notice: strip(next) }) };
-      return;
-    }
-
-    // dismiss one of MY notices (recipient only). This is a SOFT delete: the doc is flagged
-    // hidden and dropped from the inbox GET, but never removed from Cosmos — so the record
-    // survives for a later audit and a routine inbox tidy can't actually destroy anything.
-    if (input && input.action === 'delete') {
-      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
-      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
-      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
-      const doc = strip(dr.body);
-      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
-      const next = { ...doc, dismissed: true, dismissedAt: new Date().toISOString() };
-      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
-      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'dismiss failed', status: wr.status }) }; return; }
-      context.res = { status: 200, headers, body: JSON.stringify({ ok: true }) };
-      return;
-    }
-
-    // restore a dismissed notice back to the inbox (recipient only).
-    if (input && input.action === 'restore') {
-      if (!input.id) { context.res = { status: 400, headers, body: JSON.stringify({ error: 'id is required' }) }; return; }
-      const dr = await cosmos({ verb: 'GET', resId: `${NOTICES}/docs/${input.id}`, path: `/${NOTICES}/docs/${input.id}`, partitionKey: identity.email });
-      if (dr.status !== 200) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'notice not found' }) }; return; }
-      const doc = strip(dr.body);
-      if (doc.toEmail !== identity.email) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'not your notice' }) }; return; }
-      const next = { ...doc, dismissed: false }; delete next.dismissedAt;
-      const wr = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: next, partitionKey: identity.email, upsert: true });
-      if (wr.status !== 200 && wr.status !== 201) { context.res = { status: 500, headers, body: JSON.stringify({ error: 'restore failed', status: wr.status }) }; return; }
-      context.res = { status: 200, headers, body: JSON.stringify({ ok: true, notice: strip(next) }) };
-      return;
-    }
-
-    const toEmail = ((input && input.toEmail) || '').toLowerCase();
-    if (!toEmail || !(input.title || input.body)) {
-      context.res = { status: 400, headers, body: JSON.stringify({ error: 'toEmail and a title or body are required' }) }; return;
-    }
-
-    // resolve sender + recipient from the live roster, and authorize the send
-    const { employees, support } = await loadRosterAndSupport();
-    const me = employees.find(e => (e.workEmail || '').toLowerCase() === identity.email);
-    if (!me) { context.res = { status: 403, headers, body: JSON.stringify({ error: 'No roster account for ' + identity.email }) }; return; }
-    const recip = employees.find(e => (e.workEmail || '').toLowerCase() === toEmail);
-    if (!recip) { context.res = { status: 404, headers, body: JSON.stringify({ error: 'Recipient not found' }) }; return; }
-
-    const viewAll = canViewAll(me, support, employees);
-    const sameOffice = officeOf(me) === officeOf(recip);
-    if (!viewAll && !sameOffice) {
-      context.res = { status: 403, headers, body: JSON.stringify({ error: 'You can only send to people in your office' }) }; return;
-    }
-
-    const NOTICE_CATS = ['action', 'message', 'mention', 'social'];
-    const notice = {
-      id: 'nt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-      kind: 'notice',
-      category: NOTICE_CATS.includes(input.category) ? input.category : 'message',
-      fromEmail: identity.email, fromName: nameOf(me),
-      toEmail, toName: nameOf(recip), office: officeOf(recip),
-      title: String(input.title || '').slice(0, 200),
-      body: String(input.body || '').slice(0, 2000),
-      urgent: !!input.urgent, read: false,
-      createdAt: new Date().toISOString(),
-    };
-    // Optional deep link back to the thing this notice is about (e.g. an applicant's offer).
-    // Whitelisted shape only — never pass through arbitrary client fields.
-    if (input.deepLink && typeof input.deepLink === 'object' && input.deepLink.view) {
-      notice.deepLink = { view: String(input.deepLink.view).slice(0, 40), applicantId: input.deepLink.applicantId ? String(input.deepLink.applicantId).slice(0, 80) : undefined, feedbackId: input.deepLink.feedbackId ? String(input.deepLink.feedbackId).slice(0, 80) : undefined };
-    }
-
-    const up = await cosmos({ verb: 'POST', resId: NOTICES, path: `/${NOTICES}/docs`, body: notice, partitionKey: toEmail, upsert: true });
-    if (up.status !== 200 && up.status !== 201) {
-      context.res = { status: 500, headers, body: JSON.stringify({ error: 'send failed', status: up.status, detail: up.body }) }; return;
-    }
-
-    // INSTANT push: land it on the recipient's live connection (if any). Offline recipients
-    // simply see it on their next GET / poll — the write above already persisted it.
-    context.bindings.signalRMessages = [{ userId: toEmail, target: 'notify', arguments: [strip(notice)] }];
-
-    context.res = { status: 200, headers, body: JSON.stringify({ ok: true, notice: strip(notice) }) };
-  } catch (err) {
-    const msg = err.message || 'error';
-    const code = /No roster account/.test(msg) ? 403 : 500;
-    context.res = { status: code, headers, body: JSON.stringify({ error: msg }) };
+  const input = body || {};
+  if (input.action === 'read') {
+    const next = { ...(await myNotice(email, input.id)), read: true };
+    await saveNotice(next, email);
+    return { status: 200, body: { ok: true, notice: next } };
   }
-};
+  if (input.action === 'delete') {
+    // soft delete: hidden from the inbox, kept in the database
+    const next = { ...(await myNotice(email, input.id)), dismissed: true, dismissedAt: new Date().toISOString() };
+    await saveNotice(next, email);
+    return { status: 200, body: { ok: true } };
+  }
+  if (input.action === 'restore') {
+    const next = { ...(await myNotice(email, input.id)), dismissed: false };
+    delete next.dismissedAt;
+    await saveNotice(next, email);
+    return { status: 200, body: { ok: true, notice: next } };
+  }
+
+  const toEmail = String(input.toEmail || '').toLowerCase();
+  if (!toEmail || !(input.title || input.body)) throw new HttpError(400, 'toEmail and a title or body are required');
+  const recip = c.employees.find(e => (e.workEmail || '').toLowerCase() === toEmail);
+  if (!recip) throw new HttpError(404, 'Recipient not found');
+  if (!c.access.caps.viewAll && officeOf(c.me) !== officeOf(recip)) throw new HttpError(403, 'You can only send to people in your office');
+
+  const notice = await writeNotice(context, {
+    to: toEmail, from: { email, name: nameOf(c.me) }, recipient: recip,
+    title: input.title, body: input.body, deepLink: input.deepLink,
+    category: input.category || 'message', urgent: input.urgent,
+  });
+  return { status: 200, body: { ok: true, notice } };
+});

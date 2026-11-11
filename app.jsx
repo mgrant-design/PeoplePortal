@@ -41,7 +41,7 @@ const FLAG_DEFS = [
   { id: 'provisionApi', label: 'Auto-provision accounts via API — Google, Denticon, NexHealth, DoseSpot', group: 'Integrations', note: 'Off = IT/HR creates accounts manually and records logins. Turn on once the provisioning APIs are connected.' },
   { id: 'resumeParse', label: 'Résumé parsing & import — auto-extract applicant details from uploaded résumés', group: 'Integrations', note: 'Off = enter applicants manually (résumés still attach). Turn on once the parsing service is connected.' },
 ];
-const FLAG_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: true, provisionApi: false, resumeParse: true };
+const FLAG_DEFAULTS = window.PD_ACCESS_RULES.FEATURE_DEFAULTS;
 const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', automations: 'automations', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
 
 function ComingSoon({ label }) {
@@ -132,7 +132,7 @@ const ONBOARD_VIEWS = ['onboarding', 'hub', 'welcome', 'profilestep', 'paperwork
    reads in <App>. Opened by long-pressing the user chip. */
 const VIEW_LEVELS = [
   ['', 'My access', 'Your real permissions'],
-  ['admin', 'Admin', 'Full access — everything'],
+  ['admin', 'Admin', 'Everything except pay'],
   ['hr', 'HR & Payroll', 'Company-wide people + payroll'],
   ['leadership', 'Leadership', 'Company-wide view'],
   ['accounting', 'Accounting', 'Payroll + reports'],
@@ -182,6 +182,14 @@ function ViewSwitcher({ current, onPick, onClose, mobileView, onToggleMobile }) 
   );
 }
 
+/* Fetch the caller's scoped roster into window.HRDATA and rebuild rbac's derived data. */
+async function loadRoster() {
+  const data = await pdApi('/api/roster');
+  window.HRDATA = data;
+  if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
+  return data;
+}
+
 function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogout, t, setTweak }) {
   const [view, setView] = useState('dashboard');
   const [selectedEmp, setSelectedEmp] = useState(null);
@@ -192,8 +200,26 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const [helpOpen, setHelpOpen] = useState(false);
   const openHelp = () => setHelpOpen(true);
   const closeHelp = () => { setHelpOpen(false); try { localStorage.setItem('pd_help_seen', '1'); } catch (e) {} };
-  const [flags, setFlags] = useState(() => { try { return { ...FLAG_DEFAULTS, ...(JSON.parse(localStorage.getItem('pd_flags')) || {}) }; } catch (e) { return { ...FLAG_DEFAULTS }; } });
-  const setFlag = (id, val) => { const n = { ...flags, [id]: val }; setFlags(n); try { localStorage.setItem('pd_flags', JSON.stringify(n)); } catch (e) {} };
+  // feature switches are saved for everyone in the organization settings (admins only)
+  const savedFlags = () => {
+    const stored = (window.HR && window.HR.flags) || {};
+    const out = { ...FLAG_DEFAULTS };
+    Object.keys(FLAG_DEFAULTS).forEach(k => { if (typeof stored[k] === 'boolean') out[k] = stored[k]; });
+    return out;
+  };
+  const [flags, setFlags] = useState(savedFlags);
+  const [flagSaving, setFlagSaving] = useState(false);
+  const setFlag = (id, val) => {
+    if (flagSaving) return;
+    const n = { ...savedFlags(), [id]: val };
+    setFlags(n); setFlagSaving(true);
+    // only the switches set away from their defaults are saved, so a later change to a default reaches everyone who never touched it
+    const changed = {}; Object.keys(n).forEach(k => { if (FLAG_DEFAULTS[k] !== n[k]) changed[k] = n[k]; });
+    saveOrgSection('flags', changed).catch(e => {
+      setFlags(savedFlags());
+      flash(e.message === 'conflict' ? 'Someone else just changed the modules. Reload and try again.' : 'Couldn’t save the module switch (' + e.message + ')');
+    }).finally(() => setFlagSaving(false));
+  };
   const flagOn = (id) => flags[id] !== false;
   const [tourOpen, setTourOpen] = useState(() => { try { return !localStorage.getItem('pd_tour_done'); } catch (e) { return false; } });
   const endTour = () => { setTourOpen(false); try { localStorage.setItem('pd_tour_done', '1'); } catch (e) {} };
@@ -247,11 +273,9 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const chipUp = () => { const h = chipHold.current; if (h.t) { clearTimeout(h.t); h.t = null; } };
   const chipClick = () => { if (chipHold.current.fired) { chipHold.current.fired = false; return; } go('me'); };
   const [navMode, setNavMode] = useState(() => { try { return (loadAppearance(me.id).navMode) || 'all'; } catch (e) { return 'all'; } });
-  const [notifReqs, setNotifReqs] = useState([]);
   const [notices, setNotices] = useState([]);
   const notifsLoadedRef = React.useRef(false);
   const refreshNotifs = () => {
-    if (typeof fetchTimeoff === 'function') fetchTimeoff().then(setNotifReqs).catch(() => {});
     if (typeof fetchNotices === 'function') fetchNotices().then(list => { notifsLoadedRef.current = true; setNotices(list); }).catch(() => {});
   };
   useEffect(() => { refreshNotifs(); }, [me.id]);
@@ -277,10 +301,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   useEffect(() => {
     if (!notifsLoadedRef.current) return;  // skip pre-fetch runs (empty state) so we never persist a false-empty seen-set
     const key = 'pd_seen_notifs_' + me.id;
-    const sigs = [
-      ...(typeof myNotifSignatures === 'function' ? myNotifSignatures(notifReqs, me, access) : []),
-      ...notices.filter(n => !n.dismissed && n.category !== 'social').map(n => 'notice:' + n.id),   // direct notices ding once when they appear; reactions (social) never ding
-    ];
+    // notices ding once when they appear; reactions (social) never ding
+    const sigs = notices.filter(n => !n.dismissed && n.category !== 'social').map(n => 'notice:' + n.id);
     let seen = seenNotifRef.current;
     if (seen === null) {
       let stored = null;
@@ -300,7 +322,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     const next = new Set(sigs);           // keep only still-present sigs (bounds the set)
     seenNotifRef.current = next;
     try { localStorage.setItem(key, JSON.stringify([...next])); } catch (e) {}
-  }, [notifReqs, notices]);
+  }, [notices]);
   // Live push: hold a SignalR connection so a notice sent to me arrives & dings the instant
   // it's sent, not on the next 5-min poll. We mark the pushed item seen first so the diff
   // effect above never re-dings it. Null connection (sandbox / offline) just means the poll
@@ -326,6 +348,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       'feedback-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-feedback-changed', { detail: p })); } catch (e) {} },
       'schedule-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-schedule-changed', { detail: p })); } catch (e) {} },
       'roster-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-roster-changed', { detail: p })); } catch (e) {} },
+      'approvals-changed': (p) => { try { window.dispatchEvent(new CustomEvent('pd-approvals-changed', { detail: p })); } catch (e) {} },
     };
     connectNotifications(me.workEmail, onNotice, extra).then(c => { if (stopped && c) { try { c.stop(); } catch (e) {} } else { conn = c; } });
     return () => { stopped = true; if (conn) { try { conn.stop(); } catch (e) {} } };
@@ -337,17 +360,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const [, setRosterVersion] = useState(0);
   useEffect(() => {
     const onRosterChanged = () => {
-      const token = window.PD_GOOGLE_TOKEN || '';
-      if (!token) return;
-      fetch('/api/roster', { headers: { 'X-Google-Token': token } })
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => {
-          if (!data) return;
-          window.HRDATA = data;
-          if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
-          setRosterVersion(v => v + 1);
-        })
-        .catch(() => {});
+      if (!window.PD_GOOGLE_TOKEN) return;
+      loadRoster().then(() => { setFlags(savedFlags()); setRosterVersion(v => v + 1); }).catch(() => {});
     };
     window.addEventListener('pd-roster-changed', onRosterChanged);
     return () => window.removeEventListener('pd-roster-changed', onRosterChanged);
@@ -355,7 +369,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // Mute is session-only — reset to unmuted on each login (Portal mounts post-auth).
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
-  const notifN = ((typeof notifCount === 'function') ? notifCount(notifReqs, me, access) : 0) + notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
+  const notifN = notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
   const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
   const [currentAuto, setCurrentAuto] = useState(null);
   const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
@@ -388,7 +402,12 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const scoped = useMemo(() => scopedEmployees(me, access), [me, access]);
   const dashPeople = useMemo(() => pageEmployees(me, access, 'dashboard'), [me, access]);
 
-  const go = (v) => { setView(v); setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // leaving the schedule page with unpublished Builder edits asks first; the edits are kept either way
+  const [leaveTo, setLeaveTo] = useState(null);
+  const go = (v) => {
+    if ((view === 'scheduler' || view === 'myschedule') && v !== 'scheduler' && v !== 'myschedule' && typeof PD_DRAFTS !== 'undefined' && PD_DRAFTS.hasAny()) { setLeaveTo(v); setMenuOpen(false); return; }
+    setView(v); setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const openEmp = (e) => { setSelectedEmp(e); setView('emprecord'); window.scrollTo({ top: 0 }); };
 
   const completeTask = (id) => {
@@ -539,7 +558,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'onboardingstatus': return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
       case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'security': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
-      case 'modules': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="modules" />;
+      case 'modules': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} flagSaving={flagSaving} page="modules" />;
       /* one page, two tabs: the published schedule everyone reads, and the builder.
          'myschedule' is kept as a route so older links land on the same page. */
       case 'scheduler':
@@ -800,6 +819,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
         <button className="assistant-fab-btn" title="Help & navigation" onClick={openHelp}><Icon name="help" style={{ width: 20, height: 20 }} /></button>
       </div>
 
+      {leaveTo && <LeaveDraftsDialog onStay={() => setLeaveTo(null)} onLeave={() => { const to = leaveTo; setLeaveTo(null); setView(to); window.scrollTo({ top: 0 }); }} />}
       {toast && (
         // zIndex 95: above ModalShell's overlay (90) so a flash fired from inside an open
         // modal (e.g. approving an offer from the Applicant Detail view) is still visible —
@@ -869,19 +889,8 @@ function App() {
     setRosterError('');
     setLoadingRoster(true);
     try {
-      const token = window.PD_GOOGLE_TOKEN || '';
-      // Send the token in a CUSTOM header. Azure Static Web Apps overwrites the standard
-      // "Authorization" header with its own Easy Auth token, so the server reads X-Google-Token.
-      const res = await fetch('/api/roster', { headers: { 'X-Google-Token': token } });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const err = new Error(body.error || ('Roster request failed (' + res.status + ')'));
-        err.authRejected = res.status === 401 || res.status === 403;
-        throw err;
-      }
-      const data = await res.json();
-      window.HRDATA = data;
-      if (typeof window.PD_REBUILD_HRDATA === 'function') window.PD_REBUILD_HRDATA();
+      try { await loadRoster(); }
+      catch (err) { err.authRejected = err.status === 401 || err.status === 403; throw err; }
       // identify the signed-in employee from the (now loaded) roster
       const email = (window.__PD_SIGNIN_EMAIL || '').toLowerCase();
       const meEmp = (typeof findByEmail === 'function') ? findByEmail(email) : null;
@@ -892,7 +901,7 @@ function App() {
       saveSession(meEmp);
       setMe(meEmp);
     } catch (e) {
-      setRosterError(e.message || 'Could not load your roster.');
+      setRosterError(e.status === 401 ? 'Your sign-in expired. Sign in again.' : (e.message || 'Could not load your roster.'));
       // Only drop the token when the server actually rejected it (stale/invalid) — a
       // network hiccup shouldn't sign someone out of a still-valid session.
       if (e.authRejected) {
@@ -927,7 +936,11 @@ function App() {
     onSignedIn(email);
   }, []);
 
-  const logout = () => { saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; try { sessionStorage.removeItem('pd_google_token'); } catch (e) {} };
+  // closing or refreshing the tab with unpublished schedule changes asks first, wherever the person is
+  useEffect(() => { window.addEventListener('beforeunload', (e) => { if (typeof PD_DRAFTS !== 'undefined' && PD_DRAFTS.hasAny()) { e.preventDefault(); e.returnValue = ''; } }); }, []);
+  const logout = () => { if (typeof PD_DRAFTS !== 'undefined') PD_DRAFTS.clearAll(); saveSession(null); setMe(null); window.PD_GOOGLE_TOKEN = ''; window.__PD_SIGNIN_EMAIL = ''; try { sessionStorage.removeItem('pd_google_token'); } catch (e) {} };
+  // an expired sign-in anywhere (request.js) sends the person back to sign-in with this message
+  useEffect(() => { window.PD_ON_SIGNED_OUT = (message) => { logout(); setRosterError(message); }; }, []);
   const previewAs = async (emp) => { if (window.__PD_MODULES_READY) await window.__PD_MODULES_READY; saveSession(emp); setMe(emp); window.scrollTo({ top: 0 }); };
 
   // DEV bridge — inert in production. A dev-only module (dev-bypass.js), when present,
@@ -963,7 +976,7 @@ function App() {
   const realAccess = deriveAccess(me);
   window.__PD_DEV_VIEW = viewOverride || '';
   const access = deriveAccess(me);
-  return <Portal key={me.id} me={me} access={access} realAccess={realAccess} viewOverride={viewOverride} setViewOverride={setViewOverride} onLogout={logout} t={t} setTweak={setTweak} />;
+  return <Portal key={me.id} me={me} access={access} realAccess={realAccess} viewOverride={viewOverride} setViewOverride={setViewOverride} onLogout={() => { if (typeof PD_DRAFTS !== 'undefined' && PD_DRAFTS.hasAny() && !window.confirm('You have unpublished schedule changes. Signing out discards them. Sign out anyway?')) return; logout(); }} t={t} setTweak={setTweak} />;
 }
 
 // Tiered boot (see index.html + deferred-loader.js):
