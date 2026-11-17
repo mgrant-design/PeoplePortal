@@ -186,7 +186,8 @@ function schedWorked(e) {
   return { sched, worked: Math.round(worked * 10) / 10 };
 }
 function otStatus(worked) { return worked > 40 ? 'over' : worked >= 36 ? 'approaching' : 'ok'; }
-function empType(e) { return (hashId(e.id + 'ft') % 10 < 7) ? 'FT' : 'PT'; }
+/* full-time or part-time from the person's record; null when it isn't recorded */
+function empType(e) { return e.employmentType === 'Full-time' ? 'FT' : e.employmentType === 'Part-time' ? 'PT' : null; }
 function classFlag(type, worked) { if (type === 'FT' && worked < 35) return 'ft-under'; if (type === 'PT' && worked >= 35) return 'pt-over'; return null; }
 
 function TimeOvertime({ access, emps, paychexOn }) {

@@ -18,7 +18,7 @@ jobs:
           submodules: true
           lfs: false
       - name: Share the rule files with the API
-        run: cp access-rules.js approvals-text.js weekmerge.js api/_shared/
+        run: cp access-rules.js approvals-text.js weekmerge.js uniform-rules.js api/_shared/
       - uses: actions/setup-node@v4
         with:
           node-version: '18'

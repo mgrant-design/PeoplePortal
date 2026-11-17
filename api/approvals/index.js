@@ -18,6 +18,7 @@ const weeks = require('../_shared/weeks');
 const { cleanShift } = weeks;
 const { reportingTree, offboardingInTree, seesAllOn, scheduleLevel, canScheduleTeam } = require('../_shared/access-rules');
 const { describeApproval, KIND_LABEL, dayLabel, time12 } = require('../_shared/approvals-text');
+const uniforms = require('../_shared/uniform-rules');
 /* "Nov 17 8a–4p" */
 const shiftWhen = (s) => `${dayLabel(s.date)} ${time12(s.start)}–${time12(s.end)}`;
 
@@ -61,6 +62,13 @@ const SUBMIT_CHECKS = {
     if (waiting(all, 'swapAccept', shift.id)) throw new HttpError(409, 'Someone already claimed this shift — awaiting manager approval');
     const from = c.employees.find(e => e.id === shift.empId);
     return { office, weekKey, shiftId: shift.id, shift: snapshot(office, shift), fromEmpId: shift.empId || '', fromName: from ? nameOfPerson(from) : '', offered: !!shift.offered };
+  },
+  /* the server works out the order from the catalog and this year's earlier orders */
+  async uniform(c, p) {
+    const email = (c.me.workEmail || '').toLowerCase();
+    const prior = (await queryAll(COLL, [['kind', '=', 'uniform'], ['submittedBy', '=', email]])).map(r => ({ status: r.status, createdAt: r.createdAt, items: (r.payload || {}).items || [] }));
+    try { return uniforms.buildOrder(c.me, p, prior, Date.now()); }
+    catch (e) { if (e.status) throw new HttpError(e.status, e.message); throw e; }
   },
   async schedEdit(c, p) {
     const office = String(p.office || '').slice(0, 60), weekKey = String(p.weekKey || '');
@@ -212,6 +220,13 @@ const fn = handler(['GET', 'POST'], async ({ context, req, body }) => {
       const shown = seesAllOn(c.access, 'offboarding') ? notices : notices.filter(r => offboardingInTree([r.payload], c.me, c.employees).length || r.submittedBy === email);
       return { status: 200, body: { offboarding: shown.map(r => ({ ...r.payload, id: r.id, approval: r.status, createdAt: r.createdAt, submittedName: r.submittedName })) } };
     }
+    if (q.kind === 'uniform') {
+      // every uniform order, for the uniform approver and admins
+      const approver = String(((c.support || {}).approvers || {}).uniform || '').toLowerCase();
+      if (email !== approver && !c.access.flags.isAdmin) throw new HttpError(403, 'Only the uniform approver sees every order');
+      const rows = (await queryAll(COLL, [['kind', '=', 'uniform']])).map(strip);
+      return { status: 200, body: { orders: rows.map(r => ({ id: r.id, status: r.status, sent: !!r.sent, sentAt: r.sentAt || null, createdAt: r.createdAt, submittedBy: r.submittedBy, submittedName: r.submittedName, payload: r.payload })) } };
+    }
     if (q.kind === 'timeoff' && q.status === 'approved') {
       const from = String(q.from || ''), to = String(q.to || '9999-12-31');
       const all = (await queryAll(COLL, [['kind', '=', 'timeoff'], ['status', '=', 'approved'], ['payload.start', '<=', to], ['payload.end', '>=', from]])).map(strip);
@@ -295,7 +310,25 @@ const fn = handler(['GET', 'POST'], async ({ context, req, body }) => {
     return { status: 200, body: { record } };
   }
 
-  throw new HttpError(400, "action must be 'submit' or 'decide'");
+  if (input.action === 'markSent') {
+    // the uniform approver marks approved orders as sent to the vendor, or back
+    const approver = String(((c.support || {}).approvers || {}).uniform || '').toLowerCase();
+    if (email !== approver && !c.access.flags.isAdmin) throw new HttpError(403, 'Only the uniform approver marks orders sent');
+    const ids = Array.isArray(input.ids) ? input.ids.map(String).slice(0, 200) : [];
+    const sent = input.sent !== false;
+    const changed = [];
+    for (const id of ids) {
+      const got = await cosmos({ verb: 'GET', resId: `${COLL}/docs/${id}`, path: `/${COLL}/docs/${id}`, partitionKey: id });
+      if (got.status !== 200 || got.body.kind !== 'uniform' || got.body.status !== 'approved') continue;
+      const next = { ...strip(got.body), sent, sentAt: sent ? new Date().toISOString() : null, sentBy: sent ? email : null };
+      const r = await cosmos({ verb: 'POST', resId: COLL, path: `/${COLL}/docs`, body: next, partitionKey: id, upsert: true, ifMatch: got.body._etag });
+      if (r.status === 200 || r.status === 201) changed.push(id);
+    }
+    broadcast(context, 'approvals-changed', {});
+    return { status: 200, body: { changed } };
+  }
+
+  throw new HttpError(400, "action must be 'submit', 'decide' or 'markSent'");
 });
 
 fn.EFFECTS = EFFECTS;

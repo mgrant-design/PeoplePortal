@@ -6,7 +6,7 @@
   "scripts": {
     "start": "func start",
     "prestart": "npm run sync",
-    "sync": "cp ../access-rules.js ../approvals-text.js ../weekmerge.js _shared/",
+    "sync": "cp ../access-rules.js ../approvals-text.js ../weekmerge.js ../uniform-rules.js _shared/",
     "pretest": "npm run sync",
     "test": "node --test tests/"
   },

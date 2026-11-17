@@ -12,7 +12,7 @@ const FLOWS = {
   schedEdit:   ['manager'],
   swapOffer:   ['manager'],
   swapAccept:  ['manager'],
-  uniform:     ['manager'],
+  uniform:     ['setting:uniform'],
   offer:       ['setting:offer'],
 };
 

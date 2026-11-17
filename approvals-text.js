@@ -61,6 +61,10 @@
         when: [d ? `${DAYS[d.getUTCDay()]} ${short(d)}` : '', times].filter(Boolean).join(', '),
       };
     }
+    if (record.kind === 'uniform') {
+      const n = (p.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0);
+      return { who: submitter, what: `${label}, ${n} item${n === 1 ? '' : 's'}`, when: '' };
+    }
     const sent = record.createdAt ? new Date(record.createdAt) : null;   // local day, not UTC
     return { who: submitter, what: label, when: sent && !isNaN(sent) ? short(new Date(Date.UTC(sent.getFullYear(), sent.getMonth(), sent.getDate()))) : '' };
   }

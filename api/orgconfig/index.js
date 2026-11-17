@@ -18,7 +18,7 @@ const { FEATURE_DEFAULTS, isActive, offboardingInTree, seesAllOn } = require('..
 const SECTIONS = ['offices', 'departments', 'titles', 'managers', 'offboarding', 'refLinks'];
 const WEEK_STARTS = [0, 1, 2];
 const APP = collPath('appState');
-const NO_APPROVERS = { timeoffFinal: '', offboarding: [], offer: '' };
+const NO_APPROVERS = { timeoffFinal: '', offboarding: [], offer: '', uniform: '' };
 const APPROVALS = collPath('approvals');
 
 /* requests with a step still to be decided whose approvers come from a setting that just
@@ -59,7 +59,7 @@ async function rerouteWaiting(context, c, before, after) {
   if (moved) broadcast(context, 'approvals-changed', {});
 }
 
-/* approvers: { timeoffFinal: email, offboarding: email[], offer: email }, each an active roster person */
+/* approvers: { timeoffFinal: email, offboarding: email[], offer: email, uniform: email }, each an active roster person */
 function cleanApprovers(v, employees) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HttpError(400, 'approvers must be an object');
   const roster = new Set(employees.filter(isActive).map(e => (e.workEmail || '').toLowerCase()).filter(Boolean));
@@ -69,7 +69,7 @@ function cleanApprovers(v, employees) {
     return e;
   };
   if (v.offboarding !== undefined && !Array.isArray(v.offboarding)) throw new HttpError(400, 'offboarding approvers must be a list');
-  return { timeoffFinal: one(v.timeoffFinal), offboarding: [...new Set((v.offboarding || []).map(one).filter(Boolean))], offer: one(v.offer) };
+  return { timeoffFinal: one(v.timeoffFinal), offboarding: [...new Set((v.offboarding || []).map(one).filter(Boolean))], offer: one(v.offer), uniform: one(v.uniform) };
 }
 
 module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {

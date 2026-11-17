@@ -41,11 +41,12 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
     // ---- Employee dashboard ----
     const celebs = (typeof getCelebrations === 'function') ? getCelebrations(me) : [];
     const hasB = celebs.some(c => c.type === 'birthday'); const anniv = celebs.find(c => c.type === 'anniversary');
-    const scrubReady = (typeof scrubAccess === 'function' && typeof CLINICAL !== 'undefined' && CLINICAL.includes(scrubAccess(me))) && (() => { const days = pdDaysSince(me.startDate); return days === null || days >= 90; })();
+    // the uniform tile shows once the person may order and has something free this year
+    const scrubReady = (() => { const el = window.PD_UNIFORMS ? PD_UNIFORMS.eligibility(me, [], Date.now()) : null; return !!el && el.canOrder && el.role === 'clinical' && el.reason === ''; })();
     const tiles = [
       { id: 'onboarding', icon: 'sparkle', t: 'My onboarding', d: 'Finish your setup tasks' },
       { id: 'resources', icon: 'bell', t: 'Ask Riley', d: 'Instant answers, any time' },
-      ...(scrubReady ? [{ id: 'scrubs', icon: 'shirt', t: 'Order clinical wear', d: 'Your scrubs allowance is ready' }] : []),
+      ...(scrubReady ? [{ id: 'scrubs', icon: 'shirt', t: 'Order uniforms', d: 'Your uniform allowance is ready' }] : []),
       { id: 'profile', icon: 'users', t: 'My profile', d: 'Add a photo & review details' },
       { id: 'people', icon: 'users', t: 'Directory', d: 'Find a colleague’s contact info' },
     ];

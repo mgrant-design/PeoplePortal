@@ -10,7 +10,7 @@ const COMPANY_DOMAINS = window.PD_ACCESS_RULES.COMPANY_DOMAINS;
    reporting-chain test. Granted globally (pages = []) or limited to the pages below.
    Only pages whose contents are scoped by the visible-people list belong here: the
    Directory is company-wide for everyone and needs no entry, and pages that never read
-   the people list (Riley, Ask HR, Scrubs, onboarding automations, Feedback) have nothing
+   the people list (Riley, Ask HR, Uniforms, onboarding automations, Feedback) have nothing
    to widen. */
 const SEE_ALL_PAGES = [
   { id: 'scheduler', label: 'Scheduling' },

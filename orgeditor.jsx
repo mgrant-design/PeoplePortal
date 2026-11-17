@@ -139,7 +139,7 @@ function ApRow({ title, note, children, first }) {
 
 /* who approves what: one final approver for time off and for offers, and a list for
    offboarding notices where any one person decides. Admins edit; others read. */
-const NO_APPROVERS = { timeoffFinal: '', offboarding: [], offer: '' };
+const NO_APPROVERS = { timeoffFinal: '', offboarding: [], offer: '', uniform: '' };
 function ApproversEditor({ canEdit }) {
   const [value, setValue] = useState(() => ({ ...NO_APPROVERS, ...((window.HR && window.HR.approvers) || {}) }));
   const [status, setStatus] = useState('idle');
@@ -172,6 +172,7 @@ function ApproversEditor({ canEdit }) {
           {!canEdit && !value.offboarding.length && <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>Nobody set</span>}
         </ApRow>
         <ApRow title="Job offers" note="Offers go here for approval before they're sent.">{single('offer', 'Choose a person…')}</ApRow>
+        <ApRow title="Uniform orders" note="Every uniform order goes here for approval.">{single('uniform', 'Choose a person…')}</ApRow>
       </div>
       <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{canEdit ? 'Changes save as you make them.' : 'Only an administrator can change approvers.'}</span>
