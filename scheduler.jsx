@@ -254,7 +254,7 @@ function Scheduler({ me, access, onBack }) {
     if (doc && doc.published && isSup) {
       try {
         await submitApproval('schedEdit', { office, weekKey: change.weekKey || weekKey, change });
-        flash('Sent to your manager for approval — the schedule updates when they approve.');
+        flash('Sent to your manager for approval.');
       } catch (e) { flash('Change failed: ' + e.message, false); load('keep'); }
       return;
     }

@@ -315,14 +315,13 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
                   </label>
                 ))}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>A week that is new arrives unpublished, so you can review it before anyone is notified. A week that is already published stays published. Regular hours aren't touched — set those under Options → Regular hours.</div>
             </>
           )}
 
           {result && (
             <div style={{ border: '1.5px solid oklch(0.6 0.13 150)', background: 'color-mix(in oklab, oklch(0.7 0.13 150) 12%, var(--surface))', borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 13, lineHeight: 1.6, color: 'oklch(0.36 0.09 150)' }}>
               <b style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="check" style={{ width: 15, height: 15 }} /> Import complete</b>
-              <div style={{ marginTop: 4 }}><b className="mono">{result.written}</b> shifts written across <b className="mono">{(result.weeks || []).length}</b> week documents. New weeks are unpublished — review, then publish to notify. Weeks that were published stay published.</div>
+              <div style={{ marginTop: 4 }}><b className="mono">{result.written}</b> shifts written across <b className="mono">{(result.weeks || []).length}</b> week documents.</div>
               {result.logId && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Receipt saved as <span className="mono">{result.logId}</span>.</div>}
             </div>
           )}

@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - overhaul
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
@@ -20,8 +19,13 @@ jobs:
           lfs: false
       - name: Share the rule files with the API
         run: cp access-rules.js approvals-text.js weekmerge.js api/_shared/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
       - name: Install API dependencies
-        run: cd api && npm install
+        run: cd api && npm ci
+      - name: Check the API libraries load
+        run: cd api && node -e "require('@azure/storage-blob'); require('google-auth-library'); require('googleapis')"
       # Stamps the commit being deployed into version.json, read by the login screen and
       # /api/version. Derived from the commit itself, so it can never drift or be forgotten.
       - name: Stamp deployed version

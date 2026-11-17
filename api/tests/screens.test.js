@@ -137,8 +137,3 @@ test('offering, claiming and a supervisor\'s change go through the approvals, an
     assert.equal(/fetchSchedRequests|ApprovalsPanel|mySwaps/.test(src), false, name);
   }
 });
-test('the import screen says a published week stays published', () => {
-  const s = read('schedule-import.jsx');
-  assert.match(s, /A week that is already published stays published\./);
-  assert.equal(/Imported weeks arrive unpublished/.test(s), false);
-});

@@ -26,7 +26,6 @@ function OffboardingDialog({ me, access, person, onClose, onSent }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
       <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
         <h2 style={{ fontSize: 18 }}>New offboarding notice</h2>
-        <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 6 }}>It goes to the offboarding approvers. Any one of them approves or denies it.</p>
         <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
           <label><div style={lab}>Person leaving</div>
             {person ? <div style={{ fontWeight: 600, fontSize: 14 }}>{person.name}{person.jobTitle ? ' · ' + person.jobTitle : ''}</div>

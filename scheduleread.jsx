@@ -137,7 +137,7 @@ function ScheduleRead({ me, access }) {
           both the office-scoped grid and the cross-office board and time-off data. ---- */
   const refresh = () => { load(); setTick(t => t + 1); };
   const offer = async (s) => {
-    try { await submitApproval('swapOffer', { office: s._office, weekKey, shiftId: s.id }); flash('Offer sent to your manager — teammates can claim the shift once they approve it.'); refresh(); }
+    try { await submitApproval('swapOffer', { office: s._office, weekKey, shiftId: s.id }); flash('Offer sent to your manager.'); refresh(); }
     catch (e) { flash(e.message, false); }
   };
   const retract = async (s) => {
@@ -146,7 +146,7 @@ function ScheduleRead({ me, access }) {
   };
   const claim = async (s) => {
     setConfirmClaim(null);
-    try { await submitApproval('swapAccept', { office: s._office, weekKey, shiftId: s.id }); flash('Claim sent to your manager — the schedule changes only when they approve.'); refresh(); }
+    try { await submitApproval('swapAccept', { office: s._office, weekKey, shiftId: s.id }); flash('Claim sent to your manager.'); refresh(); }
     catch (e) { flash(e.message, false); }
   };
   /* conflict check at claim time: warn, never block */
@@ -555,6 +555,56 @@ function ClaimConfirm({ confirmClaim, onCancel, onClaim }) {
 }
 
 /* the bell's time-off request form, opened from the Schedule tab */
+/* Monday-to-Friday days from start to end, both included (YYYY-MM-DD) */
+function weekdaysBetween(start, end) {
+  let n = 0;
+  for (let t = Date.parse(start + 'T00:00:00Z'), last = Date.parse(end + 'T00:00:00Z'); t <= last; t += 86400000) {
+    const dow = new Date(t).getUTCDay();
+    if (dow !== 0 && dow !== 6) n++;
+  }
+  return n;
+}
+
+/* a time-off request: first and last day, hours, type and an optional reason */
+const TIMEOFF_TYPES = ['Vacation', 'Sick', 'Unpaid', 'Bereavement'];
+function TimeOffForm({ onDone, onCancel, flash }) {
+  const [f, setF] = useState({ type: 'Vacation', start: '', end: '', hours: '', reason: '' });
+  const [busy, setBusy] = useState(false);
+  const inp = { width: '100%', padding: '9px 11px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
+  const lab = { fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 };
+  const days = f.start && f.end && f.end >= f.start ? Math.round((Date.parse(f.end) - Date.parse(f.start)) / 86400000) + 1 : 0;
+  // hours follow the dates (8 for each weekday) until the person types their own
+  const setDates = (patch) => setF(cur => { const n = { ...cur, ...patch }; const h = n.start && n.end && n.end >= n.start ? weekdaysBetween(n.start, n.end) * 8 : 0; return cur.hoursTyped ? n : { ...n, hours: h ? String(h) : '' }; });
+  const endBeforeStart = f.start && f.end && f.end < f.start;
+  const ok = days > 0 && Number(f.hours) > 0 && !busy;
+  const [err, setErr] = useState('');
+  const send = () => {
+    setBusy(true); setErr('');
+    submitApproval('timeoff', { start: f.start, end: f.end, hours: Number(f.hours), type: f.type, reason: f.reason.trim() })
+      .then(() => { flash && flash('Time-off request sent to your manager.'); onDone && onDone(); })
+      .catch(e => { setBusy(false); setErr('Couldn’t send the request: ' + ((e && e.message) || 'error')); });
+  };
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 12, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 9 }}>
+        <label><div style={lab}>First day</div><input type="date" value={f.start} onChange={e => setDates({ start: e.target.value, end: f.end || e.target.value })} style={inp} /></label>
+        <label><div style={lab}>Last day</div><input type="date" value={f.end} min={f.start || undefined} onChange={e => setDates({ end: e.target.value })} style={inp} /></label>
+        <label><div style={lab}>Type</div>
+          <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })} style={{ ...inp, appearance: 'auto' }}>{TIMEOFF_TYPES.map(t => <option key={t}>{t}</option>)}</select></label>
+        <label><div style={lab}>Hours</div><input type="number" min="1" step="0.5" value={f.hours} onChange={e => setF({ ...f, hours: e.target.value, hoursTyped: e.target.value !== '' })} style={inp} /></label>
+      </div>
+      {endBeforeStart && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>The last day is before the first day.</div>}
+      {days > 0 && !(Number(f.hours) > 0) && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>Enter the hours.</div>}
+      <textarea value={f.reason} onChange={e => setF({ ...f, reason: e.target.value })} rows={2} placeholder="Reason (optional)" style={{ ...inp, resize: 'vertical' }} />
+      {err && <div style={{ fontSize: 12.5, color: 'var(--danger)', marginTop: 9 }}>{err}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+        <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!ok} onClick={send}><Icon name="check" /> {busy ? 'Sending…' : 'Send request'}</button>
+      </div>
+    </div>
+  );
+}
+
 function TimeOffDialog({ flash, onClose }) {
   return (
     <>
@@ -592,4 +642,4 @@ function SchedulePage({ me, access }) {
   );
 }
 
-Object.assign(window, { ScheduleRead, SchedulePage });
+Object.assign(window, { ScheduleRead, SchedulePage, TimeOffForm });

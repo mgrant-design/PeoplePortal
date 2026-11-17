@@ -136,7 +136,7 @@ function SeeEveryoneModal({ name, pages, onCancel, onSave }) {
   );
   return ReactDOM.createPortal((
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
-      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
         <h2 style={{ fontSize: 18 }}>See Everyone</h2>
         <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 6 }}>{name} will see every employee, not only their own reports. This changes what they can see — not what they can change.</p>
         <div style={{ marginTop: 14 }}>
@@ -208,9 +208,9 @@ function SchedulesModal({ name, locations, teams, canEdit, onCancel, onSave }) {
   const flip = (setter) => (v) => setter(p => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
   return ReactDOM.createPortal((
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'oklch(0.3 0.03 250 / 0.4)', display: 'grid', placeItems: 'start center', overflowY: 'auto', padding: 20 }}>
-      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
-        <h2 style={{ fontSize: 18 }}>Schedules</h2>
-        <p style={{ color: 'var(--ink-2)', fontSize: 13.5, marginTop: 6 }}>The locations and teams {name} can schedule.</p>
+      <div className="card fade-in" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, padding: 'clamp(20px,4vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>Schedules</div>
+        <h2 style={{ fontSize: 20 }}>{name}</h2>
         <SchedSection title="Locations" allLabel="All locations" all={allLoc} setAll={setAllLoc} items={OFFICES} picked={locs} onFlip={flip(setLocs)} noneNote="None picked: their own office only." canEdit={canEdit} />
         <SchedSection title="Teams" allLabel="All teams" all={allTeams} setAll={setAllTeams} items={TEAMS} picked={tms} onFlip={flip(setTms)} noneNote="None picked: no team limit." canEdit={canEdit} />
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>

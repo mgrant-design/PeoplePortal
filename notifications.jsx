@@ -39,7 +39,7 @@ const ZEN_LINES = [
   { face: '(っ ˶ˆ ᵕ ˆ˶ )っ ♡', msg: 'phew, all done' },
 ];
 
-function ZenEmpty({ isMgr, onRequest, onCompose }) {
+function ZenEmpty({ isMgr, onCompose }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * ZEN_LINES.length));
   const [show, setShow] = useState(true);
   useEffect(() => {
@@ -71,64 +71,6 @@ function ZenEmpty({ isMgr, onRequest, onCompose }) {
         {onCompose && (
           <button onClick={onCompose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>send a message</button>
         )}
-        {onRequest && (
-          <button onClick={onRequest} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: softer, textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'var(--font-body)' }}>request time off</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* Monday-to-Friday days from start to end, both included (YYYY-MM-DD) */
-function weekdaysBetween(start, end) {
-  let n = 0;
-  for (let t = Date.parse(start + 'T00:00:00Z'), last = Date.parse(end + 'T00:00:00Z'); t <= last; t += 86400000) {
-    const dow = new Date(t).getUTCDay();
-    if (dow !== 0 && dow !== 6) n++;
-  }
-  return n;
-}
-
-/* a time-off request: start and end dates, hours, type and an optional reason; it goes
-   to the person's manager, then to the final time-off approver */
-const TIMEOFF_TYPES = ['Vacation', 'Sick', 'Unpaid', 'Bereavement'];
-function TimeOffForm({ onDone, onCancel, flash }) {
-  const [f, setF] = useState({ type: 'Vacation', start: '', end: '', hours: '', reason: '' });
-  const [busy, setBusy] = useState(false);
-  const inp = { width: '100%', padding: '9px 11px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--line)', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', fontFamily: 'var(--font-body)' };
-  const lab = { fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 5 };
-  const days = f.start && f.end && f.end >= f.start ? Math.round((Date.parse(f.end) - Date.parse(f.start)) / 86400000) + 1 : 0;
-  // hours follow the dates (8 for each weekday) until the person types their own
-  const setDates = (patch) => setF(cur => { const n = { ...cur, ...patch }; const h = n.start && n.end && n.end >= n.start ? weekdaysBetween(n.start, n.end) * 8 : 0; return cur.hoursTyped ? n : { ...n, hours: h ? String(h) : '' }; });
-  const endBeforeStart = f.start && f.end && f.end < f.start;
-  const ok = days > 0 && Number(f.hours) > 0 && !busy;
-  const finalEmail = (window.HR && window.HR.approvers && window.HR.approvers.timeoffFinal) || '';
-  const finalEmp = finalEmail && typeof findByEmail === 'function' ? findByEmail(finalEmail) : null;
-  const send = () => {
-    setBusy(true);
-    submitApproval('timeoff', { start: f.start, end: f.end, hours: Number(f.hours), type: f.type, reason: f.reason.trim() })
-      .then(() => { flash && flash('Time-off request sent to your manager.'); onDone && onDone(); })
-      .catch(e => { setBusy(false); flash && flash('Couldn’t send the request (' + ((e && e.message) || 'error') + ')', false); });
-  };
-  return (
-    <div className="card" style={{ padding: 14, marginBottom: 12, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 9 }}>
-        <label><div style={lab}>First day</div><input type="date" value={f.start} onChange={e => setDates({ start: e.target.value, end: f.end || e.target.value })} style={inp} /></label>
-        <label><div style={lab}>Last day</div><input type="date" value={f.end} min={f.start || undefined} onChange={e => setDates({ end: e.target.value })} style={inp} /></label>
-        <label><div style={lab}>Type</div>
-          <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })} style={{ ...inp, appearance: 'auto' }}>{TIMEOFF_TYPES.map(t => <option key={t}>{t}</option>)}</select></label>
-        <label><div style={lab}>Hours</div><input type="number" min="1" step="0.5" value={f.hours} onChange={e => setF({ ...f, hours: e.target.value, hoursTyped: e.target.value !== '' })} style={inp} /></label>
-      </div>
-      {endBeforeStart && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>The last day is before the first day.</div>}
-      {days > 0 && !(Number(f.hours) > 0) && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>Enter the hours.</div>}
-      <textarea value={f.reason} onChange={e => setF({ ...f, reason: e.target.value })} rows={2} placeholder="Reason (optional)" style={{ ...inp, resize: 'vertical' }} />
-      <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 9, display: 'flex', gap: 7, alignItems: 'flex-start' }}>
-        <Icon name="link" style={{ width: 13, height: 13, color: 'var(--accent)', flex: 'none', marginTop: 1 }} />
-        {`Goes to your manager, then to ${finalEmp ? finalEmp.name : 'the final approver'}, who approves it as paid or unpaid.`}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-        <button className="btn btn-quiet" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} disabled={!ok} onClick={send}><Icon name="check" /> {busy ? 'Sending…' : 'Send request'}</button>
       </div>
     </div>
   );
@@ -186,7 +128,6 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   const [composing, setComposing] = useState(false);
   const [historyMode, setHistoryMode] = useState(false);
   const [openByOffice, setOpenByOffice] = useState({});
-  const [adding, setAdding] = useState(false);
   const [sndChoice, setSndChoice] = useState(() => (window.PDSound ? window.PDSound.getChoice(me.id) : 1));
   const [sndMuted, setSndMuted] = useState(() => (window.PDSound ? window.PDSound.isMuted() : false));
   const sndNames = window.PDSound ? window.PDSound.names() : ['Sound 1', 'Sound 2'];
@@ -283,7 +224,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
           <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: (fullyEmpty && !historyMode && !adding && !composing) ? 'flex' : 'block' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: (fullyEmpty && !historyMode && !composing) ? 'flex' : 'block' }}>
           {historyMode ? (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -293,7 +234,7 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
               {dismissed.length === 0 && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Nothing dismissed yet.</p>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{dismissed.map(n => NoticeCard(n, true))}</div>
             </div>
-          ) : (fullyEmpty && !adding && !composing) ? <ZenEmpty isMgr={isMgr} onRequest={() => setAdding(true)} onCompose={() => setComposing(true)} /> : <>
+          ) : (fullyEmpty && !composing) ? <ZenEmpty isMgr={isMgr} onCompose={() => setComposing(true)} /> : <>
           {/* NEEDS YOU — approvals waiting on this person, then action-required notices */}
           {(appr.toApprove.length > 0 || needYou.length > 0) && (
             <div style={{ marginBottom: 24 }}>
@@ -358,16 +299,6 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
             </div>
           )}
 
-          {/* time off — the form; sent requests show under My requests */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Icon name="clock" style={{ width: 16, height: 16, color: 'var(--accent)' }} />
-              <h3 style={{ fontSize: 14, flex: 1 }}>Time off</h3>
-              {!adding && <button className="btn btn-ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => setAdding(true)}><Icon name="plus" /> Request</button>}
-            </div>
-            {adding ? <TimeOffForm flash={flash} onCancel={() => setAdding(false)} onDone={() => { setAdding(false); reloadApprovals(); }} />
-              : <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>{appr.mine.some(r => r.kind === 'timeoff') ? 'Your requests are under My requests.' : 'No time-off requests yet.'}</p>}
-          </div>
           </>}
         </div>
       </div>
@@ -375,4 +306,4 @@ function NotificationsPanel({ me, access, onClose, flash, notices = [], onSend, 
   );
 }
 
-Object.assign(window, { NotificationsPanel, TimeOffForm });
+Object.assign(window, { NotificationsPanel });

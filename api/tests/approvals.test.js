@@ -188,7 +188,7 @@ test('nobody starts a notice for themselves, for someone who has left, or twice 
 
 test('the time-off form fills 8 hours for each weekday in the range, not for weekend days', () => {
   const fs = require('fs'), path = require('path'), vm = require('vm');
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'notifications.jsx'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'scheduleread.jsx'), 'utf8');
   const at = src.indexOf('function weekdaysBetween(');
   assert.ok(at >= 0);
   const ctx = {}; vm.runInNewContext(src.slice(at, src.indexOf('\n}', at) + 2) + '\nthis.f = weekdaysBetween;', ctx);
@@ -196,7 +196,6 @@ test('the time-off form fills 8 hours for each weekday in the range, not for wee
   assert.equal(ctx.f('2026-11-14', '2026-11-15'), 0);   // a weekend
   assert.equal(ctx.f('2026-11-16', '2026-11-20'), 5);
   assert.match(src, /weekdaysBetween\(n\.start, n\.end\) \* 8/);
-  assert.match(src, /flash\('Couldn’t send the request \(' \+ \(\(e && e\.message\) \|\| 'error'\) \+ '\)', false\)/);
 });
 
 test('reading approvals asks the database for the matching requests instead of reading them all', async () => {

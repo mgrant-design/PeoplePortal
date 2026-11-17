@@ -6,7 +6,7 @@
 */
 
 const ATS_STAGES = [
-  { id: 'applied',   label: 'New Applicant', badge: 'badge-todo' },
+  { id: 'applied',   label: 'New Applicant', header: 'Applicants', badge: 'badge-todo' },
   { id: 'screening', label: 'Screening Call', badge: 'badge-prog' },
   { id: 'interview', label: 'In-Person Interview', badge: 'badge-prog' },
   { id: 'working',   label: 'Working Interview', badge: 'badge-prog' },
@@ -1028,7 +1028,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
           {visibleStages.map(s => (
             <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{s.label}</span>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{s.header || s.label}</span>
                 <span className={`badge ${s.badge}`} style={{ fontSize: 10.5 }}>{count(s.id)}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: 9, minHeight: 90, flex: 1 }}>

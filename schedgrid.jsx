@@ -266,7 +266,7 @@ function LeaveDraftsDialog({ onStay, onLeave }) {
       <div onClick={onStay} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
       <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '12vh', left: 0, right: 0, margin: '0 auto', zIndex: 89, width: 'min(420px, calc(100vw - 32px))', padding: 'clamp(18px,4vw,24px)' }}>
         <h3 style={{ fontSize: 17, marginBottom: 6 }}>You have unpublished changes. Leave anyway?</h3>
-        <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5 }}>Nobody sees them until you publish. They stay in the Builder, and they’re there when you come back to this week.</p>
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5 }}>They’ll be here when you come back.</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <button onClick={onStay} className="btn btn-ghost">Stay</button>
           <button onClick={onLeave} className="btn btn-primary">Leave anyway</button>

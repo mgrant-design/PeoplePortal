@@ -48,6 +48,8 @@
   --ok-soft: oklch(0.95 0.04 155);
   --warn:  oklch(0.74 0.13 75);
   --warn-soft: oklch(0.95 0.05 75);
+  --danger: oklch(0.58 0.16 25);
+  --danger-soft: oklch(0.95 0.04 25);
   --info:  var(--accent);
 
   /* Shape */
@@ -215,6 +217,7 @@ html:not([data-theme="dark"])[data-tint="tinted"][data-accent="yellow"] {
   --accent-softer: oklch(0.29 0.05 var(--accent-hue));
   --ok-soft:   oklch(0.33 0.06 155);
   --warn-soft: oklch(0.35 0.07 75);
+  --danger-soft: oklch(0.35 0.07 25);
   --teal-soft: oklch(0.32 0.05 195);
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.35);
   --shadow-md: 0 2px 8px oklch(0 0 0 / 0.4);

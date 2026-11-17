@@ -15,6 +15,7 @@
   "routes": [
     { "route": "/*.js", "headers": { "Cache-Control": "no-cache, must-revalidate" } },
     { "route": "/*.jsx", "headers": { "Cache-Control": "no-cache, must-revalidate" } },
+    { "route": "/*.css", "headers": { "Cache-Control": "no-cache, must-revalidate" } },
     { "route": "/version.json", "headers": { "Cache-Control": "no-cache, no-store, must-revalidate" } }
   ]
 }
