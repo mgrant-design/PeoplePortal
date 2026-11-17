@@ -136,6 +136,12 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
     const stored = (typeof getRelations === 'function') ? getRelations(emp.id) : [];
     if (stored.length) setEvents(stored);
   }, [emp.id]);
+  // this year's review for the Performance tab, as the server holds it
+  const [review, setReview] = useState(null);
+  useEffect(() => {
+    if (!showRelations || typeof pdApi !== 'function') return;
+    pdApi('/api/reviews', { query: { empId: emp.id } }).then(d => setReview(d.review || null)).catch(() => setReview(null));
+  }, [emp.id]);
   const [logging, setLogging] = useState(false);
   const [filter, setFilter] = useState('All');
   const sorted = [...events].sort((a, b) => b.date.localeCompare(a.date));
@@ -229,8 +235,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
       )}
 
       {tab === 'Performance' && (() => {
-        const recs = (typeof loadReviews === 'function') ? loadReviews() : {};
-        const rec = recs[emp.id];
+        const rec = review;
         const st = (typeof reviewStatus === 'function') ? reviewStatus(rec) : 'Not started';
         const avg = (side) => { if (!rec || !rec[side]) return '—'; const v = Object.values(rec[side].ratings || {}); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '—'; };
         return (

@@ -380,8 +380,6 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   const { knowledge, routing } = agentCfg;
   const saveKnowledge = agentCfg.saveKnowledge;
   const saveRouting = agentCfg.saveRouting;
-  const [reviewQ, setReviewQ] = useState(() => { try { return JSON.parse(localStorage.getItem('pd_review_questions')) || REVIEW_QUESTIONS; } catch (e) { return REVIEW_QUESTIONS; } });
-  const saveReviewQ = (q) => { setReviewQ(q); try { localStorage.setItem('pd_review_questions', JSON.stringify(q)); } catch (e) {} };
   const reviewList = seesAll(access, 'reviews') ? EMPLOYEES.filter(e => e.status === 'Active')
     : access.caps.viewTeam ? pageEmployees(me, access, 'reviews').filter(e => e.id !== me.id && e.status === 'Active') : [me];
   const [toast, setToast] = useState(null);
@@ -389,7 +387,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   // the old duration cut them off before they could be read.
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 5000); };
   const tcOffices = useMemo(() => Array.from(new Set([me.loc, ...(window.HR.offices || []).map(o => normLoc(o.name))].filter(Boolean))), [me]);
-  const tcTeam = seesAll(access, 'timeclock') ? EMPLOYEES.filter(e => e.status === 'Active').slice(0, 12) : pageEmployees(me, access, 'timeclock').filter(e => e.id !== me.id && e.status === 'Active');
+  const tcTeam = seesAll(access, 'timeclock') ? EMPLOYEES.filter(e => e.status === 'Active' && e.id !== me.id) : pageEmployees(me, access, 'timeclock').filter(e => e.id !== me.id && e.status === 'Active');
 
   const scopedIds = useMemo(() => new Set(scopedEmployees(me, access).map(e => e.id)), [me, access]);
   /* Opening someone's full record is visibility, so See Everyone on 'emprecord' grants it.
@@ -544,8 +542,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'library': return <LearningLibrary me={me} access={access} flash={flash} />;
       case 'scrubs': return <Scrubs me={me} access={access} flash={flash} />;
       case 'feedback': return <Feedback me={me} access={access} flash={flash} />;
-      case 'reviews': return <Reviews me={me} access={access} questions={reviewQ} onQuestions={saveReviewQ} list={reviewList} />;
-      case 'timeclock': return <TimeClock me={me} access={access} offices={tcOffices} teamList={tcTeam} flash={flash} paychexOn={flagOn('paychex')} />;
+      case 'reviews': return <Reviews me={me} access={access} list={reviewList} flash={flash} />;
+      case 'timeclock': return <TimeClock me={me} access={access} offices={tcOffices} teamList={tcTeam} flash={flash} />;
       case 'offboarding': return <Offboarding me={me} access={access} viewOnly={!access.caps.offboard && access.caps.offboardView} onOpenEmp={openEmp} />;
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;

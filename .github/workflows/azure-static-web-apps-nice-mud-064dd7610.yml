@@ -28,6 +28,12 @@ jobs:
         run: cd api && node -e "require('@azure/storage-blob'); require('google-auth-library'); require('googleapis')"
       # Stamps the commit being deployed into version.json, read by the login screen and
       # /api/version. Derived from the commit itself, so it can never drift or be forgotten.
+      - name: Run the tests
+        run: cd api && node --test tests/
+      - name: Compile the screens
+        run: |
+          mkdir -p "$RUNNER_TEMP/compile" && cd "$RUNNER_TEMP/compile" && npm init -y > /dev/null && npm install --no-audit --no-fund --silent @babel/core@7 @babel/preset-react@7
+          node -e "const fs=require('fs'),path=require('path'),babel=require('@babel/core');const dir=process.env.GITHUB_WORKSPACE;let bad=0;const files=fs.readdirSync(dir).filter(f=>f.endsWith('.jsx'));for(const f of files){try{babel.transformSync(fs.readFileSync(path.join(dir,f),'utf8'),{presets:['@babel/preset-react'],filename:f,babelrc:false,configFile:false});}catch(e){bad++;console.log('Does not compile: '+f+' - '+String(e.message).split(String.fromCharCode(10))[0]);}}console.log('Screen files compiled: '+(files.length-bad)+' of '+files.length);process.exit(bad?1:0);"
       - name: Stamp deployed version
         env:
           SHA: ${{ github.sha }}

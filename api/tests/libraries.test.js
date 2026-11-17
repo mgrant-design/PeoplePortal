@@ -29,3 +29,11 @@ test('a build installs exactly the locked versions on the live Node version and 
 test('installed libraries are never committed', () => {
   assert.match(fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8'), /^node_modules\/?$/m);
 });
+test('every deploy compiles each screen file, and runs the tests, before anything goes live', () => {
+  const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'azure-static-web-apps-nice-mud-064dd7610.yml'), 'utf8');
+  const deploy = wf.indexOf('Build And Deploy');
+  const compile = wf.indexOf('Compile the screens'), tests = wf.indexOf('Run the tests');
+  assert.ok(compile > 0 && compile < deploy, 'compile step before the deploy');
+  assert.ok(tests > 0 && tests < deploy, 'test step before the deploy');
+  assert.match(wf, /@babel\/core@7/); assert.match(wf, /@babel\/preset-react@7/);
+});

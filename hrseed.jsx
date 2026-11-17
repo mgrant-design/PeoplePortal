@@ -6,12 +6,11 @@
 
 /* ============================ tardiness rules ============================ */
 const LATE_GRACE_MIN = 5;                 // late = clock-in > scheduled start + grace
-const SCHED_START_MIN = 8 * 60;           // 8:00 AM default scheduled start
 const COACHING_LATE_THRESHOLD = 3;        // # lates in a pay period that suggests coaching
 
-function punchSchedStart(p) { return (p && p.schedStartMin != null) ? p.schedStartMin : SCHED_START_MIN; }
+/* late is measured against the person's published shift that day; with no shift there is nothing to be late for */
 function punchInMinuteOfDay(p) { const d = new Date(p.in); return d.getHours() * 60 + d.getMinutes(); }
-function punchLateMin(p) { return Math.max(0, punchInMinuteOfDay(p) - punchSchedStart(p) - LATE_GRACE_MIN); }
+function punchLateMin(p) { return (!p || p.schedStartMin == null) ? 0 : Math.max(0, punchInMinuteOfDay(p) - p.schedStartMin - LATE_GRACE_MIN); }
 function isLatePunch(p) { return punchLateMin(p) > 0; }
 function tardiness(punches) {
   const list = (punches || []).filter(isLatePunch);
@@ -51,7 +50,7 @@ const REVIEWS_SEED = {};
 const SEED_AUTOMATIONS = [];
 
 Object.assign(window, {
-  LATE_GRACE_MIN, SCHED_START_MIN, COACHING_LATE_THRESHOLD,
+  LATE_GRACE_MIN, COACHING_LATE_THRESHOLD,
   punchLateMin, isLatePunch, tardiness, paychexSeed,
   loadRelations, persistRelations, getRelations, addRelationEvent,
   RELATIONS_SEED, REVIEWS_SEED, SEED_AUTOMATIONS, loadAutomations, persistAutomations,

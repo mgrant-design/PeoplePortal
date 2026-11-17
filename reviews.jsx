@@ -1,10 +1,7 @@
-/* reviews.jsx — performance reviews. HR/exec upload questions; employee self-review +
-   manager review; results gated by role. Persists to localStorage (pd_reviews). */
+/* reviews.jsx — the yearly performance review: the employee's self-review and the
+   manager's review, kept on the server (/api/reviews). The employee sees the manager's
+   review once it is shared. HR and leadership set the questions. */
 
-/* NO BACKEND. Reviews have no /api endpoint yet — nothing is persisted. In-memory
-   only: results live for the session and are gone on reload. No localStorage. */
-function loadReviews() { return {}; }
-function persistReviews(r) {}
 function blankSide() { return { ratings: {}, comments: {}, overall: '', done: false }; }
 function reviewStatus(rec) {
   if (!rec) return 'Not started';
@@ -42,7 +39,7 @@ function ReviewQuestionsEditor({ questions, onChange }) {
     setEdit(null);
   };
   const del = (i) => onChange(questions.filter((_, j) => j !== i));
-  const Form = () => (
+  const form = (
     <div className="card" style={{ padding: 12, marginBottom: 10, borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
       <input value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })} placeholder="Category (e.g. Teamwork)" style={{ ...inp, marginBottom: 8, fontWeight: 600 }} />
       <textarea value={draft.text} onChange={e => setDraft({ ...draft, text: e.target.value })} rows={2} placeholder="Question / competency to rate…" style={{ ...inp, resize: 'vertical', lineHeight: 1.45 }} />
@@ -58,9 +55,9 @@ function ReviewQuestionsEditor({ questions, onChange }) {
         <p style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>These questions appear on every self-review and manager review. Edit anytime.</p>
         <button className="btn btn-ghost" onClick={() => start('new')}><Icon name="plus" /> Add question</button>
       </div>
-      {edit === 'new' && <Form />}
+      {edit === 'new' && form}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {questions.map((q, i) => edit === i ? <Form key={q.id} /> : (
+        {questions.map((q, i) => edit === i ? <React.Fragment key={q.id}>{form}</React.Fragment> : (
           <div key={q.id} className="card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <span className="badge badge-prog" style={{ marginBottom: 6 }}>{q.category}</span>
@@ -76,7 +73,7 @@ function ReviewQuestionsEditor({ questions, onChange }) {
 }
 
 /* ---- Review detail (fill self or manager side) ---- */
-function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack }) {
+function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack, busy, err }) {
   const isSelf = me.id === emp.id;
   const isMgr = access.caps.viewAll || access.caps.viewTeam;
   const editable = isSelf ? 'self' : (isMgr ? 'manager' : null);
@@ -89,9 +86,7 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
   const setRating = (qid, v) => setSide(s => ({ ...s, ratings: { ...s.ratings, [qid]: v } }));
   const setComment = (qid, v) => setSide(s => ({ ...s, comments: { ...s.comments, [qid]: v } }));
   const submit = (markDone) => {
-    const next = { self, manager: mgr };
-    next[editable] = { ...side, done: markDone };
-    onSave(emp.id, next);
+    onSave(emp.id, editable, { ...side, done: markDone });
   };
 
   const cats = [...new Set(questions.map(q => q.category))];
@@ -157,11 +152,12 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
         </div>
       )}
 
+      {err && <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 10, textAlign: 'right' }}>{err}</div>}
       {editable && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost" onClick={() => submit(false)}><Icon name="check" /> Save draft</button>
-          <button className="btn btn-primary" onClick={() => submit(true)}><Icon name="check" /> Submit {editable === 'self' ? 'self-review' : 'review'}</button>
-          {editable === 'manager' && (rec && rec.manager && rec.manager.done) && !(rec && rec.shared) && <button className="btn btn-primary" onClick={() => onShare(emp.id)}><Icon name="mail" /> Share with employee</button>}
+          <button className="btn btn-ghost" disabled={busy} onClick={() => submit(false)}><Icon name="check" /> Save draft</button>
+          <button className="btn btn-primary" disabled={busy} onClick={() => submit(true)}><Icon name="check" /> Submit {editable === 'self' ? 'self-review' : 'review'}</button>
+          {editable === 'manager' && (rec && rec.manager && rec.manager.done) && !(rec && rec.shared) && <button className="btn btn-primary" disabled={busy} onClick={() => onShare(emp.id)}><Icon name="mail" /> Share with employee</button>}
         </div>
       )}
       {!editable && <p style={{ fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center' }}>You have view access to this review.</p>}
@@ -170,24 +166,42 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
 }
 
 /* ---- Reviews home (role-aware) ---- */
-function Reviews({ me, access, questions, onQuestions, list }) {
-  const [reviews, setReviews] = useState(loadReviews);
+function Reviews({ me, access, list, flash }) {
+  const [reviews, setReviews] = useState({});        // empId → this year's review, as the server holds it
+  const [questions, setQuestions] = useState(REVIEW_QUESTIONS);
   const [sel, setSel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   const isHR = access.caps.viewAll;
   const isMgr = access.caps.viewTeam;
   const isLeader = isHR || isMgr;
+  const editsQuestions = access.flags.isHR || access.flags.isExec;
   const [tab, setTab] = useState('Reviews');
 
-  const save = (empId, data) => { const next = { ...reviews, [empId]: { ...reviews[empId], ...data } }; setReviews(next); persistReviews(next); };
-  const share = (empId) => { const next = { ...reviews, [empId]: { ...reviews[empId], shared: true } }; setReviews(next); persistReviews(next); };
+  const load = () => Promise.all([
+    pdApi('/api/reviews').then(d => { if (d.questions) setQuestions(d.questions); setReviews(r => ({ ...r, [me.id]: d.review })); }),
+    isLeader ? pdApi('/api/reviews', { query: { team: 1 } }).then(d => setReviews(r => { const n = { ...r }; (d.reviews || []).forEach(x => { n[x.empId] = x; }); return n; })) : null,
+  ]).catch(e => setErr('Couldn’t load reviews: ' + e.message));
+  useEffect(() => { load(); }, []);
+  /* one change on the server, then the page shows what the server holds */
+  const send = (body, okText) => {
+    setBusy(true); setErr('');
+    return pdApi('/api/reviews', { method: 'POST', body })
+      .then(() => { if (okText && flash) flash(okText); return load(); })
+      .catch(e => setErr(e.message))
+      .finally(() => setBusy(false));
+  };
+  const save = (empId, side, data) => send({ action: 'save', empId, side, data }, data.done ? 'Review submitted.' : 'Draft saved.');
+  const share = (empId) => send({ action: 'share', empId }, 'Shared with the employee.');
+  const saveQuestions = (qs) => send({ action: 'questions', questions: qs }, 'Questions saved.');
 
   // employee with no team view → straight to own review
   if (!isLeader) {
-    return <ReviewDetail emp={me} me={me} access={access} questions={questions} rec={reviews[me.id]} onSave={save} onShare={share} onBack={() => {}} />;
+    return <ReviewDetail key={JSON.stringify(reviews[me.id] || {})} emp={me} me={me} access={access} questions={questions} rec={reviews[me.id]} onSave={save} onShare={share} onBack={() => {}} busy={busy} err={err} />;
   }
   if (sel) {
     const emp = list.find(e => e.id === sel) || me;
-    return <ReviewDetail emp={emp} me={me} access={access} questions={questions} rec={reviews[sel]} onSave={save} onShare={share} onBack={() => { setReviews(loadReviews()); setSel(null); }} />;
+    return <ReviewDetail key={JSON.stringify(reviews[sel] || {})} emp={emp} me={me} access={access} questions={questions} rec={reviews[sel]} onSave={save} onShare={share} onBack={() => setSel(null)} busy={busy} err={err} />;
   }
 
   return (
@@ -197,7 +211,8 @@ function Reviews({ me, access, questions, onQuestions, list }) {
         <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>{isHR ? 'Company-wide reviews · manage questions and track completion' : 'Your team’s reviews'}</p>
       </div>
 
-      {isHR && (
+      {err && <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 12 }}>{err}</div>}
+      {editsQuestions && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)' }}>
           {['Reviews', 'Questions'].map(tb => (
             <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>
@@ -205,8 +220,8 @@ function Reviews({ me, access, questions, onQuestions, list }) {
         </div>
       )}
 
-      {isHR && tab === 'Questions'
-        ? <ReviewQuestionsEditor questions={questions} onChange={onQuestions} />
+      {editsQuestions && tab === 'Questions'
+        ? <ReviewQuestionsEditor questions={questions} onChange={saveQuestions} />
         : (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="card" style={{ border: 'none', borderRadius: 0, padding: '11px var(--pad)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>
@@ -234,4 +249,4 @@ function Reviews({ me, access, questions, onQuestions, list }) {
   );
 }
 
-Object.assign(window, { Reviews, reviewStatus, loadReviews });
+Object.assign(window, { Reviews, reviewStatus });
