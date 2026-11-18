@@ -1,4 +1,4 @@
-/* dashboard.jsx — role-adaptive landing. Employee = self/onboarding; manager+/HR = team ops. */
+/* dashboard.jsx — role-adaptive landing. Employee = their own shortcuts; manager+/HR = team ops. */
 
 function StatCard({ icon, label, value, sub, tone = 'accent' }) {
   const bg = tone === 'ok' ? 'var(--ok-soft)' : tone === 'warn' ? 'var(--warn-soft)' : 'var(--accent-soft)';
@@ -44,7 +44,6 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
     // the uniform tile shows once the person may order and has something free this year
     const scrubReady = (() => { const el = window.PD_UNIFORMS ? PD_UNIFORMS.eligibility(me, [], Date.now()) : null; return !!el && el.canOrder && el.role === 'clinical' && el.reason === ''; })();
     const tiles = [
-      { id: 'onboarding', icon: 'sparkle', t: 'My onboarding', d: 'Finish your setup tasks' },
       { id: 'resources', icon: 'bell', t: 'Ask Riley', d: 'Instant answers, any time' },
       ...(scrubReady ? [{ id: 'scrubs', icon: 'shirt', t: 'Order uniforms', d: 'Your uniform allowance is ready' }] : []),
       { id: 'profile', icon: 'users', t: 'My profile', d: 'Add a photo & review details' },
@@ -65,7 +64,6 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
           <div className="eyebrow" style={{ marginBottom: 10 }}>Welcome back</div>
           <h1 style={{ fontSize: 'clamp(24px,3.4vw,34px)' }}>{greeting}, {me.first}.</h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 15.5, marginTop: 10, maxWidth: 540, lineHeight: 1.5 }}>You’re a <b style={{ color: 'var(--ink)' }}>{me.jobTitle}</b> at Pure Dental {me.loc}. Here’s your space.</p>
-          <button className="btn btn-primary btn-lg" style={{ marginTop: 18 }} onClick={() => onNav('onboarding')}><Icon name="bolt" /> Continue onboarding</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 'var(--gap)' }}>
           {tiles.map(t => (

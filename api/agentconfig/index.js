@@ -1,7 +1,7 @@
 /* api/agentconfig/index.js — read & write Riley's editable config (the Agent Dashboard).
-   GET  /api/agentconfig                → { knowledge, routing, channels }
+   GET  /api/agentconfig                → { knowledge, routing }
    POST /api/agentconfig  { section, value }
-        → replace ONE section (knowledge | routing | channels) of the riley-config doc.
+        → replace ONE section (knowledge | routing) of the riley-config doc.
 
    This is what makes the Agent Dashboard's editor real: Riley's knowledge base, routing
    rules, and channel toggles move out of per-browser localStorage into Cosmos, so an edit
@@ -18,7 +18,7 @@
 const { handler, resolveCaller, HttpError } = require('../_shared/caller');
 const { cosmos, listAll, collPath } = require('../_shared/cosmos');
 
-const SECTIONS = ['knowledge', 'routing', 'channels'];
+const SECTIONS = ['knowledge', 'routing'];
 const DOC_ID = 'riley-config';
 const APP = collPath('appState');
 
@@ -29,7 +29,7 @@ module.exports = handler(['GET', 'POST'], async ({ req, body }) => {
 
   if (req.method === 'GET') {
     const doc = cfg || {};
-    return { status: 200, body: { knowledge: doc.knowledge || [], routing: doc.routing || [], channels: doc.channels || [] } };
+    return { status: 200, body: { knowledge: doc.knowledge || [], routing: doc.routing || [] } };
   }
 
   if (!c.access.flags.isAdmin) throw new HttpError(403, 'Only an administrator can edit the agent configuration');

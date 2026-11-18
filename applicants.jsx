@@ -1,8 +1,7 @@
 /* applicants.jsx — Applicant Tracking (ATS). Manager+ only.
    A hiring pipeline board (Applied → Screening → Interview → Offer → Hired),
-   applicant detail, manual add + resume import (parsing behind an integration
-   flag), and a one-click "Hire → start onboarding" that hands off to the
-   onboarding agent.
+   applicant detail, manual add with resume import, and the offer: drafted here, approved
+   by the offer approver, signed by the candidate, which creates the employee.
 */
 
 const ATS_STAGES = [
@@ -70,6 +69,10 @@ function atsFmt(d) {
   if (!p) return d || '—';
   return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][p.mo - 1] + ' ' + p.d;
 }
+/* the first name for a button or message; a record with no name still draws */
+function atsFirst(name) { return String(name || '').trim().split(' ')[0] || 'the candidate'; }
+/* the calendar day of a saved time, or nothing when there is no time */
+function atsDay(ms) { const d = new Date(ms); return ms && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; }
 /* average of interviewer ratings, falling back to the single rating field */
 function avgRating(a) {
   const f = (a.feedback || []).filter(x => x.rating);
@@ -226,7 +229,7 @@ function DraftCard({ d, offices, onChange, onRemove }) {
   );
 }
 
-function AddApplicant({ offices, parseOn, onSave, onClose, flash }) {
+function AddApplicant({ offices, onSave, onClose, flash }) {
   const [drafts, setDrafts] = useState([]);
   const [drag, setDrag] = useState(false);
   const [manual, setManual] = useState(false);
@@ -461,7 +464,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
             {isApprover
-              ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
+              ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
               : !offerApprover().email
               ? <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> No offer approver is set yet. An admin sets it on the Organization page.</span>
               : <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {offerApprover().name} for approval</button>}
@@ -475,7 +478,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           {summaryBlock}
           {isApprover ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {a.name.split(' ')[0]}</button>
+              <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
               <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back to draft</button>
               {canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet. Send it back to draft, add the pay, then approve.</span>}
               {!canPay && noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay is on file yet. HR or Accounting adds it before this can be sent.</span>}
@@ -492,7 +495,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           {o.status === 'signed' ? (
             <div className="fade-in" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--ok-soft)' }}>
               <Icon name="check" style={{ width: 18, height: 18, color: 'var(--ok)', flex: 'none', marginTop: 1 }} />
-              <div style={{ fontSize: 13, color: 'oklch(0.4 0.12 155)', lineHeight: 1.5 }}>Accepted &amp; e-signed by <b>{o.signature}</b> on {atsFmt(new Date(o.signedAt).toISOString().slice(0, 10))}. The onboarding team was notified and onboarding has started.</div>
+              <div style={{ fontSize: 13, color: 'oklch(0.4 0.12 155)', lineHeight: 1.5 }}>Accepted &amp; e-signed by <b>{o.signature}</b> on {atsFmt(atsDay(o.signedAt))}. The onboarding team was notified and onboarding has started.</div>
             </div>
           ) : o.status === 'declined' ? (
             /* Declined: the two things you can do about it are the two things offered —
@@ -503,7 +506,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: 'oklch(0.42 0.11 60)' }}>Offer declined — {o.declineReason || 'no reason given'}</div>
                   {o.declineNote && <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.5 }}>{o.declineNote}</div>}
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Recorded by {o.declinedBy || offerApprover().name}{o.declinedAt ? ' on ' + atsFmt(new Date(o.declinedAt).toISOString().slice(0, 10)) : ''}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>Recorded by {o.declinedBy || offerApprover().name}{o.declinedAt ? ' on ' + atsFmt(atsDay(o.declinedAt)) : ''}</div>
                 </div>
               </div>
               {isApprover && (
@@ -560,7 +563,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
 }
 
 /* ------- Applicant detail ------- */
-function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onSendHours, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onHire, onReject, flash }) {
+function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, onReopen, onEditInfo, onFeedback, onWI, onSendHours, onScheduleWI, onRemoveWI, onWIRequired, onOffer, onDraftOffer, onSubmitOffer, onApproveOffer, onSendBackOffer, onSignOffer, onReject, flash }) {
   // Most recent entry from me — with multiple rounds allowed, "my feedback" means the
   // latest one, not the first one found.
   const myFb = [...(a.feedback || [])].reverse().find(f => f.byId === me.id);
@@ -791,7 +794,7 @@ function ApplicantCard({ a, onOpen }) {
 }
 
 /* ------- Main board ------- */
-function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplicantId, onOpenedApplicant }) {
+function Applicants({ me, access, paychexOn, flash, openApplicantId, onOpenedApplicant }) {
   const offices = useMemo(() => Array.from(new Set([...(window.HR.offices || []).map(o => o.name), me.loc].filter(Boolean))), [me]);
   const [list, setList] = useState(null);
   const [sel, setSel] = useState(null);
@@ -846,7 +849,7 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     try {
       await pdApi('/api/applicants', { method: 'POST', body: next });
       setList(cur => (cur || []).map(a => a.id === id ? next : a));
-      if (flash) flash(`${next.workingInterview.hours}h sent to Accounting for ${r.name.split(' ')[0]}`);
+      if (flash) flash(`${next.workingInterview.hours}h sent to Accounting for ${atsFirst(r.name)}`);
     } catch (e) {
       if (flash) flash('Couldn’t send the hours (' + ((e && e.message) || 'error') + ')');
     }
@@ -962,7 +965,6 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
     built.forEach(saveApplicant);
     if (flash) flash(built.length > 1 ? built.length + ' applicants added to the pipeline' : (built[0] ? built[0].name + ' added to the pipeline' : 'Applicant added'));
   };
-  const hire = (a) => { update(a.id, { stage: 'hired', hiredAt: Date.now() }); onHire && onHire(a); setSel(null); };
 
   if (list === null) return <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh', color: 'var(--ink-3)' }}><span className="spin" style={{ width: 22, height: 22, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /></div>;
 
@@ -1056,8 +1058,8 @@ function Applicants({ me, access, parseOn, paychexOn, onHire, flash, openApplica
         <Icon name="bolt" style={{ width: 14, height: 14 }} /> Once an offer is sent, the applicant pipeline is done — the candidate's signature hands them straight to onboarding, no re-entry of their details.
       </p>
 
-      {adding && <AddApplicant offices={offices} parseOn={parseOn} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
-      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onSendHours={sendWIHours} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onHire={hire} onReject={reject} flash={flash} />}
+      {adding && <AddApplicant offices={offices} onSave={addApplicant} onClose={() => setAdding(false)} flash={flash} />}
+      {selApp && <ApplicantDetail a={selApp} access={access} me={me} offices={offices} paychexOn={paychexOn} onClose={() => setSel(null)} onStage={setStage} onReopen={reopen} onEditInfo={update} onFeedback={postFeedback} onWI={setWI} onSendHours={sendWIHours} onScheduleWI={scheduleWI} onRemoveWI={removeWI} onWIRequired={setWIRequired} onOffer={setOffer} onDraftOffer={initOffer} onSubmitOffer={submitOfferForApproval} onApproveOffer={approveOffer} onSendBackOffer={sendBackOffer} onSignOffer={signOffer} onReject={reject} flash={flash} />}
     </div>
   );
 }

@@ -128,7 +128,6 @@ function Profile({ emp, access, onNav }) {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 'var(--gap)' }}>
-        <button className="btn btn-primary" onClick={() => onNav('onboarding')}><Icon name="sparkle" /> My onboarding</button>
         <button className="btn btn-ghost" onClick={() => onNav('scheduler')}><Icon name="calendar" /> Schedule</button>
       </div>
     </div>

@@ -1,21 +1,21 @@
-/* agentconfig.jsx — client persistence for Riley's editable config (the Agent Dashboard):
-   knowledge base, routing rules, and channel toggles.
+/* agentconfig.jsx — client persistence for Riley's editable config (the Ask Riley settings
+   page): knowledge base and routing rules.
 
    Talks to /api/agentconfig (Cosmos appState/riley-config) through pdApi.
 
-   The single source of truth once an admin has edited it is Cosmos; the RILEY_* / AGENT_*
+   The single source of truth once an admin has edited it is Cosmos; the RILEY_*
    constants in riley-data.jsx are only the initial SEED, used when the config doc doesn't
    exist yet (or off-prod where there's no /api). Both of Riley's paths — the live AI
    (buildRileySystem) and the offline fallback (answerFor) — read the loaded config, so an
    admin edit here changes Riley's answers everywhere, for everyone. */
 
-const AGENT_SECTIONS = ['knowledge', 'routing', 'channels'];
+const AGENT_SECTIONS = ['knowledge', 'routing'];
 
 function fetchAgentConfig() {
-  return pdApi('/api/agentconfig'); // { knowledge, routing, channels }
+  return pdApi('/api/agentconfig'); // { knowledge, routing }
 }
 
-/* Persist ONE section (knowledge | routing | channels). Throws 'conflict' on a 409 so the
+/* Persist ONE section (knowledge | routing). Throws 'conflict' on a 409 so the
    caller can refetch and retry; returns the server's echo of the saved section. */
 async function saveAgentSection(section, value) {
   if (!AGENT_SECTIONS.includes(section)) throw new Error('unknown section: ' + section);
@@ -27,7 +27,7 @@ async function saveAgentSection(section, value) {
   }
 }
 
-/* React hook owning Riley's config → { knowledge, routing, channels, save*, status }.
+/* React hook owning Riley's config → { knowledge, routing, save*, status }.
    - seeds from the riley-data.jsx constants so Riley works instantly and off-prod
    - hydrates from Cosmos on mount, replacing any section the server actually has
    - save*(next): optimistic local update, then writes that section to Cosmos
@@ -36,7 +36,6 @@ async function saveAgentSection(section, value) {
 function useAgentConfig() {
   const [knowledge, setKnowledge] = useState(() => ((typeof RILEY_KNOWLEDGE !== 'undefined' && RILEY_KNOWLEDGE) || []).map(x => ({ ...x })));
   const [routing, setRouting] = useState(() => ((typeof RILEY_ROUTING !== 'undefined' && RILEY_ROUTING) || []).map(x => ({ ...x })));
-  const [channels, setChannels] = useState(() => ((typeof AGENT_CHANNELS !== 'undefined' && AGENT_CHANNELS) || []).map(x => ({ ...x })));
   const [status, setStatus] = useState('idle');
 
   useEffect(() => {
@@ -45,7 +44,6 @@ function useAgentConfig() {
       if (!alive || !cfg) return;
       if (Array.isArray(cfg.knowledge) && cfg.knowledge.length) setKnowledge(cfg.knowledge);
       if (Array.isArray(cfg.routing) && cfg.routing.length) setRouting(cfg.routing);
-      if (Array.isArray(cfg.channels) && cfg.channels.length) setChannels(cfg.channels);
     }).catch(() => { /* off-prod / no api → keep the seed */ });
     return () => { alive = false; };
   }, []);
@@ -63,10 +61,9 @@ function useAgentConfig() {
   }, [section]);
 
   return {
-    knowledge, routing, channels, status,
+    knowledge, routing, status,
     saveKnowledge: mkSave('knowledge', setKnowledge),
     saveRouting: mkSave('routing', setRouting),
-    saveChannels: mkSave('channels', setChannels),
   };
 }
 

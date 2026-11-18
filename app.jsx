@@ -4,7 +4,6 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "style": "clinical",
   "accentHue": 220,
   "density": "regular",
-  "hubLayout": "grid",
   "lang": "en",
   "rileyVoice": true
 }/*EDITMODE-END*/;
@@ -17,18 +16,10 @@ function Logo() {
   );
 }
 
-/* derive the onboarding role profile from a real employee */
-function onboardRole(me) {
-  if (me.provider) return /dent|dds|dmd/i.test((me.providerType || '') + (me.jobTitle || '')) ? ROLE_PROFILES.dentist : ROLE_PROFILES.hygienist;
-  if (/insur|billing/i.test((me.department || '') + (me.jobTitle || ''))) return ROLE_PROFILES.insurance;
-  return ROLE_PROFILES.frontdesk;
-}
-
 const FLAG_DEFS = [
   { id: 'scheduler', label: 'Scheduling', group: 'Modules' },
   { id: 'timeclock', label: 'Time clock', group: 'Modules' },
   { id: 'reviews', label: 'Performance reviews', group: 'Modules' },
-  { id: 'automations', label: 'Onboarding automations & agent', group: 'Modules' },
   { id: 'offboarding', label: 'Offboarding', group: 'Modules' },
   { id: 'offices', label: 'Offices', group: 'Modules' },
   { id: 'reports', label: 'Reports', group: 'Modules' },
@@ -38,11 +29,9 @@ const FLAG_DEFS = [
   { id: 'scrubs', label: 'Uniform ordering', group: 'Modules' },
   { id: 'applicants', label: 'Applicant tracking (hiring) — management', group: 'Modules' },
   { id: 'paychex', label: 'Paychex integration — payroll sync, export & pay rules', group: 'Integrations', note: 'Phase 2 · enable when Paychex API is live' },
-  { id: 'provisionApi', label: 'Auto-provision accounts via API — Google, Denticon, NexHealth, DoseSpot', group: 'Integrations', note: 'Off = IT/HR creates accounts manually and records logins. Turn on once the provisioning APIs are connected.' },
-  { id: 'resumeParse', label: 'Résumé parsing & import — auto-extract applicant details from uploaded résumés', group: 'Integrations', note: 'Off = enter applicants manually (résumés still attach). Turn on once the parsing service is connected.' },
 ];
 const FLAG_DEFAULTS = window.PD_ACCESS_RULES.FEATURE_DEFAULTS;
-const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', automations: 'automations', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
+const VIEW_FLAG = { ask: 'ask', askhr: 'askhr', library: 'library', scrubs: 'scrubs', timeclock: 'timeclock', reviews: 'reviews', rileysettings: 'ask', scheduler: 'scheduler', offboarding: 'offboarding', offices: 'offices', reports: 'reports', applicants: 'applicants' };
 
 function ComingSoon({ label }) {
   return (
@@ -59,7 +48,7 @@ function ComingSoon({ label }) {
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', show: () => true },
   { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
-  { id: 'onboarding', label: 'My onboarding', show: () => true },
+  { id: 'onboarding', label: 'Onboarding', show: a => a.caps.onboardStatus },
   { id: 'people', label: 'Directory', show: () => true },
   { id: 'scheduler', label: 'Schedule', show: () => true, flag: 'scheduler' },
   { id: 'timeclock', label: 'Time clock', show: () => true, flag: 'timeclock' },
@@ -67,7 +56,7 @@ const NAV = [
   { id: 'scrubs', label: 'Uniforms', show: () => true, flag: 'scrubs' },
   { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
   { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
-  { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
+  { id: 'rileysettings', label: 'Ask Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
@@ -82,7 +71,7 @@ const NAV = [
    scrollable bar; the management-only pages collapse into an "Admin" dropdown that only
    appears for management-level access (supervisor and up). Built from the same NAV ids. */
 const FLAT_MAIN_IDS = ['dashboard', 'applicants', 'onboarding', 'people', 'timeclock', 'scheduler', 'library', 'reviews', 'reports', 'offboarding', 'scrubs', 'feedback'];
-const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'automations'];
+const FLAT_ADMIN_IDS = ['security', 'modules', 'organization', 'offices', 'rileysettings'];
 
 /* Grouped/compressed top nav. Direct items render as a single button; grouped items
    render as a dropdown of their visible children. Built from the same ids/flags as NAV. */
@@ -99,9 +88,8 @@ const NAV_GROUPS = [
     { id: 'applicants', label: 'Applicants', show: a => a.caps.recruiting, flag: 'applicants' },
   ] },
   { id: 'g_manage', label: 'Manage', children: [
-    { id: 'onboarding', label: 'My onboarding', show: () => true },
+    { id: 'onboarding', label: 'Onboarding', show: a => a.caps.onboardStatus },
     { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
-    { id: 'automations', label: 'Agent Automations', show: a => a.flags.isAdmin, flag: 'automations' },
     { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
     { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
     { id: 'feedback', label: 'Roadmap', show: a => a.caps.feedbackView },
@@ -111,6 +99,7 @@ const NAV_GROUPS = [
     { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
     { id: 'security', label: 'Permissions', show: a => a.caps.manageUsers },
     { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
+    { id: 'rileysettings', label: 'Ask Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
   ] },
 ];
 /* Assistants live in a floating launcher, not the nav bar. */
@@ -124,8 +113,6 @@ function CaretIcon() {
 function ChatIcon() {
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>;
 }
-
-const ONBOARD_VIEWS = ['onboarding', 'hub', 'welcome', 'profilestep', 'paperwork', 'credentials', 'policies', 'accounts', 'training', 'team', 'schedule', 'benefits'];
 
 /* Admin-only view switcher — preview the portal at a different access level without
    logging out. Mirrors the login-screen dev picker; sets the same override the app
@@ -193,8 +180,6 @@ async function loadRoster() {
 function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogout, t, setTweak }) {
   const [view, setView] = useState('dashboard');
   const [selectedEmp, setSelectedEmp] = useState(null);
-  const [tasks, setTasks] = useState(() => (ROLE_ONBOARDING[onboardRole(me).id] || TASKS).map(x => ({ ...x })));
-  const [accountsReady, setAccountsReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileGroup, setMobileGroup] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -370,13 +355,9 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   useEffect(() => { if (window.PDSound) window.PDSound.resetMute(); }, []);
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
   const notifN = notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
-  const [automations, setAutomations] = useState(() => (typeof loadAutomations === 'function' ? loadAutomations() : []));
-  const [currentAuto, setCurrentAuto] = useState(null);
-  const officeNames = useMemo(() => (window.HR.offices || []).map(o => o.name), []);
-  // Riley's config (knowledge base, routing rules, channels) now persists to Cosmos via
-  // /api/agentconfig — admin edits in the Agent Dashboard change Riley for everyone. Seeds
-  // from the riley-data.jsx constants and hydrates from the server on mount. (See agentconfig.jsx.)
-  const agentCfg = (typeof useAgentConfig === 'function') ? useAgentConfig() : { knowledge: (typeof AGENT_KNOWLEDGE !== 'undefined' ? AGENT_KNOWLEDGE : []), routing: (typeof AGENT_ROUTING !== 'undefined' ? AGENT_ROUTING : []), channels: [], status: 'idle', saveKnowledge: () => {}, saveRouting: () => {}, saveChannels: () => {} };
+  // Riley's knowledge base and routing rules are saved on the server; an admin's edit on
+  // the Ask Riley settings page changes Riley for everyone. (See agentconfig.jsx.)
+  const agentCfg = useAgentConfig();
   const { knowledge, routing } = agentCfg;
   const saveKnowledge = agentCfg.saveKnowledge;
   const saveRouting = agentCfg.saveRouting;
@@ -394,9 +375,6 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
      Editing that record is not — canRelations below stays on the reporting chain. */
   const canRecord = (emp) => seesAll(access, 'emprecord') || (access.caps.viewTeam && scopedIds.has(emp.id));
 
-  const obRole = useMemo(() => onboardRole(me), [me]);
-  const visibleTasks = tasks.filter(x => !x.providerOnly || obRole.clinical);
-  const credentialsDone = (tasks.find(x => x.id === 'credentials') || {}).status === 'done';
   const scoped = useMemo(() => scopedEmployees(me, access), [me, access]);
   const dashPeople = useMemo(() => pageEmployees(me, access, 'dashboard'), [me, access]);
 
@@ -408,48 +386,14 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   };
   const openEmp = (e) => { setSelectedEmp(e); setView('emprecord'); window.scrollTo({ top: 0 }); };
 
-  const completeTask = (id) => {
-    setTasks(ts => ts.map(x => {
-      if (x.id === id) return { ...x, status: 'done', count: undefined };
-      if (id === 'paperwork' && x.id === 'benefits' && x.status === 'locked') return { ...x, status: 'todo', lockNote: undefined };
-      return x;
-    }));
-    go('onboarding');
-  };
-
-  const createHire = (f) => {
-    const id = 'auto' + Date.now();
-    /* no work address until one is really created — see suggestWorkEmail in automation.jsx */
-    const auto = { id, ...f, workEmail: f.workEmail || '', stage: 0, createdAt: Date.now() };
-    setAutomations(a => [auto, ...a]);
-    setCurrentAuto(id);
-    go('autodetail');
-  };
-  const advanceAuto = (id) => setAutomations(list => list.map(a => a.id === id ? { ...a, stage: (a.stage || 0) + 1 } : a));
-  useEffect(() => { if (typeof persistAutomations === 'function') persistAutomations(automations); }, [automations]);
-
-  // hire an applicant from the ATS → straight into onboarding (no re-entry)
-  const hireApplicant = (a) => {
-    const rk = (typeof atsRoleKey === 'function') ? atsRoleKey({ provider: a.provider, role: a.role, dept: a.dept }) : 'frontdesk';
-    const start = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
-    createHire({
-      name: a.name, jobTitle: a.role, personalEmail: a.email, mobile: a.phone || '',
-      department: a.dept || 'Front Desk', office: a.office, startDate: start,
-      provider: !!a.provider, providerType: rk === 'dentist' ? 'Dentist' : 'Hygienist',
-      manager: '', rk,
-    });
-  };
-
   // dashboard tile navigation mapper
   const dashNav = (id) => {
     if (id === 'myschedule') return go('scheduler');
     if (id === 'profile') return go('me');
-    if (id === 'myschedule_legacy') return go('onboarding');
     if (id === 'resources') return go('ask');
     return go(id);
   };
 
-  const stepProps = { me, onBack: () => go('onboarding'), onComplete: () => completeTask(view) };
   const [navMenu, setNavMenu] = useState(null);
   const [asstOpen, setAsstOpen] = useState(false);
   // Nav dropdowns open on hover (desktop) and stay clickable for touch. A short
@@ -526,11 +470,10 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   const renderView = () => {
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
-    // The Agent Automations section (console + runs + add-hire) is Admin-only. autodetail is
-    // NOT gated — it's the post-hire pipeline the ATS and manager pre-hire flows land on.
-    // Applicants is gated by the broader recruiting capability (Admin/HR/Exec/Manager).
-    let view2 = (!access.flags.isAdmin && ['automations', 'autoruns', 'addhire', 'agentconsole'].includes(view)) ? 'dashboard'
-      : (!access.caps.recruiting && view === 'applicants') ? 'dashboard' : view;
+    // Ask Riley settings is admin-only; Applicants needs the recruiting capability; Onboarding its own.
+    let view2 = (!access.flags.isAdmin && view === 'rileysettings') ? 'dashboard'
+      : (!access.caps.recruiting && view === 'applicants') ? 'dashboard'
+      : (!access.caps.onboardStatus && (view === 'onboarding' || view === 'onboardingstatus')) ? 'dashboard' : view;
     if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
@@ -547,43 +490,22 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'offboarding': return <Offboarding me={me} access={access} viewOnly={!access.caps.offboard && access.caps.offboardView} onOpenEmp={openEmp} />;
       case 'offices': return <Offices access={access} />;
       case 'organization': return <OrgEditor access={access} />;
-      case 'automations': return <AgentConsole knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} channels={agentCfg.channels} onChannels={agentCfg.saveChannels} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
-      case 'applicants': return <Applicants me={me} access={access} parseOn={flagOn('resumeParse')} paychexOn={flagOn('paychex')} onHire={hireApplicant} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
-      case 'autoruns': return <Automations automations={automations} onAdd={() => go('addhire')} onConsole={() => go('automations')} onOpen={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
-      case 'addhire': return <AddHire offices={officeNames} onCreate={createHire} onBack={() => go('autoruns')} apiMode={flagOn('provisionApi')} />;
-      case 'autodetail': { const a = automations.find(x => x.id === currentAuto); return a ? <AutomationDetail auto={a} onBack={() => go(access.flags.isAdmin ? 'autoruns' : 'onboarding')} onAdvance={advanceAuto} apiMode={flagOn('provisionApi')} /> : <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />; }
+      case 'rileysettings': return <RileySettings knowledge={knowledge} routing={routing} onKnowledge={saveKnowledge} onRouting={saveRouting} canEdit={access.flags.isAdmin} status={agentCfg.status} />;
+      case 'applicants': return <Applicants me={me} access={access} paychexOn={flagOn('paychex')} flash={flash} openApplicantId={openApplicantId} onOpenedApplicant={() => setOpenApplicantId(null)} />;
       case 'reports': return <Reports access={access} scope={seesAll(access, 'reports') ? EMPLOYEES : pageEmployees(me, access, 'reports')} paychexOn={flagOn('paychex')} me={me} flash={flash} />;
-      case 'onboardingstatus': return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
-      case 'prehire': return <Prehire me={me} access={access} offices={officeNames} onSubmit={createHire} onBack={() => go('onboardingstatus')} />;
       case 'security': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} page="security" />;
       case 'modules': return <AdminUsers me={me} access={access} flags={flags} flagDefs={FLAG_DEFS} onFlag={setFlag} flagSaving={flagSaving} page="modules" />;
       /* one page, two tabs: the published schedule everyone reads, and the builder.
          'myschedule' is kept as a route so older links land on the same page. */
       case 'scheduler':
       case 'myschedule': return <SchedulePage me={me} access={access} />;
-      // ---- onboarding sub-flow ----
       case 'onboarding':
-        if (access.caps.onboardStatus) return <OnboardingStatus me={me} access={access} automations={automations} onPrehire={() => go('prehire')} onOpenAuto={(id) => { setCurrentAuto(id); go('autodetail'); }} />;
-        return <Hub tasks={visibleTasks} onOpen={hubGo} layout={t.hubLayout} roleLabel={me.jobTitle} emp={me} notice={accountsReady ? { onView: () => go('accounts') } : null} />;
-      case 'hub': return <Hub tasks={visibleTasks} onOpen={hubGo} layout={t.hubLayout} roleLabel={me.jobTitle} emp={me} notice={accountsReady ? { onView: () => go('accounts') } : null} />;
-      case 'welcome': return <WelcomeStep {...stepProps} />;
-      case 'profilestep': return <ProfileStep {...stepProps} />;
-      case 'paperwork': return <Paperwork me={me} onBack={stepProps.onBack} onComplete={() => completeTask('paperwork')} />;
-      case 'credentials': return <CredentialsStep {...stepProps} role={obRole} />;
-      case 'policies': return <PoliciesStep {...stepProps} />;
-      case 'accounts': return <AccountsStep me={me} onBack={stepProps.onBack} onComplete={() => completeTask('accounts')} role={obRole} credentialsDone={credentialsDone} onReady={() => setAccountsReady(true)} onGoCredentials={() => go('credentials')} apiMode={flagOn('provisionApi')} />;
-      case 'training': return <TrainingStep {...stepProps} />;
-      case 'team': return <TeamStep {...stepProps} />;
-      case 'schedule': return <AgendaStep {...stepProps} onOpenScheduler={() => go('scheduler')} />;
-      case 'benefits': return <BenefitsStep {...stepProps} />;
+      case 'onboardingstatus': return <OnboardingStatus me={me} access={access} employees={pageEmployees(me, access, 'onboardingstatus')} onApplicants={access.caps.recruiting && flagOn('applicants') ? () => go('applicants') : null} onOpenEmp={(e) => { if (canRecord(e)) openEmp(e); }} />;
       default: return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
     }
   };
 
-  // map hub's task ids to onboarding sub-views (TASKS uses id 'profile' for intake step)
-  const hubGo = (id) => go(id === 'profile' ? 'profilestep' : id);
-
-  const navLabel = (n) => (n.id === 'onboarding' && access.caps.onboardStatus) ? 'Onboarding' : n.label;
+  const navLabel = (n) => n.label;
   // Alphabetize nav items by their displayed label; optionally pin one id (Dashboard) first.
   // Relocate just the two explicitly-placed items, leaving the rest alphabetical:
   // Applicants right after Dashboard, Scheduling right before Directory.
@@ -601,9 +523,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     return navLabel(a).localeCompare(navLabel(b));
   });
   const navActive = (id) => {
-    if (id === 'onboarding') return ONBOARD_VIEWS.includes(view) || view === 'profilestep' || view === 'onboardingstatus' || view === 'prehire';
+    if (id === 'onboarding') return view === 'onboarding' || view === 'onboardingstatus';
     if (id === 'people') return view === 'people' || view === 'emprecord';
-    if (id === 'automations') return ['automations', 'autoruns', 'addhire', 'autodetail', 'agentconsole'].includes(view);
     return view === id;
   };
   // Which grouped category contains the current view — used to auto-open it in the mobile
@@ -846,7 +767,6 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
           onChange={v => { const m = v.match(/ (\d+(?:\.\d+)?)\)/); if (m) setTweak('accentHue', parseFloat(m[1])); }} />
         <TweakSection label="Layout" />
         <TweakRadio label="Density" value={t.density} options={['compact', 'regular', 'comfy']} onChange={v => setTweak('density', v)} />
-        <TweakRadio label="Checklist" value={t.hubLayout} options={['grid', 'list']} onChange={v => setTweak('hubLayout', v)} />
       </TweaksPanel>
     </div>
   );

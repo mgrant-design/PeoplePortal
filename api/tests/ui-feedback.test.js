@@ -63,3 +63,12 @@ test('an applicant with no offer drafted yet opens: the pay check runs without a
   assert.equal(noPay(true, { pay: '$20' }), false);
   assert.equal(noPay(false, { payOnFile: true }), false);
 });
+test('the applicant popup draws for a record with no name or no signing date', () => {
+  const src = read('applicants.jsx');
+  assert.doesNotMatch(src, /\ba\.name\.split\(|\br\.name\.split\(/, 'a first name is taken through atsFirst, which accepts a missing name');
+  assert.doesNotMatch(src, /new Date\(o\.(signedAt|declinedAt)\)\.toISOString\(\)/, 'a date is shown through atsDay, which accepts a missing time');
+  const fns = src.slice(src.indexOf('function atsFirst('), src.indexOf('/* average of interviewer ratings'));
+  const ctx = {}; require('vm').runInNewContext(fns + '\nthis.atsFirst = atsFirst; this.atsDay = atsDay;', ctx);
+  assert.equal(ctx.atsFirst(undefined), 'the candidate'); assert.equal(ctx.atsFirst('Mindy Rogers'), 'Mindy');
+  assert.equal(ctx.atsDay(undefined), ''); assert.equal(ctx.atsDay(Date.UTC(2026, 6, 22, 15)), '2026-07-22');
+});

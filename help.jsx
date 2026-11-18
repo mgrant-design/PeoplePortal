@@ -7,8 +7,7 @@ const HELP_PAGES = [
   { id: 'askhr', label: 'Ask HR', icon: 'shield', desc: 'Management only. Your on-call HR advisor (Harper) for employee relations, discipline, leaves, and wage & hour — plus guides & templates, webinars, and NY/NJ compliance alerts.' },
   { id: 'timeclock', label: 'Time clock', icon: 'clock', desc: 'Clock in/out by location, take breaks, and view your timesheet. Clock-ins are matched to your scheduled shift. Managers approve & export to Paychex.' },
   { id: 'reviews', label: 'Reviews', icon: 'star', desc: 'Performance reviews. HR/exec set the questions; you complete a self-review; your manager reviews you and shares the results.' },
-  { id: 'onboarding', label: 'My onboarding', icon: 'bolt', desc: 'Your role-specific setup checklist — paperwork, credentials (providers), policies, accounts, learning, team and benefits.' },
-  { id: 'automations', label: 'Automations', icon: 'plus', desc: 'HR/Admin: add a new hire and the agent reaches out, gathers details, verifies credentials, and provisions accounts. Edit the agent in the Agent console.' },
+  { id: 'onboarding', label: 'Onboarding', icon: 'bolt', desc: 'Managers and HR: the people hired through a signed offer, with their start date and work email.' },
   { id: 'scheduler', label: 'Scheduling', icon: 'calendar', desc: 'Build the week by clicking a slot or dragging a shift, copy a prior week, fill from regular hours, open shifts to claim, and publish. View by team & location.' },
   { id: 'offboarding', label: 'Offboarding', icon: 'bell', desc: 'Termination & resignation requests with checklist (resignation letter, exit interview) and links to the employee record.' },
   { id: 'offices', label: 'Offices', icon: 'building', desc: 'View all locations with live headcounts; add or edit an office.' },
@@ -16,7 +15,7 @@ const HELP_PAGES = [
   { id: 'admin', label: 'Admin', icon: 'key', desc: 'Manage who can print, suspend, terminate, delete, and administer the portal.' },
   { id: 'me', label: 'My profile', icon: 'users', desc: 'Upload your photo and review your details. Your personal info is private to HR.' },
 ];
-const VIEW_TO_HELP = { emprecord: 'people', addhire: 'automations', autodetail: 'automations', agentconsole: 'automations', hub: 'onboarding', welcome: 'onboarding', profilestep: 'onboarding', paperwork: 'onboarding', credentials: 'onboarding', policies: 'onboarding', accounts: 'onboarding', training: 'onboarding', team: 'onboarding', schedule: 'onboarding', benefits: 'onboarding' };
+const VIEW_TO_HELP = { emprecord: 'people', };
 
 function HelpPanel({ view, onClose, onStartTour }) {
   const [q, setQ] = useState('');

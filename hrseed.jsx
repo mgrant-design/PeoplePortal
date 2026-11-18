@@ -36,22 +36,13 @@ function addRelationEvent(empId, ev) {
   return item;
 }
 
-/* ===================== Onboarding automations store ===================== */
-const AUTO_KEY = 'pd_automations';
-/* NO BACKEND. Onboarding automations have no /api endpoint yet — in-memory only,
-   gone on reload. No localStorage, no fake new-hires. */
-let _automations = [];
-function loadAutomations() { return _automations; }
-function persistAutomations(list) { _automations = list || []; }
-
 /* Empty seed exports retained so any module importing them doesn't break. */
 const RELATIONS_SEED = {};
 const REVIEWS_SEED = {};
-const SEED_AUTOMATIONS = [];
 
 Object.assign(window, {
   LATE_GRACE_MIN, COACHING_LATE_THRESHOLD,
   punchLateMin, isLatePunch, tardiness, paychexSeed,
   loadRelations, persistRelations, getRelations, addRelationEvent,
-  RELATIONS_SEED, REVIEWS_SEED, SEED_AUTOMATIONS, loadAutomations, persistAutomations,
+  RELATIONS_SEED, REVIEWS_SEED,
 });

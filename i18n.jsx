@@ -11,9 +11,9 @@ const I18N = {
   dict: {
     es: {
       // nav + chrome
-      'Dashboard': 'Panel', 'My onboarding': 'Mi incorporación', 'Onboarding status': 'Estado de incorporación',
+      'Dashboard': 'Panel', 'Onboarding': 'Incorporación',
       'Directory': 'Directorio', 'Scheduling': 'Horarios', 'Schedule': 'Horario', 'Time clock': 'Reloj de tiempo',
-      'Learning': 'Formación', 'Reviews': 'Evaluaciones', 'Reports': 'Informes', 'Automations': 'Automatizaciones',
+      'Learning': 'Formación', 'Reviews': 'Evaluaciones', 'Reports': 'Informes',
       'Offboarding': 'Salida', 'Offices': 'Oficinas', 'Admin': 'Administración', 'Roadmap': 'Hoja de ruta',
       'Ask Riley': 'Pregúntale a Riley', 'Sign out': 'Cerrar sesión', 'Help & navigation': 'Ayuda y navegación',
       'People Portal': 'Portal de personal', 'My profile': 'Mi perfil', 'Notifications': 'Notificaciones',
@@ -30,7 +30,7 @@ const I18N = {
       'Submit a request': 'Enviar solicitud', 'Requests': 'Solicitudes',
       'Search name, title, email…': 'Buscar nombre, puesto, correo…', 'All offices': 'Todas las oficinas', 'All departments': 'Todos los departamentos',
       'Edit my info': 'Editar mi información', 'View full record': 'Ver expediente completo',
-      'Add new hire': 'Añadir nueva contratación', 'Submit a new hire': 'Registrar nueva contratación', 'Send to HR': 'Enviar a RR. HH.',
+     
       'Take the interactive tour': 'Hacer el recorrido interactivo', 'Resume where you left off': 'Continuar donde lo dejaste',
       'All locations': 'Todas las ubicaciones', 'Smart fill': 'Relleno inteligente', 'Copy': 'Copiar', 'Remove': 'Quitar',
       'Manager': 'Gerente', 'Supervisor': 'Supervisor', 'Employee': 'Empleado', 'Leadership': 'Dirección', 'Administrator': 'Administrador',
@@ -41,9 +41,9 @@ const I18N = {
       'Request off': 'Pedir libre', 'Swap': 'Cambiar', 'Next shift': 'Próximo turno', 'Today': 'Hoy', 'Off': 'Libre',
     },
     uk: {
-      'Dashboard': 'Панель', 'My onboarding': 'Моя адаптація', 'Onboarding status': 'Статус адаптації',
+      'Dashboard': 'Панель', 'Onboarding': 'Адаптація',
       'Directory': 'Довідник', 'Scheduling': 'Розклад', 'Schedule': 'Розклад', 'Time clock': 'Облік часу',
-      'Learning': 'Навчання', 'Reviews': 'Оцінювання', 'Reports': 'Звіти', 'Automations': 'Автоматизації',
+      'Learning': 'Навчання', 'Reviews': 'Оцінювання', 'Reports': 'Звіти',
       'Offboarding': 'Звільнення', 'Offices': 'Офіси', 'Admin': 'Адміністрування', 'Roadmap': 'Дорожня карта',
       'Ask Riley': 'Запитати Райлі', 'Sign out': 'Вийти', 'Help & navigation': 'Довідка та навігація',
       'People Portal': 'Портал персоналу', 'My profile': 'Мій профіль', 'Notifications': 'Сповіщення',
@@ -59,7 +59,7 @@ const I18N = {
       'Submit a request': 'Надіслати запит', 'Requests': 'Запити',
       'Search name, title, email…': 'Пошук імені, посади, пошти…', 'All offices': 'Усі офіси', 'All departments': 'Усі відділи',
       'Edit my info': 'Редагувати мої дані', 'View full record': 'Переглянути повний запис',
-      'Add new hire': 'Додати нового працівника', 'Submit a new hire': 'Подати нового працівника', 'Send to HR': 'Надіслати у відділ кадрів',
+     
       'Take the interactive tour': 'Пройти інтерактивний тур', 'Resume where you left off': 'Продовжити з того місця',
       'All locations': 'Усі локації', 'Smart fill': 'Розумне заповнення', 'Copy': 'Копіювати', 'Remove': 'Видалити',
       'Manager': 'Менеджер', 'Supervisor': 'Керівник', 'Employee': 'Працівник', 'Leadership': 'Керівництво', 'Administrator': 'Адміністратор',

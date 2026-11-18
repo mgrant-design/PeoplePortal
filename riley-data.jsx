@@ -43,10 +43,4 @@ const RILEY_ROUTING = [
   { category: 'Scheduling & first week', to: 'Office Manager', role: 'Home location', via: 'SMS + Email' },
 ];
 
-/* Backward-compat: the Agent Console + app.jsx defaults still reference the old AGENT_*
-   names. These aliases keep everything working while the console exists. When you remove
-   the console, you can delete these two lines and keep using the RILEY_* names. */
-const AGENT_KNOWLEDGE = RILEY_KNOWLEDGE;
-const AGENT_ROUTING = RILEY_ROUTING;
-
-Object.assign(window, { RILEY_PERSONA, RILEY_KNOWLEDGE, RILEY_ROUTING, AGENT_KNOWLEDGE, AGENT_ROUTING });
+Object.assign(window, { RILEY_PERSONA, RILEY_KNOWLEDGE, RILEY_ROUTING });

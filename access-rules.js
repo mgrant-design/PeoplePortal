@@ -8,7 +8,7 @@
   const LEVEL_LABELS = { admin: 'Administrator', hr: 'HR & Payroll', leadership: 'Leadership', accounting: 'Accounting', manager: 'Manager', supervisor: 'Supervisor', employee: 'Employee' };
 
   /* feature switches and their state before an admin saves any */
-  const FEATURE_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, automations: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: false, provisionApi: false, resumeParse: true };
+  const FEATURE_DEFAULTS = { scheduler: true, timeclock: true, reviews: true, offboarding: true, offices: true, reports: true, ask: true, askhr: true, library: true, scrubs: true, applicants: true, paychex: false };
 
   /* a person who can sign in: anyone on the roster not Terminated or Suspended */
   const INACTIVE_STATUSES = ['Terminated', 'Suspended'];

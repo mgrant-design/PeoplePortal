@@ -115,3 +115,11 @@ test('an approver who has left the company is refused', async () => {
   const r = await loadEndpoint('orgconfig', { identity: { email: ada.workEmail }, employees: [...employees, gone], support, accessDocs }).call({ method: 'POST', body: { section: 'approvers', value: { timeoffFinal: 'gus@puredental.com', offboarding: [], offer: '' } } });
   assert.equal(r.status, 400);
 });
+
+test('a switch that no longer exists, still in the saved settings, does not block saving another switch and is dropped by that save', async () => {
+  const stored = { automations: false, library: false };
+  const ep = as(ada.workEmail, { support: { ...support, flags: stored } });
+  const r = await ep.call({ method: 'POST', body: { section: 'flags', value: { library: false, scrubs: false }, previous: stored } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(saved(ep).body.flags, { library: false, scrubs: false });
+});
