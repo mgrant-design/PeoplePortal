@@ -365,7 +365,7 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onSendHours, onScheduleW
 function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, onReject, flash }) {
   const o = a.offer;
   // the offer can't go out without pay; someone who may not see pay is told only whether it is on file
-  const noPay = canPay ? !o.pay : !o.payOnFile;
+  const noPay = !o || (canPay ? !o.pay : !o.payOnFile);
   const [sig, setSig] = useState('');
   /* recording a decline: reason is required, notes are required only for "Other" */
   const [declining, setDeclining] = useState(false);

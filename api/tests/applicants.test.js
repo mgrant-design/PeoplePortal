@@ -292,7 +292,7 @@ test('someone who may not see pay is told whether pay is on file, without the am
   const offer = r.body.applicants.find(a => a.offer).offer;
   assert.equal('pay' in offer, false); assert.equal(typeof offer.payOnFile, 'boolean');
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'applicants.jsx'), 'utf8');
-  assert.match(src, /const noPay = canPay \? !o\.pay : !o\.payOnFile;/);
+  assert.match(src, /const noPay = !o \|\| \(canPay \? !o\.pay : !o\.payOnFile\);/);
   assert.match(src, /disabled=\{noPay\}/);
 });
 test('reopening a rejected applicant keeps a sent, signed or declined offer unless the approver reopens it', () => {

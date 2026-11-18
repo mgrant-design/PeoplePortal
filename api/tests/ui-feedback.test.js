@@ -53,3 +53,13 @@ test('style changes reach a browser that has the site open: the stylesheet is ch
   const cfg = JSON.parse(read('staticwebapp.config.json'));
   assert.ok(cfg.routes.some(r => r.route === '/*.css' && /no-cache/.test(r.headers['Cache-Control'])));
 });
+test('an applicant with no offer drafted yet opens: the pay check runs without an offer', () => {
+  const src = read('applicants.jsx');
+  const panel = src.slice(src.indexOf('function OfferLetter('), src.indexOf('if (!o) {', src.indexOf('function OfferLetter(')));
+  const line = (panel.match(/const noPay = [^\n]+/) || [])[0];
+  assert.ok(line, 'the pay check is worked out before the panel draws');
+  const noPay = new Function('canPay', 'o', line + '\nreturn noPay;');
+  for (const canPay of [true, false]) assert.equal(noPay(canPay, undefined), true);
+  assert.equal(noPay(true, { pay: '$20' }), false);
+  assert.equal(noPay(false, { payOnFile: true }), false);
+});
