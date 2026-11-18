@@ -72,3 +72,21 @@ test('the applicant popup draws for a record with no name or no signing date', (
   assert.equal(ctx.atsFirst(undefined), 'the candidate'); assert.equal(ctx.atsFirst('Mindy Rogers'), 'Mindy');
   assert.equal(ctx.atsDay(undefined), ''); assert.equal(ctx.atsDay(Date.UTC(2026, 6, 22, 15)), '2026-07-22');
 });
+
+test('the applicant popup shows the offer letter from the Offer step on, and interview feedback only before it', () => {
+  const src = read('applicants.jsx');
+  assert.match(src, /const showOffer = !rejected && idx >= ATS_IDX\.offer;/);
+  assert.match(src, /const showFeedback = idx < ATS_IDX\.offer;/);
+  assert.match(src, /\{showFeedback && <div>/);
+  const order = ['applied', 'screening', 'interview', 'working', 'offer', 'hired'];
+  const ids = [...src.slice(src.indexOf('const ATS_STAGES = ['), src.indexOf('const ATS_IDX')).matchAll(/id: '([a-z]+)'/g)].map(m => m[1]);
+  assert.deepEqual(ids, order);
+});
+test('whoever drafts the offer can type the pay; the amount on file is not shown to someone without pay rights', () => {
+  const src = read('applicants.jsx');
+  const panel = src.slice(src.indexOf('function OfferLetter('), src.indexOf('function ApplicantDetail('));
+  assert.doesNotMatch(panel, /Compensation is entered and visible only to HR/);
+  assert.doesNotMatch(panel, /\{canPay \? \(\s*<div style=\{\{ display: 'grid', gridTemplateColumns: '150px 1fr'/);
+  assert.match(panel, /placeholder=\{!o\.pay && o\.payOnFile \? 'On file' :/);
+  assert.match(panel, /\{canPay && o\.pay && <>/, 'the read-only summary shows pay only to someone with pay rights');
+});

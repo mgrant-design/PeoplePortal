@@ -182,13 +182,15 @@ module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {
   if (!c.access.caps.recruiting) return { status: 403, body: { error: 'Not allowed to view applicants' } };
   const coll = collPath('applicants');
     const myLoc = normLoc(me.location);
+    /* an applicant a team-level caller may see and save: one at their office, or one they submitted */
+    const mine = (d) => normLoc(d.office) === myLoc || String(d.requestedByEmail || '').toLowerCase() === String(identity.email || '').toLowerCase();
 
     /* ---------- READ ---------- */
     if (req.method === 'GET') {
       let docs;
       try { docs = (await listAll(coll)).map(strip); }
       catch (e) { throw new Error('applicants read failed: ' + e.message); }
-      if (!viewAll) docs = docs.filter(d => normLoc(d.office) === myLoc);
+      if (!viewAll) docs = docs.filter(mine);
       // Never hand the candidate's self-service sign token to anyone browsing the pipeline —
       // it's effectively a bearer credential for accepting/declining that one offer.
       docs = docs.map(d => d.offer && d.offer.signToken ? { ...d, offer: { ...d.offer, signToken: undefined, signTokenExpires: undefined } } : d);
@@ -205,10 +207,6 @@ module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {
     if (!doc || typeof doc !== 'object' || !doc.id) {
       return { status: 400, body: { error: 'Body must be an applicant record with an id' } };
     }
-    // team-level callers may only write applicants at their own office
-    if (!viewAll && normLoc(doc.office) !== myLoc) {
-      return { status: 403, body: { error: 'Applicant is outside your office' } };
-    }
     for (const part of ['offer', 'workingInterview']) {
       const v = doc[part];
       if (v != null && (typeof v !== 'object' || Array.isArray(v))) return { status: 400, body: { error: part + ' must be a record' } };
@@ -224,10 +222,31 @@ module.exports = handler(['GET', 'POST'], async ({ context, req, body }) => {
     // without the stored record there is no stored pay, link or offer to keep, so no save goes through
     if (prevUnread) throw new Error('applicant read failed before a save: ' + prevUnread.message);
     prevRec = copies.find(d => d.office === doc.office) || copies[0] || null;
-    if (!viewAll && copies.some(d => normLoc(d.office) !== myLoc)) {
-      return { status: 403, body: { error: 'Applicant is outside your office' } };
+    // Team-level callers save applicants at their own office and the ones they submitted. A
+    // brand-new person sent straight to the offer approver (the Submit a new hire form) may be
+    // for any office. The sender on file is the server's to set, never the browser's.
+    if (!viewAll) {
+      const newHire = !prevRec && doc._offerAction === 'submit';
+      const allowed = prevRec
+        ? copies.every(mine) && (normLoc(doc.office) === myLoc || doc.office === prevRec.office)
+        : (normLoc(doc.office) === myLoc || newHire);
+      if (!allowed) return { status: 403, body: { error: 'Applicant is outside your office' } };
+      const { requestedByEmail: _re, requestedByName: _rn, ...rest } = doc;
+      doc = prevRec
+        ? { ...rest, ...('requestedByEmail' in prevRec ? { requestedByEmail: prevRec.requestedByEmail } : {}), ...('requestedByName' in prevRec ? { requestedByName: prevRec.requestedByName } : {}) }
+        : { ...rest, requestedByEmail: String(identity.email || '').toLowerCase(), ...(doc.requestedByName ? { requestedByName: doc.requestedByName } : {}) };
     }
-    if (!seesPay) doc = withStoredPay(doc, prevRec);
+    // Someone who may not see pay cannot set or change it, with one case apart: a brand-new
+    // person sent straight to the offer approver (the Submit a new hire form). The pay entered
+    // there is kept for HR and is never shown back to the sender.
+    const newHireSubmission = !prevRec && doc._offerAction === 'submit';
+    // The second case: at the Offer step, whoever drafts the offer enters the pay while the offer
+    // is still a draft. Once it waits for approval or has gone out, the pay on file stands.
+    const typed = doc.offer && typeof doc.offer === 'object' ? String(doc.offer.pay || '').trim() : '';
+    const draftPay = !seesPay && !newHireSubmission && doc.stage === 'offer' && typed
+      && (!prevRec || !prevRec.offer || prevRec.offer.status === 'draft') ? typed : '';
+    if (!seesPay) doc = newHireSubmission ? withoutPayMarker(doc) : withStoredPay(doc, prevRec);
+    if (draftPay) doc = { ...doc, offer: { ...doc.offer, pay: draftPay } };
     doc = withStoredLink(doc, prevRec);
 
     // Both offer-flow transitions (submit-for-approval, approve-and-send) are tagged by the

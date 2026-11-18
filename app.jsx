@@ -473,7 +473,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     // Ask Riley settings is admin-only; Applicants needs the recruiting capability; Onboarding its own.
     let view2 = (!access.flags.isAdmin && view === 'rileysettings') ? 'dashboard'
       : (!access.caps.recruiting && view === 'applicants') ? 'dashboard'
-      : (!access.caps.onboardStatus && (view === 'onboarding' || view === 'onboardingstatus')) ? 'dashboard' : view;
+      : (!access.caps.onboardStatus && (view === 'onboarding' || view === 'onboardingstatus')) ? 'dashboard'
+      : (view === 'newhire' && !(access.caps.recruiting && flagOn('applicants'))) ? 'dashboard' : view;
     if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
@@ -500,7 +501,8 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
       case 'scheduler':
       case 'myschedule': return <SchedulePage me={me} access={access} />;
       case 'onboarding':
-      case 'onboardingstatus': return <OnboardingStatus me={me} access={access} employees={pageEmployees(me, access, 'onboardingstatus')} onApplicants={access.caps.recruiting && flagOn('applicants') ? () => go('applicants') : null} onOpenEmp={(e) => { if (canRecord(e)) openEmp(e); }} />;
+      case 'onboardingstatus': return <OnboardingStatus me={me} access={access} employees={pageEmployees(me, access, 'onboardingstatus')} onApplicants={access.caps.recruiting && flagOn('applicants') ? () => go('applicants') : null} onNewHire={access.caps.recruiting && flagOn('applicants') ? () => go('newhire') : null} onOpenEmp={(e) => { if (canRecord(e)) openEmp(e); }} />;
+      case 'newhire': return <NewHireForm me={me} access={access} offices={(window.HR.offices || []).map(o => o.name)} onBack={() => go('onboarding')} onOpenApplicant={(id) => { setOpenApplicantId(id); go('applicants'); }} />;
       default: return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
     }
   };
@@ -523,7 +525,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     return navLabel(a).localeCompare(navLabel(b));
   });
   const navActive = (id) => {
-    if (id === 'onboarding') return view === 'onboarding' || view === 'onboardingstatus';
+    if (id === 'onboarding') return view === 'onboarding' || view === 'onboardingstatus' || view === 'newhire';
     if (id === 'people') return view === 'people' || view === 'emprecord';
     return view === id;
   };

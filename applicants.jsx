@@ -367,8 +367,8 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onSendHours, onScheduleW
 /* ------- Offer letter ------- */
 function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, onApprove, onSendBack, onSign, onReject, flash }) {
   const o = a.offer;
-  // the offer can't go out without pay; someone who may not see pay is told only whether it is on file
-  const noPay = !o || (canPay ? !o.pay : !o.payOnFile);
+  // the offer can't go out without pay: an amount typed here, or one on file that this person may not see
+  const noPay = !o || !(o.pay || o.payOnFile);
   const [sig, setSig] = useState('');
   /* recording a decline: reason is required, notes are required only for "Other" */
   const [declining, setDeclining] = useState(false);
@@ -432,17 +432,14 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           </div>
           {/* pay — protected */}
           <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--r-md)', background: 'var(--surface)', border: '1px solid var(--line)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: canPay ? 10 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
               <Icon name="lock" style={{ width: 13, height: 13, color: 'var(--accent)' }} />
               <span style={{ fontSize: 11.5, fontWeight: 700 }}>Pay</span>
-              <span className="badge badge-todo" style={{ fontSize: 9.5 }}>HR &amp; Accounting only</span>
             </div>
-            {canPay ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12 }}>
-                <AF label="Type"><select value={o.payType || 'Hourly'} onChange={e => setO({ payType: e.target.value })} style={{ ...atsFld, appearance: 'auto' }}><option>Hourly</option><option>Salary</option></select></AF>
-                <AF label={o.payType === 'Salary' ? 'Annual salary' : 'Hourly rate'}><input value={o.pay || ''} onChange={e => setO({ pay: e.target.value })} placeholder={o.payType === 'Salary' ? '$95,000' : '$32.00 / hr'} style={atsFld} /></AF>
-              </div>
-            ) : <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>Compensation is entered and visible only to HR &amp; Accounting.</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12 }}>
+              <AF label="Type"><select value={o.payType || 'Hourly'} onChange={e => setO({ payType: e.target.value })} style={{ ...atsFld, appearance: 'auto' }}><option>Hourly</option><option>Salary</option></select></AF>
+              <AF label={o.payType === 'Salary' ? 'Annual salary' : 'Hourly rate'}><input value={o.pay || ''} onChange={e => setO({ pay: e.target.value })} placeholder={!o.pay && o.payOnFile ? 'On file' : o.payType === 'Salary' ? '$95,000' : '$32.00 / hr'} style={atsFld} /></AF>
+            </div>
           </div>
           <div style={{ marginTop: 12 }}><AF label="Job description (attached to the offer)"><textarea value={o.jobDescription || ''} onChange={e => setO({ jobDescription: e.target.value })} rows={3} style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
           <div style={{ marginTop: 12 }}><AF label="Additional details" hint="Anything else to include in the letter"><textarea value={o.extra || ''} onChange={e => setO({ extra: e.target.value })} rows={2} placeholder="e.g. sign-on bonus, schedule, reports-to, contingencies…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} /></AF></div>
@@ -467,9 +464,8 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
               ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
               : !offerApprover().email
               ? <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> No offer approver is set yet. An admin sets it on the Organization page.</span>
-              : <button className="btn btn-primary" disabled={canPay && !o.pay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {offerApprover().name} for approval</button>}
-            {canPay && !o.pay && (isApprover || !!offerApprover().email) && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
-            {!canPay && isApprover && noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>HR or Accounting adds the pay before this can be sent</span>}
+              : <button className="btn btn-primary" disabled={noPay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {offerApprover().name} for approval</button>}
+            {noPay && (isApprover || !!offerApprover().email) && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
           </div>
           {picker && <AttachPicker onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
         </>
@@ -480,8 +476,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
               <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
               <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back to draft</button>
-              {canPay && !o.pay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet. Send it back to draft, add the pay, then approve.</span>}
-              {!canPay && noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay is on file yet. HR or Accounting adds it before this can be sent.</span>}
+              {noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet. Send it back to draft, add the pay, then approve.</span>}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="clock" style={{ width: 14, height: 14 }} /> Submitted by {o.submittedBy || 'recruiter'} — awaiting {offerApprover().name}'s approval before it reaches the candidate.</div>
@@ -590,7 +585,8 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
   const avg = avgRating(a);
   const fb = a.feedback || [];
   const showWI = !rejected && (a.workingInterview || a.provider || (idx >= ATS_IDX.interview && a.wiRequired));
-  const showOffer = !rejected && (a.offer || idx >= ATS_IDX.interview);
+  const showOffer = !rejected && idx >= ATS_IDX.offer;
+  const showFeedback = idx < ATS_IDX.offer;
   // working-interview step appears only when required for this applicant (or already scheduled / currently there)
   const stepStages = ATS_STAGES.filter(s => s.id !== 'working' || a.wiRequired || a.workingInterview || a.stage === 'working');
 
@@ -687,7 +683,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
         {showOffer && <OfferLetter a={a} canPay={canPay} isApprover={isApprover} onOffer={onOffer} onDraftOffer={onDraftOffer} onSubmit={onSubmitOffer} onApprove={onApproveOffer} onSendBack={onSendBackOffer} onSign={onSignOffer} onReject={onReject} flash={flash} />}
 
         {/* interviewer feedback — hidden until an interview stage is reached (or feedback already exists) */}
-        {(idx >= ATS_IDX.screening || fb.length > 0) && <div>
+        {showFeedback && <div>
           <button onClick={() => setFbOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: fbOpen ? 10 : 0 }}>
             <Icon name="chevron" style={{ width: 13, height: 13, color: 'var(--ink-3)', transform: fbOpen ? 'rotate(90deg)' : 'none', transition: 'transform .2s', flex: 'none' }} />
             <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)' }}>Interview feedback</span>
@@ -968,7 +964,7 @@ function Applicants({ me, access, paychexOn, flash, openApplicantId, onOpenedApp
 
   if (list === null) return <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh', color: 'var(--ink-3)' }}><span className="spin" style={{ width: 22, height: 22, border: '2px solid var(--line)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'block' }} /></div>;
 
-  const scoped = access.caps.viewAll ? list : list.filter(a => normLoc(a.office) === me.loc);
+  const scoped = access.caps.viewAll ? list : list.filter(a => normLoc(a.office) === me.loc || (a.requestedByEmail || '').toLowerCase() === (me.workEmail || '').toLowerCase());
   const isArchived = a => !!a.rejected || a.stage === 'rejected';
   const active = scoped.filter(a => !isArchived(a));
   const archived = scoped.filter(isArchived);

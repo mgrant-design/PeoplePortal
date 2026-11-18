@@ -4,7 +4,8 @@ const { loadEndpoint } = require('./helpers/endpoint');
 const hal = { id: 'h1', first: 'Hal', last: 'HR', workEmail: 'hal@puredental.com', department: 'Human Resources', jobTitle: 'HR Generalist', location: 'Manorville' };
 const ada = { id: 'a1', first: 'Ada', last: 'Admin', workEmail: 'ada@puredental.com', department: 'IT', jobTitle: 'Systems', location: 'Manorville' };
 const mia = { id: 'm1', first: 'Mia', last: 'Mgr', workEmail: 'mia@puredental.com', department: 'Front Desk', jobTitle: 'Office Manager', location: 'Manorville' };
-const employees = [hal, ada, mia];
+const ned = { id: 'n1', first: 'Ned', last: 'Mgr', workEmail: 'ned@puredental.com', department: 'Front Desk', jobTitle: 'Office Manager', location: 'Islandia' };
+const employees = [hal, ada, mia, ned];
 const support = { users: [{ email: 'ada@puredental.com', admin: true }], managers: [], approvers: { timeoffFinal: '', offboarding: [], offer: 'hal@puredental.com' } };
 const CHAT = 'https://chat.test/hook';
 test.beforeEach(() => { process.env.APPLICANTS_GCHAT_WEBHOOK = CHAT; });
@@ -51,9 +52,9 @@ test('a manager\'s save keeps the stored pay and sends none back', async () => {
   assert.equal(saved(ep).body.workingInterview.rate, '$38.00'); assert.equal(saved(ep).body.workingInterview.hours, '6');
   assert.equal(JSON.stringify(r.body).includes('41.50'), false); assert.equal(JSON.stringify(r.body).includes('38.00'), false);
 });
-test('a manager cannot set or change pay', async () => {
+test('before the Offer step a manager cannot set or change pay, and never the working interview rate', async () => {
   const changed = as(mia.workEmail);
-  await changed.call({ method: 'POST', body: c1({ offer: { status: 'draft', pay: '$99.00' }, workingInterview: { status: 'scheduled', rate: '$99.00' } }) });
+  await changed.call({ method: 'POST', body: c1({ stage: 'interview', offer: { status: 'draft', pay: '$99.00' }, workingInterview: { status: 'scheduled', rate: '$99.00' } }) });
   assert.equal(saved(changed).body.offer.pay, '$41.50'); assert.equal(saved(changed).body.workingInterview.rate, '$38.00');
   const fresh = as(mia.workEmail);
   await fresh.call({ method: 'POST', body: { id: 'c9', office: 'Manorville', name: 'New Cand', offer: { status: 'draft', pay: '$99.00' } } });
@@ -292,7 +293,7 @@ test('someone who may not see pay is told whether pay is on file, without the am
   const offer = r.body.applicants.find(a => a.offer).offer;
   assert.equal('pay' in offer, false); assert.equal(typeof offer.payOnFile, 'boolean');
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'applicants.jsx'), 'utf8');
-  assert.match(src, /const noPay = !o \|\| \(canPay \? !o\.pay : !o\.payOnFile\);/);
+  assert.match(src, /const noPay = !o \|\| !\(o\.pay \|\| o\.payOnFile\);/);
   assert.match(src, /disabled=\{noPay\}/);
 });
 test('reopening a rejected applicant keeps a sent, signed or declined offer unless the approver reopens it', () => {
@@ -303,4 +304,92 @@ test('reopening a rejected applicant keeps a sent, signed or declined offer unle
 test('the offer records whether the job is full-time, part-time or per diem', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'applicants.jsx'), 'utf8');
   assert.match(src, /<AF label="Employment type">/);
+});
+
+/* the Submit a new hire form on the Onboarding page: a manager adds a person straight to an offer waiting for approval */
+const newHire = (patch = {}) => ({ id: 'apnew1', office: 'Manorville', first: 'Jordan', last: 'Avery', name: 'Jordan Avery', role: 'Dental Hygienist', dept: 'Clinical Team',
+  email: 'jordan@example.com', phone: '(631) 555-0123', stage: 'offer', applied: '2026-11-18', feedback: [], notes: [],
+  offer: { status: 'pending_approval', role: 'Dental Hygienist', employmentType: 'Full-time', startDate: '2026-12-01', payType: 'Hourly', pay: '$38.00 / hr', attachments: [] },
+  _offerAction: 'submit', ...patch });
+test('a manager who may not see pay can enter it when adding a new person, and it is kept for HR', async () => {
+  const ep = as(mia.workEmail);
+  const r = await ep.call({ method: 'POST', body: newHire() });
+  assert.equal(r.status, 200);
+  assert.equal(saved(ep).body.offer.pay, '$38.00 / hr');
+  assert.equal(saved(ep).body.offer.status, 'pending_approval');
+  assert.equal('pay' in r.body.applicant.offer, false, 'the pay is not shown back to the manager');
+  assert.equal(r.body.applicant.offer.payOnFile, true);
+  assert.equal(JSON.stringify(r.body).includes('38.00'), false);
+});
+test('adding a new person with the offer submitted tells the approver and posts to Chat', async () => {
+  const ep = as(mia.workEmail);
+  const r = await ep.call({ method: 'POST', body: newHire() });
+  assert.deepEqual(noticesTo(r).map(m => m.userId), ['hal@puredental.com']);
+  assert.equal(ep.net.length, 1);
+  assert.match(JSON.parse(ep.net[0].body).text, /Offer submitted for approval.*Jordan Avery \(Dental Hygienist, Manorville\)/);
+});
+test('a manager cannot change the pay once the offer is waiting for approval', async () => {
+  const docs = [{ ...stored()[0], offer: { ...stored()[0].offer, status: 'pending_approval' } }];
+  const ep = as(mia.workEmail, docs);
+  await ep.call({ method: 'POST', body: { ...docs[0], offer: { ...docs[0].offer, pay: '$99.00' } } });
+  assert.equal(saved(ep).body.offer.pay, '$41.50');
+});
+
+/* a manager may submit a new hire for any office, and follows the people they submitted */
+const miasTotowaHire = () => ({ ...newHire({ id: 'apt1', office: 'Totowa' }), _offerAction: undefined, requestedByEmail: 'mia@puredental.com', requestedByName: 'Mia M.' });
+test('a manager submits a new hire for another office, and the server records the manager as the sender', async () => {
+  const ep = as(mia.workEmail);
+  const r = await ep.call({ method: 'POST', body: newHire({ office: 'Totowa', requestedByEmail: 'ned@puredental.com' }) });
+  assert.equal(r.status, 200);
+  assert.equal(saved(ep).partitionKey, 'Totowa');
+  assert.equal(saved(ep).body.requestedByEmail, 'mia@puredental.com');
+});
+test('a manager still cannot add an ordinary applicant at another office', async () => {
+  const r = await as(mia.workEmail).call({ method: 'POST', body: { id: 'c9', office: 'Totowa', name: 'New Cand', stage: 'applied' } });
+  assert.equal(r.status, 403);
+});
+test('a manager sees their own office and the people they submitted elsewhere, and nobody else\'s', async () => {
+  const docs = [...stored(), miasTotowaHire()];
+  assert.deepEqual((await as(mia.workEmail, docs).call({ method: 'GET' })).body.applicants.map(a => a.id), ['c1', 'apt1']);
+  assert.deepEqual((await as(ned.workEmail, docs).call({ method: 'GET' })).body.applicants.map(a => a.id), []);
+});
+test('the manager who submitted a hire at another office can save changes to it; another manager cannot', async () => {
+  const docs = [...stored(), miasTotowaHire()];
+  const mine = as(mia.workEmail, docs);
+  const ok = await mine.call({ method: 'POST', body: { ...miasTotowaHire(), notes: [{ t: 'called' }] } });
+  assert.equal(ok.status, 200); assert.equal(saved(mine).partitionKey, 'Totowa');
+  const other = await as(ned.workEmail, docs).call({ method: 'POST', body: { ...miasTotowaHire(), notes: [{ t: 'x' }] } });
+  assert.equal(other.status, 403);
+});
+test('a manager cannot take over another office\'s applicant by naming themselves as the sender', async () => {
+  const ep = as(mia.workEmail);
+  const r = await ep.call({ method: 'POST', body: { ...stored()[1], requestedByEmail: 'mia@puredental.com' } });
+  assert.equal(r.status, 403);
+});
+test('a manager\'s save keeps the sender already on file', async () => {
+  const docs = [{ ...stored()[0], requestedByEmail: 'hal@puredental.com', requestedByName: 'Hal H.' }];
+  const ep = as(mia.workEmail, docs);
+  await ep.call({ method: 'POST', body: { ...docs[0], requestedByEmail: 'mia@puredental.com', requestedByName: 'Mia M.' } });
+  assert.equal(saved(ep).body.requestedByEmail, 'hal@puredental.com'); assert.equal(saved(ep).body.requestedByName, 'Hal H.');
+});
+
+/* at the Offer step a manager enters the pay on a draft offer */
+test('a manager enters the pay on a draft offer at the Offer step; it is kept and not sent back', async () => {
+  const docs = [{ ...stored()[0], offer: { status: 'draft', role: 'Hygienist', payType: 'Hourly' } }];
+  const ep = as(mia.workEmail, docs);
+  const r = await ep.call({ method: 'POST', body: { ...docs[0], offer: { ...docs[0].offer, pay: ' $36.00 / hr ' } } });
+  assert.equal(r.status, 200);
+  assert.equal(saved(ep).body.offer.pay, '$36.00 / hr');
+  assert.equal('pay' in r.body.applicant.offer, false); assert.equal(r.body.applicant.offer.payOnFile, true);
+  assert.equal(JSON.stringify(r.body).includes('36.00'), false);
+});
+test('a manager replaces the pay on a draft offer at the Offer step', async () => {
+  const ep = as(mia.workEmail);
+  await ep.call({ method: 'POST', body: c1({ offer: { ...stored()[0].offer, pay: '$45.00' } }) });
+  assert.equal(saved(ep).body.offer.pay, '$45.00');
+});
+test('a manager\'s save without a pay keeps the pay on file', async () => {
+  const ep = as(mia.workEmail);
+  await ep.call({ method: 'POST', body: c1({ offer: { status: 'draft', role: 'Hygienist', payOnFile: true }, notes: [{ t: 'x' }] }) });
+  assert.equal(saved(ep).body.offer.pay, '$41.50'); assert.equal('payOnFile' in saved(ep).body.offer, false);
 });

@@ -10,7 +10,8 @@ function onboardingLogic() {
   const src = read('onboardingstatus.jsx');
   const a = src.indexOf('/* ---- Onboarding logic with no screen parts ---- */'), b = src.indexOf('/* ---- end of Onboarding logic ---- */');
   assert.ok(a >= 0 && b > a, 'onboardingstatus.jsx has its logic block');
-  const ctx = {}; vm.runInNewContext(src.slice(a, b) + '\nthis.hiresInOnboarding = hiresInOnboarding;', ctx);
+  const ctx = {}; vm.runInNewContext(src.slice(a, b) + '\nthis.hiresInOnboarding = hiresInOnboarding; this.newHireApplicant = newHireApplicant;', ctx);
+  ctx.hiresInOnboarding.newHireApplicant = ctx.newHireApplicant;
   return ctx.hiresInOnboarding;
 }
 const emp = (id, extra = {}) => ({ id, name: 'Person ' + id, jobTitle: 'Dental Assistant', loc: 'Manorville', status: 'Active', workEmail: id + '@puredental.com', ...extra });
@@ -44,7 +45,7 @@ test('the mock-up onboarding screens are gone', () => {
   for (const f of ['hub.jsx', 'steps.jsx', 'intake.jsx', 'paperwork.jsx', 'credentials.jsx', 'provisioning.jsx', 'automation.jsx', 'agent.jsx'])
     assert.equal(fs.existsSync(path.join(ROOT, f)), false, f + ' is deleted');
   const gone = ['Hub', 'WelcomeStep', 'PoliciesStep', 'TrainingStep', 'TeamStep', 'AgendaStep', 'BenefitsStep', 'ProfileStep', 'Paperwork', 'SignaturePad',
-    'CredentialsStep', 'AccountsStep', 'AddHire', 'Automations', 'AutomationDetail', 'AgentConsole', 'CallTranscript', 'GoogleChatFeed', 'Prehire',
+    'CredentialsStep', 'AccountsStep', 'AddHire', 'Automations', 'AutomationDetail', 'AgentConsole', 'CallTranscript', 'GoogleChatFeed',
     'ROLE_ONBOARDING', 'APP_CATALOG', 'PAPERWORK_DOCS', 'ROLE_ACCOUNT_RULES', 'ROLE_PROFILES', 'newHireProfile', 'loadAutomations', 'persistAutomations',
     'createHire', 'hireRecord', 'provisionApi', 'resumeParse', 'AGENT_CHANNELS'];
   for (const f of screenFiles()) {
@@ -56,7 +57,7 @@ test('the mock-up onboarding screens are gone', () => {
 });
 test('no screen says an agent emails, texts, calls or creates accounts for a new hire', () => {
   // reportbuilder.jsx's hours notice names a sender of its own; it is settled with the reports work
-  for (const f of screenFiles().filter(f => f !== 'reportbuilder.jsx')) assert.doesNotMatch(read(f), /Send to HR|Sent to HR|onboarding agent|Agent Automations|My onboarding|Continue onboarding/i, f);
+  for (const f of screenFiles().filter(f => f !== 'reportbuilder.jsx')) assert.doesNotMatch(read(f), /onboarding agent|Agent Automations|My onboarding|Continue onboarding/i, f);
 });
 test('the module switches are the ones that change something', () => {
   const { FEATURE_DEFAULTS } = require('../../access-rules.js');
@@ -86,4 +87,34 @@ test('every screen part a file uses is defined somewhere', () => {
     }
   }
   assert.deepEqual([...new Set(missing)], []);
+});
+
+test('the Submit a new hire form makes an applicant at the Offer stage with the offer waiting for approval', () => {
+  const build = onboardingLogic().newHireApplicant;
+  const me = { first: 'Mia', last: 'Mgr', workEmail: 'Mia@PureDental.com' };
+  const form = { name: ' Jordan Lee Avery ', jobTitle: 'Dental Hygienist', dept: 'Clinical Team', type: 'PT', payType: 'Hourly', wage: '$38.00 / hr', office: 'Manorville', phone: '(631) 555-0123', email: 'jordan@example.com', startDate: '2026-12-01' };
+  const at = Date.UTC(2026, 10, 18, 15);
+  const rec = build(form, me, at, 'apnew1');
+  assert.equal(rec.id, 'apnew1'); assert.equal(rec.name, 'Jordan Lee Avery'); assert.equal(rec.first, 'Jordan Lee'); assert.equal(rec.last, 'Avery');
+  assert.equal(rec.role, 'Dental Hygienist'); assert.equal(rec.dept, 'Clinical Team'); assert.equal(rec.office, 'Manorville');
+  assert.equal(rec.email, 'jordan@example.com'); assert.equal(rec.phone, '(631) 555-0123');
+  assert.equal(rec.stage, 'offer'); assert.equal(rec.applied, '2026-11-18');
+  assert.equal(rec.requestedByEmail, 'mia@puredental.com'); assert.equal(rec.requestedByName, 'Mia M.');
+  assert.equal(rec._offerAction, 'submit');
+  assert.deepEqual(JSON.parse(JSON.stringify(rec.offer)), { status: 'pending_approval', role: 'Dental Hygienist', employmentType: 'Part-time', startDate: '2026-12-01', payType: 'Hourly', pay: '$38.00 / hr',
+    jobDescription: '', extra: '', attachments: [], createdAt: at, submittedAt: at, submittedBy: 'Mia M.' });
+  assert.equal(build({ ...form, type: 'FT' }, me, 0, 'x').offer.employmentType, 'Full-time');
+});
+test('the form says Sent to HR only after the server answers, and shows the reason when it fails', () => {
+  const src = read('onboardingstatus.jsx');
+  const form = src.slice(src.indexOf('function NewHireForm('));
+  assert.match(form, /await pdApi\('\/api\/applicants', \{ method: 'POST', body: rec \}\);\s*setSent\(/);
+  assert.match(form, /catch \(e\) \{[^}]*setErr\(/);
+  assert.match(form, /\{err && </);
+  assert.match(read('app.jsx'), /case 'newhire': return <NewHireForm /);
+});
+
+test('the form offers every office, and the Applicants page shows a manager the people they submitted', () => {
+  assert.match(read('app.jsx'), /case 'newhire': return <NewHireForm me=\{me\} access=\{access\} offices=\{\(window\.HR\.offices \|\| \[\]\)\.map\(o => o\.name\)\} /);
+  assert.match(read('applicants.jsx'), /const scoped = access\.caps\.viewAll \? list : list\.filter\(a => normLoc\(a\.office\) === me\.loc \|\| \(a\.requestedByEmail \|\| ''\)\.toLowerCase\(\) === \(me\.workEmail \|\| ''\)\.toLowerCase\(\)\);/);
 });
