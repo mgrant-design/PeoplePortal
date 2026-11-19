@@ -633,8 +633,7 @@ function Scheduler({ me, access, onBack }) {
     const openSlot = (office, empId) => setModal({ office: office || offices[0], empId: empId || null, date: dayISO, shift: null });
 
     return (
-      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder" onBack={onBack}
-        subtitle="Pick a day, then tap a shift to edit it or Add to create one. Publish saves and notifies.">
+      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder" onBack={onBack}>
 
         {/* Week: name, back, forward, refresh. No menus anywhere on this screen — every
            control from the desktop screen is drawn where it belongs. */}
@@ -752,7 +751,7 @@ function Scheduler({ me, access, onBack }) {
             <button onClick={() => setSortBy(s2 => s2 === 'name' ? 'hours' : 'name')}>{sortBy === 'name' ? 'A–Z' : 'Hrs'}</button>
           </div>
           {focusEmp && (
-            <button className="schm-clear" onClick={() => setFocusEmp(null)}>Showing one person — show everyone again</button>
+            <button className="schm-clear" onClick={() => setFocusEmp(null)}>Show everyone</button>
           )}
           {sidebar.map(p => (
             <div key={p.id + p.office} className={focusEmp === p.id ? 'schm-teamrow on' : 'schm-teamrow'}>
@@ -770,7 +769,7 @@ function Scheduler({ me, access, onBack }) {
         <div className="schm-danger">
           <button onClick={() => bulk('unassign')}>Mark all shifts up for grabs</button>
           <button className="d" onClick={() => { if (window.confirm(deleteAllConfirmMsg)) bulk('delete'); }}>Delete all shifts</button>
-          <button onClick={() => setImpOpen(true)}>Import a schedule CSV</button>
+          <button onClick={() => setImpOpen(true)}>Import CSV</button>
         </div>
 
         {/* Publish is the one thing you are always about to do — pinned, never scrolled away */}
@@ -801,7 +800,6 @@ function Scheduler({ me, access, onBack }) {
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule builder"
-      subtitle="Click any slot to add a shift, or drag a shift to move it — to another day, another person, or another office. Drop one on the Open shifts row to leave it unassigned. You can repeat shifts across weeks, and copy a week's schedule as a future template with the Copy button. To lock-in a schedule, click Publish; this will save your changes and send notification that the latest schedule is available to view."
       onBack={onBack}
       aside={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1052,7 +1050,6 @@ function WeekStartModal({ onSaved, onClose, flash }) {
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'oklch(0.2 0.02 230 / 0.4)', zIndex: 88 }} />
       <div className="card fade-in" role="dialog" aria-modal="true" style={{ position: 'fixed', top: '3vh', left: 0, right: 0, margin: '0 auto', zIndex: 89, width: 'min(430px, 94vw)', maxHeight: '94vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h3 style={{ fontSize: 17, marginBottom: 3 }}>Week starts on</h3>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 14 }}>Applies to everyone — the schedule builder, My schedule and notifications.</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {WEEK_STARTS.map(([k, label]) => (
             <label key={k} style={{ display: 'flex', gap: 9, alignItems: 'center', cursor: 'pointer', padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1.5px solid', borderColor: pick === k ? 'var(--accent)' : 'var(--line)', background: pick === k ? 'var(--accent-softer)' : 'transparent' }}>

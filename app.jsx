@@ -38,8 +38,7 @@ function ComingSoon({ label }) {
     <div className="fade-in" style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
       <div className="card" style={{ padding: 'clamp(28px,5vw,48px)', textAlign: 'center', maxWidth: 440 }}>
         <div style={{ width: 52, height: 52, borderRadius: 14, margin: '0 auto 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center' }}><Icon name="lock" style={{ width: 26, height: 26 }} /></div>
-        <h2 style={{ fontSize: 20 }}>{label} is coming soon</h2>
-        <p style={{ color: 'var(--ink-2)', fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>This feature is part of a later rollout phase and is currently turned off. An administrator can enable it in <b>Admin → Feature rollout</b>.</p>
+        <h2 style={{ fontSize: 20 }}>{label} is turned off</h2>
       </div>
     </div>
   );
@@ -56,7 +55,7 @@ const NAV = [
   { id: 'scrubs', label: 'Uniforms', show: () => true, flag: 'scrubs' },
   { id: 'reviews', label: 'Reviews', show: () => true, flag: 'reviews' },
   { id: 'reports', label: 'Reports', show: a => a.caps.reports, flag: 'reports' },
-  { id: 'rileysettings', label: 'Ask Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
+  { id: 'rileysettings', label: 'Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
   { id: 'offboarding', label: 'Offboarding', show: a => a.caps.offboardView, flag: 'offboarding' },
   { id: 'offices', label: 'Offices', show: a => a.caps.offices, flag: 'offices' },
   { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
@@ -99,7 +98,7 @@ const NAV_GROUPS = [
     { id: 'organization', label: 'Organization', show: a => a.caps.manageUsers },
     { id: 'security', label: 'Permissions', show: a => a.caps.manageUsers },
     { id: 'modules', label: 'Modules', show: a => a.caps.manageUsers },
-    { id: 'rileysettings', label: 'Ask Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
+    { id: 'rileysettings', label: 'Riley settings', show: a => a.flags.isAdmin, flag: 'ask' },
   ] },
 ];
 /* Assistants live in a floating launcher, not the nav bar. */
@@ -138,7 +137,6 @@ function ViewSwitcher({ current, onPick, onClose, mobileView, onToggleMobile }) 
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.25, textAlign: 'center', padding: '0 22px' }}>Switch view</div>
           <button onClick={onClose} style={{ position: 'absolute', top: -3, right: -3, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}><Icon name="x" style={{ width: 16, height: 16 }} /></button>
         </div>
-        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-3)', textAlign: 'center', padding: '0 4px 12px' }}>Preview the portal at another access level. Your real access is unchanged.</div>
         <button onClick={() => onToggleMobile(!mobileView)}
           style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', borderRadius: 'var(--r-md)', padding: '9px 11px', marginBottom: 8, fontFamily: 'var(--font-body)',
             border: mobileView ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: mobileView ? 'var(--accent-softer)' : 'var(--surface)' }}>
@@ -356,7 +354,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
   useEffect(() => { if (typeof hydrateAppearance === 'function') hydrateAppearance(me.id); else if (typeof applyAppearance === 'function') applyAppearance(loadAppearance(me.id)); }, [me.id]);
   const notifN = notices.filter(n => !n.read && !n.dismissed && n.category !== 'social').length;
   // Riley's knowledge base and routing rules are saved on the server; an admin's edit on
-  // the Ask Riley settings page changes Riley for everyone. (See agentconfig.jsx.)
+  // the Riley settings page changes Riley for everyone. (See agentconfig.jsx.)
   const agentCfg = useAgentConfig();
   const { knowledge, routing } = agentCfg;
   const saveKnowledge = agentCfg.saveKnowledge;
@@ -470,7 +468,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
 
   const renderView = () => {
     if (VIEW_FLAG[view] && !flagOn(VIEW_FLAG[view])) return <ComingSoon label={(NAV.find(n => n.id === VIEW_FLAG[view]) || {}).label || 'This feature'} />;
-    // Ask Riley settings is admin-only; Applicants needs the recruiting capability; Onboarding its own.
+    // Riley settings is admin-only; Applicants needs the recruiting capability; Onboarding its own.
     let view2 = (!access.flags.isAdmin && view === 'rileysettings') ? 'dashboard'
       : (!access.caps.recruiting && view === 'applicants') ? 'dashboard'
       : (!access.caps.onboardStatus && (view === 'onboarding' || view === 'onboardingstatus')) ? 'dashboard'
@@ -478,7 +476,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
     if (view2 === 'feedback' && !access.caps.feedbackView) view2 = 'dashboard';
     switch (view2) {
       case 'dashboard': return <Dashboard me={me} access={access} employees={dashPeople} onNav={dashNav} onOpenEmp={openEmp} />;
-      case 'people': return <Directory employees={DIRECTORY} access={access} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
+      case 'people': return <Directory employees={DIRECTORY} access={access} me={me} onRecord={openEmp} canRecord={canRecord} canSeeInactive={access.caps.seeInactive} title="Directory" />;
       case 'emprecord': return <EmployeeRecord emp={selectedEmp || me} access={access} me={me} canRelations={access.caps.viewAll || (access.caps.viewTeam && scopedIds.has((selectedEmp || me).id))} onBack={() => go('people')} />;
       case 'me': return <Profile emp={me} access={access} onNav={dashNav} />;
       case 'ask': return <AskAgent me={me} knowledge={knowledge} routing={routing} />;
@@ -710,7 +708,7 @@ function Portal({ me, access, realAccess, viewOverride, setViewOverride, onLogou
                 </button>
                 {open && (
                   <div className="mnav-children">
-                    <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help &amp; navigation</button>
+                    <button onClick={() => { setMenuOpen(false); openHelp(); }}>Help</button>
                     <button onClick={onLogout}>Sign out</button>
                   </div>
                 )}

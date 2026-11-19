@@ -250,7 +250,7 @@ function GuidesTab({ flash }) {
           ))}
         </div>
         <input ref={fileRef} type="file" multiple style={{ display: 'none' }} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => { onFiles(e.target.files); e.target.value = ''; }} />
-        <button className="btn btn-primary" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}><Icon name={busy ? 'refresh' : 'upload'} className={busy ? 'spin' : ''} /> Upload a form</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}><Icon name={busy ? 'refresh' : 'upload'} className={busy ? 'spin' : ''} /> Upload form</button>
       </div>
 
       <div onDragOver={e => { e.preventDefault(); }} onDrop={e => { e.preventDefault(); onFiles(e.dataTransfer.files); }}
@@ -276,7 +276,7 @@ function GuidesTab({ flash }) {
       {list.length === 0 && (
         <div className="card" style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--ink-3)' }}>
           <Icon name="upload" style={{ width: 28, height: 28, margin: '0 auto 10px', color: 'var(--ink-3)' }} />
-          <div style={{ fontSize: 13.5 }}>No forms here yet. Drag files in or use <b style={{ color: 'var(--ink-2)' }}>Upload a form</b>.</div>
+          <div style={{ fontSize: 13.5 }}>No forms here yet. Drag files in or use <b style={{ color: 'var(--ink-2)' }}>Upload form</b>.</div>
         </div>
       )}
       {open && (

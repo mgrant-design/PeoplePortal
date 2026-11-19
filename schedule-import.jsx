@@ -231,7 +231,6 @@ function ScheduleImportModal({ offices, flash, onDone, onClose }) {
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Migration</div>
             <h3 style={{ fontSize: 17, margin: '2px 0 0' }}>Import a schedule CSV</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '4px 0 0', lineHeight: 1.5 }}>Loads a roster CSV export into our own schedule. One-way — nothing is read back afterwards.</p>
           </div>
           <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, flex: 'none', justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
         </div>

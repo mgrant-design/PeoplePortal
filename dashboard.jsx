@@ -177,7 +177,6 @@ function Dashboard({ me, access, employees, onNav, onOpenEmp }) {
                       <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{typeof buildSunshinePost === 'function' ? buildSunshinePost(birthdaysToday, anniversariesToday) : birthdayMessage(birthdaysToday.map(e => e.first))}</div>
                     </div>
                   : <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={sendBirthdayWish}>🎉 Send wishes to Sunshine Club</button>}
-                <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 9, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bolt" style={{ width: 12, height: 12 }} /> Auto-posts each morning with a branded card via the Sunshine Club webhook</div>
               </>}
         </div>
       </div>
@@ -274,7 +273,7 @@ function RefLinks({ access }) {
               </a>
             ))}
           </div>
-        ) : <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>No links yet — add the policies and documents people reach for most.</p>
+        ) : <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>No links yet</p>
       )}
 
       {editing && (
@@ -288,10 +287,10 @@ function RefLinks({ access }) {
               <button className="btn btn-quiet" style={{ padding: 6 }} title="Remove" onClick={() => setDraft(d => d.filter((_, j) => j !== i))}><Icon name="trash" style={{ width: 13, height: 13 }} /></button>
             </div>
           ))}
-          <button className="btn btn-quiet" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setDraft(d => [...d, { label: '', url: '' }])}><Icon name="plus" style={{ width: 13, height: 13 }} /> Add a link</button>
+          <button className="btn btn-quiet" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setDraft(d => [...d, { label: '', url: '' }])}><Icon name="plus" style={{ width: 13, height: 13 }} /> Add link</button>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={() => { save(clean()); setEditing(false); }}><Icon name="check" /> Save links</button>
+            <button className="btn btn-primary" onClick={() => { save(clean()); setEditing(false); }}><Icon name="check" /> Save</button>
           </div>
         </div>
       )}

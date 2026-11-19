@@ -192,7 +192,6 @@ function OrgEditor({ access }) {
   return (
     <div className="fade-in">
       <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Organization</h1>
-      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, margin: '6px 0 16px' }}>Departments, job titles, manager access and approvers — shared across the portal and used to scope what each person sees.</p>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)' }}>
         {TABS.map(tb => (

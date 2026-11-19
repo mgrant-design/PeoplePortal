@@ -90,3 +90,12 @@ test('whoever drafts the offer can type the pay; the amount on file is not shown
   assert.match(panel, /placeholder=\{!o\.pay && o\.payOnFile \? 'On file' :/);
   assert.match(panel, /\{canPay && o\.pay && <>/, 'the read-only summary shows pay only to someone with pay rights');
 });
+
+test('a button is labelled with its action, and a page does not describe itself', () => {
+  const all = fs.readdirSync(path.join(__dirname, '..', '..')).filter(f => f.endsWith('.jsx')).map(f => [f, read(f)]);
+  const labels = /Deactivate people|Sign and (deactivate|terminate|suspend|reactivate)|Submit a new hire|Open in Applicants|Ask Riley settings|Back to (checklist|people|library|reviews)|Add someone manually|Draft offer letter|Record signature received|Save (changes|details|links|regular hours)|View full record|Open employee record|Take the interactive tour|Edit \/ revise offer|Submit to \{offerApprover\(\)\.name\} for approval/;
+  const prose = /subtitle="|is coming soon|Your onboarding assistant|Build reports by dragging|Turn modules on or off to phase|These questions appear on every|The hours someone normally works|Loads a roster CSV export|Common for clinical roles|We pull first & last name/;
+  // the guided tour and the help panel are the two places whose job is to explain a page
+  const explains = ['walkthrough.jsx', 'help.jsx'];
+  for (const [f, src] of all) { assert.doesNotMatch(src, labels, f); if (!explains.includes(f)) assert.doesNotMatch(src, prose, f); }
+});

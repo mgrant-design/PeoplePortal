@@ -32,7 +32,7 @@ test('the version check does not count the tests folder as a broken endpoint', a
 test('the edit dialog asks for a signature when someone leaves Terminated or Suspended', () => {
   const e = read('editrecord.jsx');
   assert.match(e, /SIGNED_STATUSES\.includes\(emp\.status\)/);
-  assert.match(e, /Sign and reactivate/);
+  assert.match(e, /isReactivate \? 'Reactivate' : isTerm \? 'Terminate' : 'Suspend'/);
 });
 test('managers get an edit form without job title, department or work email', () => {
   const e = read('editrecord.jsx');

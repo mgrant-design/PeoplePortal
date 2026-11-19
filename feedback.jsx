@@ -4,7 +4,7 @@
 
 const FB_STATUSES = ['Submitted', 'Under review', 'Planned', 'In progress', 'Complete', 'Declined'];
 const FB_TONE = { 'Submitted': 'badge-todo', 'Under review': 'badge-prog', 'Planned': 'badge-prog', 'In progress': 'badge-warn', 'Complete': 'badge-ok', 'Declined': 'badge-todo' };
-const FB_CATS = ['Dashboard', 'Applicants', 'Onboarding', 'Directory', 'Scheduling', 'My schedule', 'Time clock', 'Reviews', 'Reports', 'Ask Riley settings', 'Offboarding', 'Offices', 'Organization', 'Security', 'Modules', 'Roadmap', 'Ask Riley', 'Ask HR', 'Learning Library', 'Scrubs', 'Other'];
+const FB_CATS = ['Dashboard', 'Applicants', 'Onboarding', 'Directory', 'Scheduling', 'My schedule', 'Time clock', 'Reviews', 'Reports', 'Riley settings', 'Offboarding', 'Offices', 'Organization', 'Security', 'Modules', 'Roadmap', 'Ask Riley', 'Ask HR', 'Learning Library', 'Scrubs', 'Other'];
 
 const ROADMAP_COLS = [['Submitted', 'Submitted'], ['Planned', 'Planned'], ['In progress', 'In progress'], ['Complete', 'Shipped']];
 
@@ -334,7 +334,7 @@ function Feedback({ me, access, flash }) {
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 6 }}>Suggest improvements and see what’s coming next.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {isAdmin && <button className="btn btn-primary" onClick={() => { setTab('Requests'); setAdding(a => !a); }}><Icon name="plus" /> Submit a request</button>}
+          {isAdmin && <button className="btn btn-primary" onClick={() => { setTab('Requests'); setAdding(a => !a); }}><Icon name="plus" /> New request</button>}
         </div>
       </div>
 

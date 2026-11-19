@@ -52,7 +52,6 @@ function ReviewQuestionsEditor({ questions, onChange }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <p style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>These questions appear on every self-review and manager review. Edit anytime.</p>
         <button className="btn btn-ghost" onClick={() => start('new')}><Icon name="plus" /> Add question</button>
       </div>
       {edit === 'new' && form}
@@ -94,7 +93,7 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
 
   return (
     <div className="fade-in">
-      <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to reviews</button>
+      <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back</button>
       <div className="card" style={{ padding: 'clamp(18px,3vw,24px)', marginBottom: 'var(--gap)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <PhotoAvatar emp={emp} size={52} />
         <div style={{ flex: 1, minWidth: 180 }}>
@@ -156,8 +155,8 @@ function ReviewDetail({ emp, me, access, questions, rec, onSave, onShare, onBack
       {editable && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" disabled={busy} onClick={() => submit(false)}><Icon name="check" /> Save draft</button>
-          <button className="btn btn-primary" disabled={busy} onClick={() => submit(true)}><Icon name="check" /> Submit {editable === 'self' ? 'self-review' : 'review'}</button>
-          {editable === 'manager' && (rec && rec.manager && rec.manager.done) && !(rec && rec.shared) && <button className="btn btn-primary" disabled={busy} onClick={() => onShare(emp.id)}><Icon name="mail" /> Share with employee</button>}
+          <button className="btn btn-primary" disabled={busy} onClick={() => submit(true)}><Icon name="check" /> Submit</button>
+          {editable === 'manager' && (rec && rec.manager && rec.manager.done) && !(rec && rec.shared) && <button className="btn btn-primary" disabled={busy} onClick={() => onShare(emp.id)}><Icon name="mail" /> Share</button>}
         </div>
       )}
       {!editable && <p style={{ fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center' }}>You have view access to this review.</p>}

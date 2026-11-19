@@ -16,7 +16,7 @@ function hiresInOnboarding(employees, today) {
     }))
     .sort((a, b) => (a.startDate || '9999').localeCompare(b.startDate || '9999') || a.name.localeCompare(b.name));
 }
-/* The applicant the Submit a new hire form saves: at the Offer stage, with the offer already
+/* The applicant the New hire form saves: at the Offer stage, with the offer already
    submitted to the offer approver. f: the form. at: the time in milliseconds. */
 function newHireApplicant(f, me, at, id) {
   const name = String(f.name || '').trim().replace(/\s+/g, ' ');
@@ -56,7 +56,7 @@ function OnboardingStatus({ me, access, employees, onApplicants, onNewHire, onOp
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {onApplicants && <button className="btn btn-ghost" onClick={onApplicants}><Icon name="users" /> Applicants</button>}
-          {onNewHire && <button className="btn btn-primary" onClick={onNewHire}><Icon name="plus" /> Submit a new hire</button>}
+          {onNewHire && <button className="btn btn-primary" onClick={onNewHire}><Icon name="plus" /> New hire</button>}
         </div>
       </div>
 
@@ -96,7 +96,7 @@ function OnboardingStatus({ me, access, employees, onApplicants, onNewHire, onOp
   );
 }
 
-/* ---------- Submit a new hire: a manager sends a person's details to the offer approver ---------- */
+/* ---------- New hire: a manager sends a person's details to the offer approver ---------- */
 const _pf = { width: '100%', padding: '10px 12px', borderRadius: 'var(--r-md)', fontSize: 14, fontFamily: 'var(--font-body)', border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
 function PF({ label, req, children }) {
   return <label style={{ display: 'block' }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 6 }}>{label}{req && <span style={{ color: 'var(--accent)' }}> *</span>}</div>{children}</label>;
@@ -131,8 +131,8 @@ function NewHireForm({ me, access, offices, onBack, onOpenApplicant }) {
           <h2 style={{ fontSize: 23, marginTop: 14 }}>Sent to HR</h2>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 8 }}><b>{sent.name}</b></p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22, flexWrap: 'wrap' }}>
-            <button className="btn btn-ghost" onClick={() => { setSent(null); setF(blank()); }}>Submit another</button>
-            {onOpenApplicant && <button className="btn btn-ghost" onClick={() => onOpenApplicant(sent.id)}>Open in Applicants</button>}
+            <button className="btn btn-ghost" onClick={() => { setSent(null); setF(blank()); }}>Add another</button>
+            {onOpenApplicant && <button className="btn btn-ghost" onClick={() => onOpenApplicant(sent.id)}>View applicant</button>}
             <button className="btn btn-primary" onClick={onBack}>Done</button>
           </div>
         </div>
@@ -143,7 +143,7 @@ function NewHireForm({ me, access, offices, onBack, onOpenApplicant }) {
   return (
     <div className="fade-in">
       <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back</button>
-      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 18 }}>Submit a new hire</h1>
+      <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 18 }}>New hire</h1>
       <div className="card" style={{ padding: 'var(--pad)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
           <PF label="Full name" req><input value={f.name} onChange={e => set('name', e.target.value)} style={_pf} /></PF>

@@ -220,7 +220,7 @@ function DraftCard({ d, offices, onChange, onRemove }) {
         </label>
         {d.resumeText && (
           <div style={{ marginTop: 12 }}>
-            <button className="btn btn-quiet" style={{ fontSize: 12.5, padding: '4px 0', color: 'var(--accent-strong)' }} onClick={() => setShowText(v => !v)}><Icon name="chevron" style={{ width: 13, height: 13, transform: showText ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} /> {showText ? 'Hide' : 'Show'} extracted text — {d.resumeText.length.toLocaleString()} chars kept on file</button>
+            <button className="btn btn-quiet" style={{ fontSize: 12.5, padding: '4px 0', color: 'var(--accent-strong)' }} onClick={() => setShowText(v => !v)}><Icon name="chevron" style={{ width: 13, height: 13, transform: showText ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} /> {showText ? 'Hide text' : 'Show text'}</button>
             {showText && <pre style={{ marginTop: 8, maxHeight: 200, overflow: 'auto', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '10px 12px', fontSize: 11.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', color: 'var(--ink-2)', margin: '8px 0 0' }}>{d.resumeText}</pre>}
           </div>
         )}
@@ -265,7 +265,6 @@ function AddApplicant({ offices, onSave, onClose, flash }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--pad)', borderBottom: '1px solid var(--line-soft)' }}>
         <div>
           <h2 style={{ fontSize: 19 }}>Add applicants</h2>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 }}>Drop résumé PDFs to parse contact details, or add someone manually.</p>
         </div>
         <button className="btn btn-quiet" style={{ padding: 8 }} onClick={onClose}><Icon name="x" /></button>
       </div>
@@ -276,7 +275,6 @@ function AddApplicant({ offices, onSave, onClose, flash }) {
             <div style={{ border: `1.5px dashed ${drag ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 'var(--r-md)', padding: '26px 18px', textAlign: 'center', background: drag ? 'var(--accent-soft)' : 'var(--surface-2)', transition: '.15s' }}>
               <Icon name="upload" style={{ width: 26, height: 26, color: 'var(--accent)', margin: '0 auto 10px', display: 'block' }} />
               <div style={{ fontWeight: 600, fontSize: 14.5 }}>Drop résumé PDFs here to build the pool</div>
-              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, maxWidth: 460, marginInline: 'auto', lineHeight: 1.5 }}>We pull first & last name, email, cell phone and address from each PDF — you set the role & department. Drop several at once.</div>
             </div>
           </label>
         )}
@@ -289,11 +287,11 @@ function AddApplicant({ offices, onSave, onClose, flash }) {
             </div>
           </>
         )}
-        <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={addManual}><Icon name="plus" /> Add someone manually</button>
+        <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={addManual}><Icon name="plus" /> Add manually</button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 'var(--pad)', borderTop: '1px solid var(--line-soft)' }}>
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!ready} onClick={() => onSave(drafts)}><Icon name="plus" /> Add {drafts.length > 1 ? drafts.length + ' ' : ''}to pipeline</button>
+        <button className="btn btn-primary" disabled={!ready} onClick={() => onSave(drafts)}><Icon name="plus" /> Add {drafts.length > 1 ? drafts.length + ' applicants' : 'applicant'}</button>
       </div>
     </ModalShell>
   );
@@ -325,8 +323,7 @@ function WorkingInterview({ a, canPay, paychexOn, onWI, onSendHours, onScheduleW
 
       {!wi ? (
         <div>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>Common for clinical roles — the candidate works a paid trial day. Schedule it here, then send the hours to Accounting for payment.</p>
-          <button className="btn btn-ghost" onClick={() => onScheduleWI(a.id)}><Icon name="plus" /> Schedule working interview</button>
+          <button className="btn btn-ghost" onClick={() => onScheduleWI(a.id)}><Icon name="plus" /> Schedule</button>
         </div>
       ) : (
         <>
@@ -387,7 +384,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
         </button>
         {open && <>
           <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 10px', lineHeight: 1.5 }}>Draft an offer with the role, job description, and details for {offerApprover().name} to review and send.</p>
-          <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer letter</button>
+          <button className="btn btn-ghost" onClick={() => onDraftOffer(a.id)}><Icon name="plus" /> Draft offer</button>
         </>}
       </div>
     );
@@ -461,10 +458,10 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
             {isApprover
-              ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
+              ? <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send</button>
               : !offerApprover().email
               ? <span style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="lock" style={{ width: 14, height: 14 }} /> No offer approver is set yet. An admin sets it on the Organization page.</span>
-              : <button className="btn btn-primary" disabled={noPay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit to {offerApprover().name} for approval</button>}
+              : <button className="btn btn-primary" disabled={noPay} onClick={() => onSubmit(a.id)}><Icon name="mail" /> Submit for approval</button>}
             {noPay && (isApprover || !!offerApprover().email) && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Add pay to send</span>}
           </div>
           {picker && <AttachPicker onPick={(att) => { addAttach(att); setPicker(false); }} onClose={() => setPicker(false)} />}
@@ -474,9 +471,9 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
           {summaryBlock}
           {isApprover ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send to {atsFirst(a.name)}</button>
-              <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back to draft</button>
-              {noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet. Send it back to draft, add the pay, then approve.</span>}
+              <button className="btn btn-primary" disabled={noPay} onClick={() => onApprove(a.id)}><Icon name="check" /> Approve &amp; send</button>
+              <button className="btn btn-ghost" onClick={() => onSendBack(a.id)}>Send back</button>
+              {noPay && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>No pay yet</span>}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="clock" style={{ width: 14, height: 14 }} /> Submitted by {o.submittedBy || 'recruiter'} — awaiting {offerApprover().name}'s approval before it reaches the candidate.</div>
@@ -507,7 +504,7 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
               {isApprover && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                   <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onOffer(a.id, { status: 'draft' })}><Icon name="pen" /> Revise &amp; re-send</button>
-                  <button className="btn btn-quiet" style={{ fontSize: 12.5 }} onClick={() => onReject(a.id)}><Icon name="x" /> Archive applicant</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12.5 }} onClick={() => onReject(a.id)}><Icon name="x" /> Archive</button>
                 </div>
               )}
             </div>
@@ -523,10 +520,10 @@ function OfferLetter({ a, canPay, isApprover, onOffer, onDraftOffer, onSubmit, o
               {isApprover && !declining && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
                   <input value={sig} onChange={e => setSig(e.target.value)} placeholder="Candidate’s full legal name" style={{ ...atsFld, flex: 1, minWidth: 180 }} />
-                  <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature received</button>
+                  <button className="btn btn-ghost" disabled={!sig.trim()} onClick={() => onSign(a.id, sig.trim())}><Icon name="pen" /> Record signature</button>
                   <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--accent-strong)' }} onClick={() => onApprove(a.id)}><Icon name="mail" style={{ width: 12, height: 12 }} /> Resend offer</button>
-                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit / revise offer</button>
-                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Mark declined (phone/in person)</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'var(--ink-3)' }} onClick={() => onOffer(a.id, { status: 'draft' })}>Edit offer</button>
+                  <button className="btn btn-quiet" style={{ fontSize: 12, color: 'oklch(0.55 0.15 25)' }} onClick={() => setDeclining(true)}>Mark declined</button>
                 </div>
               )}
               {isApprover && declining && (
@@ -641,7 +638,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700 }}>{editInfo ? 'Edit applicant details' : 'Contact'}</span>
             <div style={{ flex: 1 }} />
-            {!editInfo && <button className="btn btn-quiet" style={{ fontSize: 12, padding: '4px 8px', color: 'var(--accent-strong)' }} onClick={startEdit}><Icon name="pen" style={{ width: 12, height: 12 }} /> Edit details</button>}
+            {!editInfo && <button className="btn btn-quiet" style={{ fontSize: 12, padding: '4px 8px', color: 'var(--accent-strong)' }} onClick={startEdit}><Icon name="pen" style={{ width: 12, height: 12 }} /> Edit</button>}
           </div>
           {editInfo ? (
             <>
@@ -662,7 +659,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
               </label>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
                 <button className="btn btn-ghost" onClick={() => setEditInfo(false)}>Cancel</button>
-                <button className="btn btn-primary" disabled={!form.first.trim() || !form.role.trim()} onClick={saveEdit}>Save details</button>
+                <button className="btn btn-primary" disabled={!form.first.trim() || !form.role.trim()} onClick={saveEdit}>Save</button>
               </div>
             </>
           ) : (
@@ -712,10 +709,10 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
           {fbEditing ? (
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '12px 13px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFbEditable ? 'Update your feedback' : 'Add new feedback'}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{myFbEditable ? 'Update feedback' : 'Add feedback'}</span>
                 <Stars value={myRating} onChange={setMyRating} />
               </div>
-              {myFb && !myFbEditable && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 8 }}>Your last entry is locked (posted more than 24h ago) — this adds another, e.g. for a follow-up interview.</div>}
+              {myFb && !myFbEditable && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 8 }}>Your last entry is locked</div>}
               <textarea value={myComment} onChange={e => setMyComment(e.target.value)} rows={2} placeholder="Your comments on this candidate…" style={{ ...atsFld, resize: 'vertical', lineHeight: 1.5 }} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 9 }}>
                 <button className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setFbEditing(false)}>Cancel</button>
@@ -723,7 +720,7 @@ function ApplicantDetail({ a, access, me, offices, paychexOn, onClose, onStage, 
               </div>
             </div>
           ) : (
-            <button className="btn btn-ghost" onClick={() => { setMyRating(myFbEditable ? myFb.rating : 0); setMyComment(myFbEditable ? myFb.comment : ''); setFbEditing(true); }}><Icon name="pen" style={{ width: 14, height: 14 }} /> {myFbEditable ? 'Update your feedback' : myFb ? 'Add new feedback' : 'Add your feedback'}</button>
+            <button className="btn btn-ghost" onClick={() => { setMyRating(myFbEditable ? myFb.rating : 0); setMyComment(myFbEditable ? myFb.comment : ''); setFbEditing(true); }}><Icon name="pen" style={{ width: 14, height: 14 }} /> {myFbEditable ? 'Update feedback' : 'Add feedback'}</button>
           )}
           </>}
         </div>}

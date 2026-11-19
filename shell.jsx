@@ -5,7 +5,7 @@ function StepShell({ icon, eyebrow, title, subtitle, onBack, children, aside, fo
     <div className="fade-in">
       {onBack && (
         <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 18, marginLeft: -10 }}>
-          <Icon name="arrowLeft" /> Back to checklist
+          <Icon name="arrowLeft" /> Back
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 26 }}>

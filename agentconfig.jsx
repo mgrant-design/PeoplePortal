@@ -1,4 +1,4 @@
-/* agentconfig.jsx — client persistence for Riley's editable config (the Ask Riley settings
+/* agentconfig.jsx — client persistence for Riley's editable config (the Riley settings
    page): knowledge base and routing rules.
 
    Talks to /api/agentconfig (Cosmos appState/riley-config) through pdApi.

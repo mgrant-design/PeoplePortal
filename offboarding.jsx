@@ -131,7 +131,7 @@ function Offboarding({ me, access, viewOnly, onOpenEmp }) {
                     ))}
                   </div>
                   {o.notes && <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, background: 'var(--surface)', padding: '12px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--line)' }}>{o.notes}</p>}
-                  {empById[o.empId] && <div style={{ marginTop: 14 }}><button className="btn btn-ghost" onClick={() => onOpenEmp(empById[o.empId])}><Icon name="users" /> Open employee record</button></div>}
+                  {empById[o.empId] && <div style={{ marginTop: 14 }}><button className="btn btn-ghost" onClick={() => onOpenEmp(empById[o.empId])}><Icon name="users" /> View record</button></div>}
                 </div>
               )}
             </div>

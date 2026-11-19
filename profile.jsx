@@ -70,7 +70,7 @@ function Profile({ emp, access, onNav }) {
       {photoNudge && !hasPhoto && (
         <div className="card" style={{ padding: '14px var(--pad)', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 'var(--gap)', borderColor: 'var(--accent)', background: 'var(--accent-softer)' }}>
           <Icon name="upload" style={{ width: 22, height: 22, color: 'var(--accent-strong)', flex: 'none' }} />
-          <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 14.5 }}>Add a profile photo</div><p style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>Help your team put a face to your name — it shows across the directory and schedule.</p></div>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 14.5 }}>Add a profile photo</div></div>
           <button className="btn btn-quiet" onClick={() => setPhotoNudge(false)}><Icon name="x" /></button>
         </div>
       )}

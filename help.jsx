@@ -37,7 +37,7 @@ function HelpPanel({ view, onClose, onStartTour }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           {/* AI walkthrough video */}
           <div style={{ marginBottom: 14 }}><AIWalkthrough /></div>
-          {onStartTour && <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', marginBottom: 18 }} onClick={onStartTour}><Icon name="bolt" /> Take the interactive tour</button>}
+          {onStartTour && <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', marginBottom: 18 }} onClick={onStartTour}><Icon name="bolt" /> Take the tour</button>}
 
           {/* current page */}
           {cur && (

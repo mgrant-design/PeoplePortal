@@ -55,7 +55,6 @@ function Reports({ access }) {
   return (
     <div className="fade-in">
       <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>Reports</h1>
-      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 18 }}>Build headcount & workforce reports live from your HR data.</p>
 
       <div className="statgrid" style={{ marginBottom: 'var(--gap)' }}>
         <StatCard icon="users" label="Active employees" value={active.length} />
@@ -156,7 +155,6 @@ function SeeEveryoneModal({ name, pages, onCancel, onSave }) {
             </div>
           )}
         </div>
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 14, display: 'flex', gap: 6, alignItems: 'center' }}><Icon name="lock" style={{ width: 13, height: 13, flex: 'none' }} /> The Directory is company-wide for everyone already, so it is not listed here.</p>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="btn btn-quiet" style={{ flex: 1, justifyContent: 'center' }} onClick={onCancel}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={mode === 'pages' && !picked.size} onClick={() => onSave(mode === 'global' ? [] : Array.from(picked))}><Icon name="check" /> Apply</button>
@@ -324,7 +322,6 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, flagSaving, page = 's
 
       {page === 'modules' && flagDefs && (
         <div>
-          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginBottom: 16 }}>Turn modules on or off to phase your rollout. Disabled features disappear from everyone’s navigation until you switch them on.</p>
           {groups.map(g => (
             <div key={g} style={{ marginBottom: 18 }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 10 }}>{g}</div>
@@ -342,7 +339,6 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, flagSaving, page = 's
               </div>
             </div>
           ))}
-          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', gap: 7, alignItems: 'center' }}><Icon name="bolt" style={{ width: 14, height: 14, color: 'var(--accent)' }} /> Changes apply instantly for every user. Paychex-dependent actions stay hidden until the integration is enabled.</div>
         </div>
       )}
 
@@ -414,7 +410,7 @@ function AdminUsers({ me, access, flags, flagDefs, onFlag, flagSaving, page = 's
         <span style={{ fontSize: 12.5, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="shield" style={{ width: 14, height: 14, color: 'var(--accent)' }} /> Changes are logged. Only Admins can grant Delete.</span>
         {saveStatus !== 'idle' && saveStatus !== 'saved' && <span style={{ fontSize: 12.5, fontWeight: 600, color: saveStatus === 'conflict' || saveStatus === 'error' ? 'var(--danger)' : 'var(--ink-3)' }}>{SAVE_LABEL[saveStatus]}</span>}
         {saveStatus === 'saved' && !dirty && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ok)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="check" style={{ width: 13, height: 13 }} /> Saved</span>}
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saveStatus === 'saving' || !dirty}><Icon name="check" /> {saveStatus === 'saving' ? 'Saving…' : 'Save changes'}</button>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saveStatus === 'saving' || !dirty}><Icon name="check" /> {saveStatus === 'saving' ? 'Saving…' : 'Save'}</button>
       </div>
       </div>
       )}

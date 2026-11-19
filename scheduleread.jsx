@@ -235,8 +235,7 @@ function ScheduleRead({ me, access }) {
     const dayHrs = Math.round(dayGroups.reduce((a, g) => a + g.on.reduce((b, x) => b + x.list.reduce((c, s) => c + (s.open ? 0 : shiftHrs(s)), 0), 0), 0) * 10) / 10;
 
     return (
-      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule"
-        subtitle="The published week. Pick a day to see who is on.">
+      <StepShell icon="grid" eyebrow="Scheduling" title="Schedule">
 
         {/* Week: name, back, forward, refresh, time off. No menus anywhere on this
            screen — nothing here writes to the schedule except your own offer or claim. */}
@@ -380,7 +379,6 @@ function ScheduleRead({ me, access }) {
 
   return (
     <StepShell icon="grid" eyebrow="Scheduling" title="Schedule"
-      subtitle="The published week for each office — who is on, and when. Your own shifts are marked; offer one you can't work, or claim one that's up for grabs."
       aside={<button className="btn btn-ghost" onClick={() => setBoOpen(true)}><Icon name="calendar" /> Request time off</button>}>
 
       {/* her week first — one line per day, short enough that the office grid stays in view */}

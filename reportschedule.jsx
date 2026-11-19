@@ -110,7 +110,7 @@ function ScheduleModal({ def, me, onClose, onSave }) {
       <div onClick={e => e.stopPropagation()} className="card fade-in" style={{ width: 'min(560px, 96vw)', maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 11 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flex: 'none', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}><Icon name="mail" style={{ width: 17, height: 17 }} /></div>
-          <div style={{ flex: 1 }}><h3 style={{ fontSize: 16 }}>Schedule by email</h3><p style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Deliver this report automatically on a recurring schedule.</p></div>
+          <div style={{ flex: 1 }}><h3 style={{ fontSize: 16 }}>Schedule by email</h3></div>
           <button onClick={onClose} className="btn btn-quiet" style={{ padding: 7 }}><Icon name="x" /></button>
         </div>
         <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>

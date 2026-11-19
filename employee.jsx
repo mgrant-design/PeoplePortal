@@ -155,7 +155,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
   return (
     <div className="fade-in">
       {editing && <EditRecordModal emp={emp} fields={access.caps.viewAll ? ADMIN_FIELDS : MANAGER_FIELDS} title="Edit employee record" me={me} onSaved={setEmp} onClose={() => setEditing(false)} />}
-      {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to people</button>}
+      {onBack && <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back</button>}
       {/* header */}
       <div className="card" style={{ padding: 'clamp(18px,3vw,26px)', marginBottom: 'var(--gap)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
@@ -278,7 +278,7 @@ function EmployeeRecord({ emp: rawEmp, access, me, canRelations, onBack }) {
             <Row k="Exit interview" v={off.exitInterview ? 'Completed ' + off.exitInterview : 'Not conducted'} />
             {off.notes && <p style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 12, lineHeight: 1.5, background: 'var(--surface-2)', padding: '12px 14px', borderRadius: 'var(--r-md)' }}>{off.notes}</p>}
           </div>
-        ) : <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>No offboarding record — {emp.first} is currently <b style={{ color: 'var(--ink)' }}>{emp.status}</b>.{offNotice && <div style={{ marginTop: 12, color: 'var(--ink-2)' }}>Offboarding notice ({offNotice.termStatus}, last day {offNotice.effective}) · <b>{offNotice.approval === 'approved' ? 'Approved' : 'Waiting on approval'}</b></div>}{!offNotice && access.caps.offboard && typeof offboardablePeople === 'function' && offboardablePeople(me, access).some(e => e.id === emp.id) && <div style={{ marginTop: 14 }}><button className="btn btn-ghost" onClick={() => setOffStarting(true)}><Icon name="arrowRight" /> Start offboarding notice</button></div>}
+        ) : <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>No offboarding record — {emp.first} is currently <b style={{ color: 'var(--ink)' }}>{emp.status}</b>.{offNotice && <div style={{ marginTop: 12, color: 'var(--ink-2)' }}>Offboarding notice ({offNotice.termStatus}, last day {offNotice.effective}) · <b>{offNotice.approval === 'approved' ? 'Approved' : 'Waiting on approval'}</b></div>}{!offNotice && access.caps.offboard && typeof offboardablePeople === 'function' && offboardablePeople(me, access).some(e => e.id === emp.id) && <div style={{ marginTop: 14 }}><button className="btn btn-ghost" onClick={() => setOffStarting(true)}><Icon name="arrowRight" /> Start offboarding</button></div>}
           {offStarting && <OffboardingDialog me={me} access={access} person={emp} onClose={() => setOffStarting(false)} onSent={(m) => { setOffStarting(false); setOffSent(m); }} />}
           {offSent && <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: 'oklch(0.42 0.12 155)' }}>{offSent}</div>}</div>
       )}

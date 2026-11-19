@@ -47,7 +47,7 @@ function RileySettings({ knowledge, routing, onKnowledge, onRouting, canEdit = f
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
         <AgentBadge size={48} />
         <div style={{ flex: 1, minWidth: 180 }}>
-          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Ask Riley settings</h1>
+          <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Riley settings</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <AgentSaveStatus status={status} />
@@ -238,7 +238,6 @@ function AskAgent({ me, knowledge, routing }) {
         <AgentBadge size={46} />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 'clamp(22px,3vw,28px)' }}>Ask Riley</h1>
-          <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginTop: 4 }}>Your onboarding assistant — answers in seconds, any time.</p>
         </div>
       </div>
 

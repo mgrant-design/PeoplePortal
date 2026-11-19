@@ -123,7 +123,6 @@ function RegularHoursModal({ roster, profiles, offices, onSaved, onClose, flash 
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent-strong)' }}>Regular hours</div>
             <h3 style={{ fontSize: 17, margin: '2px 0 0' }}>Standing weekly hours</h3>
-            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '4px 0 0', lineHeight: 1.5 }}>The hours someone normally works. Used to fill a week and to flag overtime — it never changes a shift on its own.</p>
           </div>
           <button onClick={onClose} className="btn btn-quiet" style={{ width: 30, height: 30, padding: 0, flex: 'none', justifyContent: 'center' }}><Icon name="x" style={{ width: 14, height: 14 }} /></button>
         </div>
@@ -189,7 +188,7 @@ function RegularHoursModal({ roster, profiles, offices, onSaved, onClose, flash 
         <div style={{ display: 'flex', gap: 8, padding: '13px 20px 16px', borderTop: '1px solid var(--line)' }}>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button disabled={!draft || noEmail || saving} onClick={save} className="btn btn-primary"><Icon name="check" /> {saving ? 'Saving…' : 'Save regular hours'}</button>
+          <button disabled={!draft || noEmail || saving} onClick={save} className="btn btn-primary"><Icon name="check" /> {saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </RegPortal>

@@ -92,7 +92,7 @@ function OrientationTimeline({ which, onBack }) {
 
   return (
     <div className="fade-in">
-      <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back to library</button>
+      <button className="btn btn-quiet" onClick={onBack} style={{ marginBottom: 14, marginLeft: -10 }}><Icon name="arrowLeft" /> Back</button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ width: 48, height: 48, borderRadius: 13, background: 'var(--accent-soft)', color: 'var(--accent-strong)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon name={which === 'clinical' ? 'tooth' : 'doc'} style={{ width: 25, height: 25 }} /></div>
         <div style={{ flex: 1, minWidth: 200 }}>
@@ -170,7 +170,6 @@ function SourceFinder({ onAdd, existingTitles, flash }) {
           <div style={{ width: 40, height: 40, borderRadius: '50%', flex: 'none', display: 'grid', placeItems: 'center', background: 'linear-gradient(150deg, var(--teal), var(--accent-strong))', color: '#fff' }}><Icon name="search" style={{ width: 19, height: 19 }} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 15.5 }}>Training source finder</div>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Name a topic — it suggests reputable articles, videos & webinars you can add in one click.</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

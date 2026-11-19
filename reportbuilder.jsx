@@ -298,7 +298,6 @@ function Reports({ access, scope, paychexOn, me, flash }) {
   return (
     <div className="fade-in">
       <h1 style={{ fontSize: 'clamp(22px,3vw,28px)', marginBottom: 4 }}>Reports</h1>
-      <p style={{ color: 'var(--ink-2)', fontSize: 14.5, marginBottom: 16 }}>Build reports by dragging data elements · live from your HR, scheduling & time data.</p>
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--gap)', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
         {TABS.map(tb => <button key={tb} onClick={() => setTab(tb)} style={{ border: 'none', background: 'none', padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: tab === tb ? 'var(--accent-strong)' : 'var(--ink-3)', borderBottom: `2px solid ${tab === tb ? 'var(--accent)' : 'transparent'}`, marginBottom: -1 }}>{tb}</button>)}
       </div>
@@ -343,8 +342,7 @@ function ReportRequests({ me, access, flash }) {
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-        <p style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>Request a new report or data view. Admins triage and build them.</p>
-        <button className="btn btn-primary" onClick={() => setAdding(a => !a)}><Icon name="plus" /> Request a report</button>
+        <button className="btn btn-primary" onClick={() => setAdding(a => !a)}><Icon name="plus" /> Request report</button>
       </div>
       {adding && (
         <div className="card" style={{ padding: 'var(--pad)', marginBottom: 'var(--gap)', borderColor: 'var(--accent)' }}>

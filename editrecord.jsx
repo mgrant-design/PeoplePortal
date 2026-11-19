@@ -126,7 +126,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
           </label>
 
           <label style={{ display: 'block', marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 5 }}>Reason <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— optional, but it’s what you’ll want if this is ever questioned</span></div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-3)', marginBottom: 5 }}>Reason</div>
             <textarea value={reason} onChange={e => setReason(e.target.value.slice(0, 1000))} rows="3" style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
           </label>
 
@@ -141,7 +141,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
             <button className="btn btn-primary" disabled={!signOk || saving}
               style={ signOk && !saving ? { background: isTerm ? 'oklch(0.55 0.17 25)' : 'oklch(0.6 0.14 65)', borderColor: 'transparent' } : undefined}
               onClick={() => commit(changedPatch(), { signature: signature.trim(), reason: reason.trim() })}>
-              <Icon name="check" /> {saving ? 'Saving…' : isReactivate ? 'Sign and reactivate' : `Sign and ${isTerm ? 'terminate' : 'suspend'}`}
+              <Icon name="check" /> {saving ? 'Saving…' : isReactivate ? 'Reactivate' : isTerm ? 'Terminate' : 'Suspend'}
             </button>
           </div>
         </div>
@@ -178,7 +178,7 @@ function EditRecordModal({ emp, fields, title, me, onSaved, onClose }) {
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={saving} onClick={save}><Icon name="check" /> {saving ? 'Saving…' : 'Save changes'}</button>
+          <button className="btn btn-primary" disabled={saving} onClick={save}><Icon name="check" /> {saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>
