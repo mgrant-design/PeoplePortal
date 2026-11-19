@@ -224,7 +224,7 @@ function Directory({ employees, access, me, onRecord, canRecord, canSeeInactive,
           return (
             <button key={e.id} onClick={() => handleOpen(e)} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, padding: '11px var(--pad)', border: 'none', borderTop: i ? '1px solid var(--line-soft)' : 'none', background: 'var(--surface)', cursor: 'pointer', transition: 'background .12s' }}
               onMouseEnter={ev => ev.currentTarget.style.background = 'var(--surface-2)'} onMouseLeave={ev => ev.currentTarget.style.background = 'var(--surface)'}>
-              {picking && <input type="checkbox" readOnly checked={!!picked[e.id] && canDeactivate(e, me)} disabled={!canDeactivate(e, me)} style={{ width: 17, height: 17, flex: 'none', accentColor: 'var(--accent)' }} />}
+              {picking && <input type="checkbox" readOnly tabIndex={-1} aria-hidden="true" checked={!!picked[e.id] && canDeactivate(e, me)} style={{ width: 17, height: 17, flex: 'none', accentColor: 'var(--accent)', pointerEvents: 'none', opacity: canDeactivate(e, me) ? 1 : 0.3 }} />}
               <PhotoAvatar emp={e} size={40} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>

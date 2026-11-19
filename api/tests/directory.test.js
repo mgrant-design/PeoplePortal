@@ -46,3 +46,10 @@ test('the deactivate controls are labelled with the action alone', () => {
   assert.match(src, />Deactivate<\/button>/);
   assert.match(src, /\{chosen\.length\} selected/);
 });
+test('the tick box on a row takes no click of its own, so the whole row is one target', () => {
+  const src = read('directory.jsx');
+  const box = (src.match(/\{picking && <input type="checkbox"[^\n]*/) || [''])[0];
+  assert.match(box, /pointerEvents: 'none'/);
+  assert.match(box, /tabIndex=\{-1\}/);
+  assert.doesNotMatch(box, /disabled=/, 'a greyed box would swallow the click; the row decides who can be ticked');
+});
